@@ -1,15 +1,19 @@
 # Snakemake config for fc_methods_comparison_cml
 # Override at runtime via `snakemake --config smokescreen=true`.
 
-# Canonical python environment for the project — the SINGLE knob that selects
-# the interpreter everywhere. Read by project_paths.py (as PYTHON_ENV_PATH; the
-# Snakefile derives its shell-rule interpreter as PYTHON_ENV_PATH/bin/python)
-# and by scripts/env.sh (which exports PATH / PYTHON / PYTHONPATH from it).
-# ${REPO_ROOT} is the directory containing this config.yaml. To run with an
-# external conda env, point this at that env's root (e.g. /home/me/miniconda3/
-# envs/foo); the rest of the pipeline follows — no CONDA_PREFIX / activation
-# needed.
-python_env_path: /home1/jueenaik/miniforge3/envs/mod_workshop_311
+# Canonical python environment — the SINGLE knob that selects the interpreter
+# everywhere. Read by project_paths.py (as PYTHON_ENV_PATH; the Snakefile
+# derives its shell-rule interpreter as PYTHON_ENV_PATH/bin/python) and by
+# scripts/env.sh (which exports PATH / PYTHON / PYTHONPATH from it).
+#
+# ${USER} and ${REPO_ROOT} expand, so this works unchanged for any lab user
+# whose miniforge lives at /home1/<user>/miniforge3. `source scripts/env.sh`
+# then puts it on PATH and you can run `python build_roi_power.py ...` directly.
+#
+# CLONING ELSEWHERE: point this at your own env root (the directory containing
+# bin/python), or set it to `null` to mean "use whatever env is already active",
+# in which case activate the env yourself before sourcing scripts/env.sh.
+python_env_path: /home1/${USER}/miniforge3/envs/mod_workshop_311
 
 # Project-wide random-state offset. Each analysis derives its default seed
 # as `sha256(analysis_name) + seed_offset` (mod 2**32) via

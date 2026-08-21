@@ -48,30 +48,6 @@ def ftag(dfrow: pd.Series) -> str:
         return f'{sub}_{exp}_{sess}_{loc}_{mon}'
 
 
-def npl(fname: str) -> NDArrayAny:
-    """Convenience numpy.load wrapper pinned to collaborator amrao's scratch.
-
-    Unused inside this repo (zero callers as of 2026-05-20). Kept verbatim
-    because the hardcoded path is the *data location* (someone else's
-    files) rather than this project's output dir — not something to route
-    through config.yaml. Delete once the collaborator confirms it's dead.
-    """
-    return np.load(join('/scratch/amrao', fname), allow_pickle=True)
-
-
-def load_mat(path: str) -> Any:
-    """Load a MATLAB .mat file, falling back to h5py for v7.3 files.
-
-    Returns the result of scipy.io.loadmat (dict-like) for legacy .mat, or
-    an open h5py.File handle for v7.3 .mat (caller is responsible for
-    closing — kept open because some callers stream lazily).
-    """
-    try:
-        return scipy.io.loadmat(path)  # pyright: ignore[reportUnknownMemberType]
-    except Exception:
-        return h5py.File(path, 'r')
-
-
 def get_dfrow(dfrow: Sequence[Any] | NDArrayAny) -> pd.Series:
     """Coerce a (sub, exp, sess[, loc, mon]) tuple/list/array to a Series.
 

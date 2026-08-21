@@ -93,9 +93,6 @@ behavioral_names = {'en': 'Encoding',
                     'voc': 'Vocalization'}
 
 # root_dir set in main analysis notebook
-def print_root_dir() -> None:
-    """Diagnostic: print the current module-level root_dir."""
-    print(root_dir)
 
 
 def load_events(dfrow: pd.Series, beh: str) -> pd.DataFrame:

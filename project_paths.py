@@ -274,29 +274,6 @@ def get_default(key: str) -> Any:
     return _PARAMS[key]
 
 
-def get_compute_profile(name: str) -> dict[str, Any]:
-    """SLURM resource defaults for one of the major analysis clusters.
-
-    `name` is ``'fc_matrix'`` (heavy Stage-A/B FC computation) or
-    ``'downstream'`` (light resampling / aggregation compute_*/plot_* jobs).
-    Returns a dict with ``n_workers``, ``mem``, ``walltime`` from
-    config.yaml:compute_profiles, so every script's argparse defaults share one
-    source of truth. Raises KeyError on an unknown profile."""
-    profiles = cast("dict[str, Any]", get_default("compute_profiles"))
-    if name not in profiles:
-        raise KeyError(
-            f"Unknown compute profile {name!r}; available: {sorted(profiles)}"
-        )
-    return cast("dict[str, Any]", profiles[name])
-
-
-# ---------------------------------------------------------------------------
-# SLURM broken-node exclusion — single project-wide knob. Edit config.yaml
-# `cluster.excluded_nodes` ONCE to add/remove nodes; it propagates to every
-# in-code cmldask dispatch via slurm_exclude_directives(), to scripts/env.sh
-# (SBATCH_EXCLUDE), and to the Snakefile shell.prefix. Empty list = no exclusion.
-# ---------------------------------------------------------------------------
-
 def _load_excluded_nodes() -> list[str]:
     cluster = cast("dict[str, Any]", get_default("cluster"))
     nodes = cast("list[Any]", cluster.get("excluded_nodes") or [])
@@ -570,34 +547,6 @@ def _load_case_study_hub_cases() -> dict[str, list[CaseStudyHub]]:
 CASE_STUDY_HUB_CASES: dict[str, list[CaseStudyHub]] = _load_case_study_hub_cases()
 
 
-def case_study_hub(beh: str, name: str) -> CaseStudyHub:
-    """Look up one named hub case study by (behavior, name)."""
-    for c in CASE_STUDY_HUB_CASES.get(beh, []):
-        if c.name == name:
-            return c
-    avail = [c.name for c in CASE_STUDY_HUB_CASES.get(beh, [])]
-    raise KeyError(
-        f"no case_study hub named {name!r} for beh={beh!r}; available: {avail}"
-    )
-
-
-def case_study_connection(beh: str, name: str) -> CaseStudyConnection:
-    """Look up one named connection case study by (behavior, name)."""
-    for c in CASE_STUDY_CONNECTIONS.get(beh, []):
-        if c.name == name:
-            return c
-    avail = [c.name for c in CASE_STUDY_CONNECTIONS.get(beh, [])]
-    raise KeyError(
-        f"no case_study connection named {name!r} for beh={beh!r}; "
-        f"available: {avail}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Signal-processing constants (config-flow only; no behavior change at
-# migration time). mt_bandwidth=None keeps MNE's default — code_issues #79.
-# ---------------------------------------------------------------------------
-
 MIRROR_BUFFER_MS: int = int(get_default("mirror_buffer_ms"))
 REAL_DATA_BUFFER_MS: float = float(get_default("real_data_buffer_ms"))
 RESAMPLE_HZ: float = float(get_default("resample_hz"))
@@ -654,34 +603,6 @@ BEHAVIORS_MAIN, BEHAVIORS_NONCONTRAST = _load_behaviors()
 BEHAVIORS_ALL: tuple[str, ...] = BEHAVIORS_MAIN + BEHAVIORS_NONCONTRAST
 
 
-def behavior_contrast_mask(supported: Iterable[str]) -> list[str]:
-    """Intersect a script's locally-supported behaviors with the global default.
-
-    Returns the elements of ``supported`` that are also in ``BEHAVIORS_MAIN``,
-    preserving the order of ``supported``. This is the argparse default for
-    any plot script: each script keeps its own list of supported behaviors
-    (e.g. ``BEH_CONFIG.keys()``), and this helper trims it down to what
-    config.yaml has currently enabled by default.
-    """
-    main_set = set(BEHAVIORS_MAIN)
-    return [b for b in supported if b in main_set]
-
-
-def seed_for(name: str) -> int:
-    """Deterministic per-analysis seed.
-
-    Computed as ``(sha256(name) + SEED_OFFSET) mod 2**32``. Changing
-    ``seed_offset`` in config.yaml rerolls every analysis to an independent
-    draw; the sha256 hash spreads collisions evenly so different analyses
-    sharing the same offset don't collide.
-    """
-    import hashlib
-    digest = hashlib.sha256(name.encode("utf-8")).digest()
-    h = int.from_bytes(digest[:4], byteorder="big", signed=False)
-    return (h + SEED_OFFSET) % (2 ** 32)
-
-
-# Module-level Path constants. Use the keys we know exist from config.yaml.
 RESULTS_DIR: Path = get("results_dir")
 PROCESSED_RESULTS_DIR: Path = get("processed_results_dir")
 SCRATCH_DIR: Path = get("scratch_dir")
@@ -753,18 +674,25 @@ REPFR1_PRESENTATION_TIMES_CSV: Path = get("repfr1_presentation_times_csv")
 def _load_python_env_path() -> Path:
     """Resolve the canonical python env path from config.yaml.
 
-    The value supports two template vars: ``${REPO_ROOT}`` (this file's
-    parent) and ``${USER}``. Raises KeyError if the entry is missing — the
-    pipeline cannot bootstrap without a python interpreter, so silent
-    fallback is more dangerous than a clear error.
+    Null or absent (the shipped default) resolves to ``sys.prefix`` -- the env
+    this process is already running in -- so a fresh clone works with no
+    editing. An explicit value supports two template vars, ``${REPO_ROOT}``
+    (this file's parent) and ``${USER}``; prefer ``${USER}`` over a literal home
+    directory, since it reads $USER rather than depending on the cwd.
     """
     cfg = _safe_load_yaml(_CONFIG_PATH)
-    if "python_env_path" not in cfg:
-        raise KeyError(
-            "config/config.yaml is missing required top-level key "
-            "'python_env_path' (absolute path to the project's python env)."
-        )
-    raw = str(cfg["python_env_path"])
+    raw_val = cfg.get("python_env_path")
+    if raw_val is None:
+        # Null / absent -> the env this process is ALREADY running in. If you
+        # can import this module, that env can run the pipeline, so it is the
+        # correct answer by construction and needs no per-machine editing.
+        #
+        # Set the key explicitly only when the launching process runs in a
+        # DIFFERENT env from the one the work should use -- e.g. Snakemake
+        # driven from a bootstrap env while the rules need the analysis env.
+        # That is the one case sys.prefix gets wrong.
+        return Path(sys.prefix)
+    raw = str(raw_val)
     expanded = Template(raw).safe_substitute({
         "REPO_ROOT": str(REPO_ROOT),
         "USER": _user(),

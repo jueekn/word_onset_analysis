@@ -16,30 +16,6 @@ import xarray as xr  # pyright: ignore[reportMissingTypeStubs]
 NDArrayAny = npt.NDArray[Any]
 
 
-def any_finite(x: NDArrayAny) -> bool:
-    """True if ANY value in x is finite (not NaN/Inf), else False."""
-    return bool(np.any(np.isfinite(x)))
-
-
-def all_finite(x: NDArrayAny) -> bool:
-    """True if ALL values in x are finite (not NaN/Inf), else False."""
-    return bool(np.all(np.isfinite(x)))
-
-
-def get_fraction_finite(x: NDArrayAny) -> float:
-    """Fraction of values in x that are finite (not NaN/Inf).
-
-    Note: name says 'count' historically (see code_issues #42); actual
-    behavior is fraction-of-total. The contract here matches the
-    implementation.
-    """
-    # numpy stubs make np.sum / np.prod overload-ambiguous on our generic
-    # input shape. Keep the division inside numpy so the empty-array
-    # behavior (0/0 -> NaN with RuntimeWarning) is preserved — pulling
-    # operands out to Python int would convert that to ZeroDivisionError.
-    return float(np.sum(np.isfinite(x)) / np.prod(x.shape))  # pyright: ignore[reportUnknownMemberType, reportUnknownArgumentType]
-
-
 def finitize(x: NDArrayAny) -> NDArrayAny:
     """Return the unraveled subset of x containing only finite values."""
     return x[np.isfinite(x)]
