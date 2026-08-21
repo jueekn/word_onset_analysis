@@ -3028,12 +3028,16 @@ def run_sessions_cluster(
     discarding it, for work that produces data rather than writing a file. Keep
     what a task returns small -- it travels back over the scheduler.
     """
-    from cmldask.CMLDask import new_dask_client_slurm
+    # project_dask_client, not new_dask_client_slurm directly: it also pins
+    # `local_directory` (dask worker scratch/spill), which cmldask otherwise
+    # defaults to $HOME. On this cluster /home1 is NFS and chronically full, so
+    # a big fan-out spilling there is how compute runs die at 3am.
+    from dask_client import project_dask_client
     from dask.distributed import as_completed
     from tqdm.auto import tqdm
 
     os.makedirs(cluster_log_dir, exist_ok=True)
-    client = new_dask_client_slurm(
+    client = project_dask_client(
         job_name, mem, max_n_jobs=min(n_workers, max(len(sess_list), 1)),
         walltime=walltime, queue="RAM,RAM-GPU",
         log_directory=cluster_log_dir,
