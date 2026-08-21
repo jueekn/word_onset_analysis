@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# Generated output. All of it is reproducible by rerunning the pipeline, and
+# figures/ alone is ~76 MB -- committing it would dwarf the code and make every
+# replot a diff.
+# ---------------------------------------------------------------------------
+figures/
+results/
+processed_results/
+
+# Cluster / SLURM artifacts (dask worker logs, .err/.out per job)
+cluster/
+cluster_logs/
+logs/
+*.err
+*.out
+slurm-*.log
+
+# Computed data. Session pickles live on scratch, but guard against a stray
+# write into the repo -- these are large and always regenerable.
+*.pkl
+*.npy
+*.h5
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Environments
+.pixi/
+.venv/
+venv/
+env/
+
+# ---------------------------------------------------------------------------
+# Editor / OS
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+.DS_Store
+
+# ---------------------------------------------------------------------------
+# Scratch
+# ---------------------------------------------------------------------------
+*.bak
+*~
+*.tmp

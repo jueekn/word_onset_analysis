@@ -1,0 +1,391 @@
+atlas_label,region,hemisphere
+,nan,nan
+ ,nan,nan
+ Left ACgG anterior cingulate gyrus,anterior cingulate gyrus,L
+ Left AIns anterior insula,insula,L
+ Left AOrG anterior orbital gyrus,orbitofrontal cortex,L
+ Left Amygdala,amygdala,L
+ Left AnG angular gyrus,angular gyrus,L
+ Left CO central operculum,frontoparietal operculum,L
+ Left Calc calcarine cortex,calcarine cortex,L
+ Left Caudate,caudate nucleus,L
+ Left Cerebellum Exterior,nan,L
+ Left Cerebral White Matter,nan,L
+ Left Cun cuneus,cuneus,L
+ Left Ent entorhinal area,parahippocampal gyrus,L
+ Left FO frontal operculum,inferior frontal gyrus,L
+ Left FRP frontal pole,frontal pole,L
+ Left FuG fusiform gyrus,fusiform gyrus,L
+ Left GRe gyrus rectus,rectal gyrus,L
+ Left Hippocampus,hippocampus,L
+ Left IOG inferior occipital gyrus,lateral occipital cortex,L
+ Left ITG inferior temporal gyrus,inferior temporal gyrus,L
+ Left Inf Lat Vent,nan,L
+ Left LOrG lateral orbital gyrus,orbitofrontal cortex,L
+ Left Lateral Ventricle,nan,L
+ Left LiG lingual gyrus,lingual gyrus,L
+ Left MCgG middle cingulate gyrus,middle cingulate gyrus,L
+ Left MFC medial frontal cortex,medial frontal cortex,L
+ Left MFG middle frontal gyrus,middle frontal gyrus,L
+ Left MOG middle occipital gyrus,lateral occipital cortex,L
+ Left MOrG medial orbital gyrus,orbitofrontal cortex,L
+ Left MPoG postcentral gyrus medial segment,postcentral gyrus,L
+ Left MPrG precentral gyrus medial segment,precentral gyrus,L
+ Left MSFG superior frontal gyrus medial segment,superior frontal gyrus,L
+ Left MTG middle temporal gyrus,middle temporal gyrus,L
+ Left OCP occipital pole,lateral occipital cortex,L
+ Left OFuG occipital fusiform gyrus,fusiform gyrus,L
+ Left OpIFG opercular part of the inferior frontal gyrus,inferior frontal gyrus,L
+ Left OrIFG orbital part of the inferior frontal gyrus,inferior frontal gyrus,L
+ Left PCgG posterior cingulate gyrus,posterior cingulate gyrus,L
+ Left PCu precuneus,precuneus,L
+ Left PHG parahippocampal gyrus,parahippocampal gyrus,L
+ Left PIns posterior insula,insula,L
+ Left PO parietal operculum,frontoparietal operculum,L
+ Left POrG posterior orbital gyrus,orbitofrontal cortex,L
+ Left PP planum polare,superior temporal gyrus,L
+ Left PT planum temporale,superior temporal gyrus,L
+ Left PoG postcentral gyrus,postcentral gyrus,L
+ Left PrG precentral gyrus,precentral gyrus,L
+ Left Putamen,lentiform nucleus,L
+ Left SCA subcallosal area,subcallosal area,L
+ Left SFG superior frontal gyrus,superior frontal gyrus,L
+ Left SMC supplementary motor cortex,supplementary motor cortex,L
+ Left SMG supramarginal gyrus,supramarginal gyrus,L
+ Left SOG superior occipital gyrus,lateral occipital cortex,L
+ Left SPL superior parietal lobule,superior parietal lobule,L
+ Left STG superior temporal gyrus,superior temporal gyrus,L
+ Left TMP temporal pole,temporal pole,L
+ Left TTG transverse temporal gyrus,transverse temporal gyrus,L
+ Left Thalamus Proper,thalamus,L
+ Left TrIFG triangular part of the inferior frontal gyrus,inferior frontal gyrus,L
+ Left Ventral DC,ventral diencephalon,L
+ Right ACgG anterior cingulate gyrus,anterior cingulate gyrus,R
+ Right AIns anterior insula,insula,R
+ Right AOrG anterior orbital gyrus,orbitofrontal cortex,R
+ Right Amygdala,amygdala,R
+ Right AnG angular gyrus,angular gyrus,R
+ Right CO central operculum,frontoparietal operculum,R
+ Right Calc calcarine cortex,calcarine cortex,R
+ Right Caudate,caudate nucleus,R
+ Right Cerebellum Exterior,nan,R
+ Right Cerebral White Matter,nan,R
+ Right Cun cuneus,cuneus,R
+ Right Ent entorhinal area,parahippocampal gyrus,R
+ Right FO frontal operculum,inferior frontal gyrus,R
+ Right FRP frontal pole,frontal pole,R
+ Right FuG fusiform gyrus,fusiform gyrus,R
+ Right GRe gyrus rectus,rectal gyrus,R
+ Right Hippocampus,hippocampus,R
+ Right IOG inferior occipital gyrus,lateral occipital cortex,R
+ Right ITG inferior temporal gyrus,inferior temporal gyrus,R
+ Right Inf Lat Vent,nan,R
+ Right LOrG lateral orbital gyrus,orbitofrontal cortex,R
+ Right Lateral Ventricle,nan,R
+ Right LiG lingual gyrus,lingual gyrus,R
+ Right MCgG middle cingulate gyrus,middle cingulate gyrus,R
+ Right MFC medial frontal cortex,medial frontal cortex,R
+ Right MFG middle frontal gyrus,middle frontal gyrus,R
+ Right MOG middle occipital gyrus,lateral occipital cortex,R
+ Right MOrG medial orbital gyrus,orbitofrontal cortex,R
+ Right MPoG postcentral gyrus medial segment,postcentral gyrus,R
+ Right MPrG precentral gyrus medial segment,precentral gyrus,R
+ Right MSFG superior frontal gyrus medial segment,superior frontal gyrus,R
+ Right MTG middle temporal gyrus,middle temporal gyrus,R
+ Right OCP occipital pole,lateral occipital cortex,R
+ Right OpIFG opercular part of the inferior frontal gyrus,inferior frontal gyrus,R
+ Right OrIFG orbital part of the inferior frontal gyrus,inferior frontal gyrus,R
+ Right PCgG posterior cingulate gyrus,posterior cingulate gyrus,R
+ Right PCu precuneus,precuneus,R
+ Right PHG parahippocampal gyrus,parahippocampal gyrus,R
+ Right PIns posterior insula,insula,R
+ Right PO parietal operculum,frontoparietal operculum,R
+ Right POrG posterior orbital gyrus,orbitofrontal cortex,R
+ Right PP planum polare,superior temporal gyrus,R
+ Right PT planum temporale,superior temporal gyrus,R
+ Right PoG postcentral gyrus,postcentral gyrus,R
+ Right PrG precentral gyrus,precentral gyrus,R
+ Right Putamen,lentiform nucleus,R
+ Right SCA subcallosal area,subcallosal area,R
+ Right SFG superior frontal gyrus,superior frontal gyrus,R
+ Right SMC supplementary motor cortex,supplementary motor cortex,R
+ Right SMG supramarginal gyrus,supramarginal gyrus,R
+ Right SOG superior occipital gyrus,lateral occipital cortex,R
+ Right SPL superior parietal lobule,superior parietal lobule,R
+ Right STG superior temporal gyrus,superior temporal gyrus,R
+ Right TMP temporal pole,temporal pole,R
+ Right TTG transverse temporal gyrus,transverse temporal gyrus,R
+ Right Thalamus Proper,thalamus,R
+ Right TrIFG triangular part of the inferior frontal gyrus,inferior frontal gyrus,R
+*,nan,nan
+Angular Gyrus,angular gyrus,nan
+Anterior Cingulate,anterior cingulate gyrus,nan
+BA35,parahippocampal gyrus,nan
+BA36,parahippocampal gyrus,nan
+CA1,hippocampus,nan
+CA2,hippocampus,nan
+CA3,hippocampus,nan
+Caudate,caudate nucleus,nan
+Cingulate Gyrus,middle cingulate gyrus,nan
+Cuneus,cuneus,nan
+DG,hippocampus,nan
+ERC,parahippocampal gyrus,nan
+Extra-Nuclear,nan,nan
+Fusiform Gyrus,fusiform gyrus,nan
+Inferior Frontal Gyrus,inferior frontal gyrus,nan
+Inferior Occipital Gyrus,lateral occipital cortex,nan
+Inferior Parietal Lobule,inferior parietal lobule,nan
+Inferior Temporal Gyrus,inferior temporal gyrus,nan
+Insula,insula,nan
+Left ACg,anterior cingulate gyrus,L
+Left ACgG anterior cingulate gyrus,anterior cingulate gyrus,L
+Left AIns anterior insula,insula,L
+Left AOrG anterior orbital gyrus,orbitofrontal cortex,L
+Left Amy,amygdala,L
+Left Amygdala,amygdala,L
+Left AnG angular gyrus,angular gyrus,L
+Left CA1,hippocampus,L
+Left CA2,hippocampus,L
+Left CA3,hippocampus,L
+Left CO central operculum,frontoparietal operculum,L
+Left Calc calcarine cortex,calcarine cortex,L
+Left Caudal Middle Frontal Cortex,middle frontal gyrus,L
+Left Caudate,caudate nucleus,L
+Left Cerebellum Exterior,nan,L
+Left Cerebral White Matter,nan,L
+Left Cun cuneus,cuneus,L
+Left DG,hippocampus,L
+Left DLPFC,middle frontal gyrus,L
+Left EC,parahippocampal gyrus,L
+Left Ent entorhinal area,parahippocampal gyrus,L
+Left FO frontal operculum,inferior frontal gyrus,L
+Left FRP frontal pole,frontal pole,L
+Left FuG fusiform gyrus,fusiform gyrus,L
+Left Fusiform Gyrus WM,nan,L
+Left GRe gyrus rectus,rectal gyrus,L
+Left Hippocampus,hippocampus,L
+Left IOG inferior occipital gyrus,lateral occipital cortex,L
+Left ITG inferior temporal gyrus,inferior temporal gyrus,L
+Left Inf Lat Vent,nan,L
+Left LOrG lateral orbital gyrus,orbitofrontal cortex,L
+Left Lateral Ventricle,nan,L
+Left LiG lingual gyrus,lingual gyrus,L
+Left MCg,middle cingulate gyrus,L
+Left MCgG middle cingulate gyrus,middle cingulate gyrus,L
+Left MFC medial frontal cortex,medial frontal cortex,L
+Left MFG middle frontal gyrus,middle frontal gyrus,L
+Left MOG middle occipital gyrus,lateral occipital cortex,L
+Left MOrG medial orbital gyrus,orbitofrontal cortex,L
+Left MPoG postcentral gyrus medial segment,postcentral gyrus,L
+Left MPrG precentral gyrus medial segment,precentral gyrus,L
+Left MSFG superior frontal gyrus medial segment,superior frontal gyrus,L
+Left MTG,middle temporal gyrus,L
+Left MTG middle temporal gyrus,middle temporal gyrus,L
+Left MTL WM,nan,L
+Left Middle Temporal Gyrus,middle temporal gyrus,L
+Left OCP occipital pole,lateral occipital cortex,L
+Left OFuG occipital fusiform gyrus,fusiform gyrus,L
+Left OpIFG opercular part of the inferior frontal gyrus,inferior frontal gyrus,L
+Left OrIFG orbital part of the inferior frontal gyrus,inferior frontal gyrus,L
+Left PCg,posterior cingulate gyrus,L
+Left PCgG posterior cingulate gyrus,posterior cingulate gyrus,L
+Left PCu precuneus,precuneus,L
+Left PHC,parahippocampal gyrus,L
+Left PHG parahippocampal gyrus,parahippocampal gyrus,L
+Left PIns posterior insula,insula,L
+Left PO parietal operculum,frontoparietal operculum,L
+Left POrG posterior orbital gyrus,orbitofrontal cortex,L
+Left PP planum polare,superior temporal gyrus,L
+Left PRC,parahippocampal gyrus,L
+Left PT planum temporale,superior temporal gyrus,L
+Left Pallidum,lentiform nucleus,L
+Left PoG postcentral gyrus,postcentral gyrus,L
+Left PrG precentral gyrus,precentral gyrus,L
+Left Precentral Gyrus,precentral gyrus,L
+Left Precuneus,precuneus,L
+Left Putamen,lentiform nucleus,L
+Left SCA subcallosal area,subcallosal area,L
+Left SFG superior frontal gyrus,superior frontal gyrus,L
+Left SMC supplementary motor cortex,supplementary motor cortex,L
+Left SMG supramarginal gyrus,supramarginal gyrus,L
+Left SOG superior occipital gyrus,lateral occipital cortex,L
+Left SPL superior parietal lobule,superior parietal lobule,L
+Left STG superior temporal gyrus,superior temporal gyrus,L
+Left SUB,hippocampus,L
+Left Sub,hippocampus,L
+Left Supramarginal Gyrus,supramarginal gyrus,L
+Left TC,nan,L
+Left TMP temporal pole,temporal pole,L
+Left TTG transverse temporal gyrus,transverse temporal gyrus,L
+Left Thalamus Proper,thalamus,L
+Left TrIFG triangular part of the inferior frontal gyrus,inferior frontal gyrus,L
+Left Ventral DC,ventral diencephalon,L
+Lentiform Nucleus Lateral Globus Pallidus,lentiform nucleus,nan
+Lentiform Nucleus Medial Globus Pallidus,lentiform nucleus,nan
+Lentiform Nucleus Putamen,lentiform nucleus,nan
+Lingual Gyrus,lingual gyrus,nan
+Medial Frontal Gyrus,medial frontal cortex,nan
+Middle Frontal Gyrus,middle frontal gyrus,nan
+Middle Occipital Gyrus,lateral occipital cortex,nan
+Middle Temporal Gyrus,middle temporal gyrus,nan
+Orbital Gyrus,orbitofrontal cortex,nan
+PHC,parahippocampal gyrus,nan
+Paracentral Lobule,paracentral lobule,nan
+Parahippocampal Gyrus,parahippocampal gyrus,nan
+Parahippocampal Gyrus Amygdala,amygdala,nan
+Parahippocampal Gyrus Hippocampus,hippocampus,nan
+Postcentral Gyrus,postcentral gyrus,nan
+Posterior Cingulate,posterior cingulate gyrus,nan
+Precentral Gyrus,precentral gyrus,nan
+Precuneus,precuneus,nan
+Rectal Gyrus,rectal gyrus,nan
+Right ACg,anterior cingulate gyrus,R
+Right ACgG anterior cingulate gyrus,anterior cingulate gyrus,R
+Right AIns anterior insula,insula,R
+Right AOrG anterior orbital gyrus,orbitofrontal cortex,R
+Right Accumbens Area,basal forebrain,R
+Right Amy,amygdala,R
+Right Amygdala,amygdala,R
+Right AnG angular gyrus,angular gyrus,R
+Right Basal Forebrain,basal forebrain,R
+Right CA1,hippocampus,R
+Right CA2,hippocampus,R
+Right CA3,hippocampus,R
+Right CO central operculum,frontoparietal operculum,R
+Right Calc calcarine cortex,calcarine cortex,R
+Right Caudal Middle Frontal Cortex,middle frontal gyrus,R
+Right Caudate,caudate nucleus,R
+Right Cerebral White Matter,nan,R
+Right Cun cuneus,cuneus,R
+Right DG,hippocampus,R
+Right DLPFC,middle frontal gyrus,R
+Right EC,parahippocampal gyrus,R
+Right Ent entorhinal area,parahippocampal gyrus,R
+Right FO frontal operculum,inferior frontal gyrus,R
+Right FRP frontal pole,frontal pole,R
+Right FuG fusiform gyrus,fusiform gyrus,R
+Right GRe gyrus rectus,rectal gyrus,R
+Right Hippocampus,hippocampus,R
+Right IOG inferior occipital gyrus,lateral occipital cortex,R
+Right ITG inferior temporal gyrus,inferior temporal gyrus,R
+Right Inf Lat Vent,nan,R
+Right Insula,insula,R
+Right LOrG lateral orbital gyrus,orbitofrontal cortex,R
+Right Lateral Ventricle,nan,R
+Right LiG lingual gyrus,lingual gyrus,R
+Right MCg,middle cingulate gyrus,R
+Right MCgG middle cingulate gyrus,middle cingulate gyrus,R
+Right MFC medial frontal cortex,medial frontal cortex,R
+Right MFG middle frontal gyrus,middle frontal gyrus,R
+Right MOG middle occipital gyrus,lateral occipital cortex,R
+Right MOrG medial orbital gyrus,orbitofrontal cortex,R
+Right MPoG postcentral gyrus medial segment,postcentral gyrus,R
+Right MPrG precentral gyrus medial segment,precentral gyrus,R
+Right MSFG superior frontal gyrus medial segment,superior frontal gyrus,R
+Right MTG,middle temporal gyrus,R
+Right MTG middle temporal gyrus,middle temporal gyrus,R
+Right MTL WM,nan,R
+Right Middle Temporal Gyrus,middle temporal gyrus,R
+Right OFuG occipital fusiform gyrus,fusiform gyrus,R
+Right OpIFG opercular part of the inferior frontal gyrus,inferior frontal gyrus,R
+Right OrIFG orbital part of the inferior frontal gyrus,inferior frontal gyrus,R
+Right PCg,posterior cingulate gyrus,R
+Right PCgG posterior cingulate gyrus,posterior cingulate gyrus,R
+Right PCu precuneus,precuneus,R
+Right PHC,parahippocampal gyrus,R
+Right PHG parahippocampal gyrus,parahippocampal gyrus,R
+Right PIns posterior insula,insula,R
+Right PO parietal operculum,frontoparietal operculum,R
+Right POrG posterior orbital gyrus,orbitofrontal cortex,R
+Right PP planum polare,superior temporal gyrus,R
+Right PRC,parahippocampal gyrus,R
+Right PT planum temporale,superior temporal gyrus,R
+Right Pallidum,lentiform nucleus,R
+Right PoG postcentral gyrus,postcentral gyrus,R
+Right PrG precentral gyrus,precentral gyrus,R
+Right Precentral Gyrus,precentral gyrus,R
+Right Putamen,lentiform nucleus,R
+Right SCA subcallosal area,subcallosal area,R
+Right SFG superior frontal gyrus,superior frontal gyrus,R
+Right SMC supplementary motor cortex,supplementary motor cortex,R
+Right SMG supramarginal gyrus,supramarginal gyrus,R
+Right SOG superior occipital gyrus,lateral occipital cortex,R
+Right SPL superior parietal lobule,superior parietal lobule,R
+Right STG,superior temporal gyrus,R
+Right STG superior temporal gyrus,superior temporal gyrus,R
+Right Sub,hippocampus,R
+Right Superior Frontal Gyrus,superior frontal gyrus,R
+Right Supramarginal Gyrus,supramarginal gyrus,R
+Right TMP temporal pole,temporal pole,R
+Right TTG transverse temporal gyrus,transverse temporal gyrus,R
+Right Thalamus Proper,thalamus,R
+Right TrIFG triangular part of the inferior frontal gyrus,inferior frontal gyrus,R
+SUB,hippocampus,nan
+Sub-Gyral,nan,nan
+Subcallosal Gyrus,subcallosal area,nan
+Superior Frontal Gyrus,superior frontal gyrus,nan
+Superior Occipital Gyrus,lateral occipital cortex,nan
+Superior Parietal Lobule,superior parietal lobule,nan
+Superior Temporal Gyrus,superior temporal gyrus,nan
+Supramarginal Gyrus,supramarginal gyrus,nan
+Thalamus,thalamus,nan
+Transverse Temporal Gyrus,transverse temporal gyrus,nan
+Uncus,parahippocampal gyrus,nan
+Uncus Amygdala,amygdala,nan
+[nan],nan,nan
+bankssts,superior temporal gyrus,nan
+caudalanteriorcingulate,anterior cingulate gyrus,nan
+caudalmiddlefrontal,middle frontal gyrus,nan
+corpuscallosum,nan,nan
+cuneus,cuneus,nan
+entorhinal,parahippocampal gyrus,nan
+frontalpole,frontal pole,nan
+fusiform,fusiform gyrus,nan
+inferiorparietal,inferior parietal lobule,nan
+inferiortemporal,inferior temporal gyrus,nan
+insula,insula,nan
+isthmuscingulate,posterior cingulate gyrus,nan
+lateraloccipital,lateral occipital cortex,nan
+lateralorbitofrontal,orbitofrontal cortex,nan
+lingual,lingual gyrus,nan
+medialorbitofrontal,orbitofrontal cortex,nan
+middletemporal,middle temporal gyrus,nan
+misc,nan,nan
+nan,nan,nan
+paracentral,paracentral lobule,nan
+parahippocampal,parahippocampal gyrus,nan
+parsopercularis,inferior frontal gyrus,nan
+parsorbitalis,inferior frontal gyrus,nan
+parstriangularis,inferior frontal gyrus,nan
+pericalcarine,calcarine cortex,nan
+postcentral,postcentral gyrus,nan
+posteriorcingulate,posterior cingulate gyrus,nan
+precentral,precentral gyrus,nan
+precuneus,precuneus,nan
+rostralanteriorcingulate,anterior cingulate gyrus,nan
+rostralmiddlefrontal,middle frontal gyrus,nan
+sulcus,parahippocampal gyrus,nan
+superiorfrontal,superior frontal gyrus,nan
+superiorparietal,superior parietal lobule,nan
+superiortemporal,superior temporal gyrus,nan
+supramarginal,supramarginal gyrus,nan
+tail,hippocampus,nan
+temporalpole,temporal pole,nan
+transversetemporal,transverse temporal gyrus,nan
+unknown,nan,nan
+ Right OFuG occipital fusiform gyrus,fusiform gyrus,R
+ Right Ventral DC,ventral diencephalon,R
+"""BA35""",parahippocampal gyrus,nan
+"""BA36""",parahippocampal gyrus,nan
+"""CA1""",hippocampus,nan
+"""CA3""",hippocampus,nan
+"""DG""",hippocampus,nan
+"""ERC""",parahippocampal gyrus,nan
+"""PHC""",parahippocampal gyrus,nan
+"""SUB""",hippocampus,nan
+"""misc""",nan,nan
+"""sulcus""",hippocampus,nan
+Brain Stem,nan,nan
+Left Basal Forebrain,basal forebrain,L
+Right Cerebellum Exterior,nan,R
+Right OCP occipital pole,lateral occipital cortex,R

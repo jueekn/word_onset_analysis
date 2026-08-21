@@ -1,0 +1,41 @@
+region,burke_lobe,flag
+amygdala,limbic,
+angular gyrus,parietal,
+anterior cingulate gyrus,limbic,
+basal forebrain,subcortical,no Burke lobe -- decide: exclude or limbic
+calcarine cortex,occipital,
+caudate nucleus,subcortical,no Burke lobe -- decide: exclude or limbic
+cuneus,occipital,
+frontal pole,frontal,
+frontoparietal operculum,frontal,operculum straddles frontal/parietal; default frontal
+fusiform gyrus,occipital,Talairach splits temporal/occipital; user choice: occipital
+hippocampus,hippocampus,
+inferior frontal gyrus,frontal,
+inferior parietal lobule,parietal,
+inferior temporal gyrus,temporal,
+insula,limbic,Talairach sub-lobar; default limbic
+lateral occipital cortex,occipital,
+lentiform nucleus,subcortical,no Burke lobe -- decide: exclude or limbic
+lingual gyrus,occipital,
+medial frontal cortex,frontal,
+middle cingulate gyrus,limbic,
+middle frontal gyrus,frontal,
+middle temporal gyrus,temporal,
+orbitofrontal cortex,frontal,
+paracentral lobule,frontal,motor: straddles frontal/parietal; Talairach->frontal
+parahippocampal gyrus,limbic,
+postcentral gyrus,parietal,
+posterior cingulate gyrus,parietal,Talairach->limbic; user choice: parietal (matches lab region_groups)
+precentral gyrus,frontal,
+precuneus,parietal,
+rectal gyrus,frontal,
+subcallosal area,limbic,
+superior frontal gyrus,frontal,
+superior parietal lobule,parietal,
+superior temporal gyrus,temporal,
+supplementary motor cortex,frontal,
+supramarginal gyrus,parietal,
+temporal pole,temporal,
+thalamus,subcortical,no Burke lobe -- decide: exclude or limbic
+transverse temporal gyrus,temporal,
+ventral diencephalon,subcortical,no Burke lobe -- decide: exclude or limbic

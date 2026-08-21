@@ -1,0 +1,529 @@
+# Snakemake config for fc_methods_comparison_cml
+# Override at runtime via `snakemake --config smokescreen=true`.
+
+# Canonical python environment for the project — the SINGLE knob that selects
+# the interpreter everywhere. Read by project_paths.py (as PYTHON_ENV_PATH; the
+# Snakefile derives its shell-rule interpreter as PYTHON_ENV_PATH/bin/python)
+# and by scripts/env.sh (which exports PATH / PYTHON / PYTHONPATH from it).
+# ${REPO_ROOT} is the directory containing this config.yaml. To run with an
+# external conda env, point this at that env's root (e.g. /home/me/miniconda3/
+# envs/foo); the rest of the pipeline follows — no CONDA_PREFIX / activation
+# needed.
+python_env_path: /home1/jueenaik/miniforge3/envs/mod_workshop_311
+
+# Project-wide random-state offset. Each analysis derives its default seed
+# as `sha256(analysis_name) + seed_offset` (mod 2**32) via
+# project_paths.seed_for(name). Changing this single integer rerolls every
+# analysis to an independent draw; in-script overrides still take
+# precedence over the computed default.
+seed_offset: 0
+
+# Human-readable name of this pipeline configuration. Stamped into the
+# `config` column of the exclusion-count logs so multiple configs coexist.
+config_name: default
+
+# Centralized output paths. ${USER} / ${RESULTS_DIR} / ${PROCESSED_RESULTS_DIR} /
+# ${SCRATCH_DIR} are expanded by project_paths.py (string.Template, two passes).
+paths:
+  results_dir: results
+  processed_results_dir: processed_results
+  scratch_dir: /scratch/${USER}/fc_comparison_dir
+  # Simulation outputs (per-tag) live under sim_tmp_dir/<tag>/. This mirrors
+  # the on-disk real-data layout so the analysis pipeline can run unchanged
+  # on simulated data via build_subj_mat.py --simulation-tag <tag>.
+  sim_tmp_dir:        ${SCRATCH_DIR}/sim_tmp
+  logs_dir: logs
+  cluster_logs_dir: cluster_logs
+  # Tracked tabular data files shipped with the repo (curated denylists, etc.)
+  unrecoverable_sessions_csv: data/unrecoverable_sessions.csv
+  # Per-(subject, session) RepFR1 word-presentation duration (ms). A firmware
+  # bug set many RepFR1 sessions to 750 ms instead of the intended 1600 ms;
+  # such sessions are dropped from the encoding behaviors (en/en_all), whose
+  # [250, 1250] window overruns a 750 ms word. See presentation_times.py.
+  repfr1_presentation_times_csv: data/RepFR1_session_presentation_times.csv
+  # Per-script result subdirs. Directory names mirror the collaborator's
+  # argparse defaults from the last pre-handoff commit (Juee, 2acef87,
+  # 2026-05-08); we just relocate them from `figures/<name>` to
+  # `results/<name>` so the project ships with one canonical results tree.
+  allfcmats:               ${RESULTS_DIR}/allfcmats
+  behcorrs:                ${RESULTS_DIR}/behcorrs
+  connection_convergence:  ${RESULTS_DIR}/connection_convergence
+  hub_convergence:         ${RESULTS_DIR}/hub_convergence
+  hub_iou_figs:            ${RESULTS_DIR}/hub_iou_figs
+  mean_connectivity:       ${RESULTS_DIR}/mean_connectivity
+  measurecorrs:            ${RESULTS_DIR}/measurecorrs
+  multi_metric_detection:  ${RESULTS_DIR}/multi_metric_detection
+  selfiou:                 ${RESULTS_DIR}/selfiou
+  retest_reliability:               ${RESULTS_DIR}/retest_reliability
+  retest_hubs:          ${RESULTS_DIR}/retest_hubs
+  # Event/session exclusion-count logs (per-session logs aggregate here).
+  exclusion_counts:        ${RESULTS_DIR}/exclusion_counts
+  retest_reliability_metric_corr:   ${RESULTS_DIR}/retest_reliability_metric_corr
+  icc_reliability:         ${RESULTS_DIR}/icc_reliability
+  hedges_g_reliability:    ${RESULTS_DIR}/hedges_g_reliability
+  icc_reliability_hub:      ${RESULTS_DIR}/icc_reliability_hub
+  hedges_g_reliability_hub: ${RESULTS_DIR}/hedges_g_reliability_hub
+  subsamplesimilarity:     ${RESULTS_DIR}/subsamplesimilarity
+  subsamplesimilarity_hub: ${RESULTS_DIR}/subsamplesimilarity_hub
+  # Appendix-A scripts added after collaborator's last commit (named after
+  # their script slug; no collaborator analogue):
+  pairwise_iou:            ${RESULTS_DIR}/pairwise_iou
+  listsplit:               ${RESULTS_DIR}/listsplit
+  # Intermediate cache (replaces repo-root .pkl dumps):
+  intermediate_subj_mat:      ${PROCESSED_RESULTS_DIR}/subj_mat
+  intermediate_sess_mat:      ${PROCESSED_RESULTS_DIR}/sess_mat
+  intermediate_retest_reliability:     ${PROCESSED_RESULTS_DIR}/retest_reliability
+  # Connection-level ICC + Hedges' g caches (one pickle per behavior; small
+  # RxR matrices + per-connection vectors, so processed_results is fine).
+  intermediate_icc_reliability:        ${PROCESSED_RESULTS_DIR}/icc_reliability
+  intermediate_hedges_g_reliability:   ${PROCESSED_RESULTS_DIR}/hedges_g_reliability
+  intermediate_icc_reliability_hub:      ${PROCESSED_RESULTS_DIR}/icc_reliability_hub
+  intermediate_hedges_g_reliability_hub: ${PROCESSED_RESULTS_DIR}/hedges_g_reliability_hub
+  intermediate_iou_curve:     ${PROCESSED_RESULTS_DIR}/iou_curve
+  intermediate_similarity:    ${PROCESSED_RESULTS_DIR}/similarity_curve
+  intermediate_hub_iou:       ${PROCESSED_RESULTS_DIR}/hub_iou
+  intermediate_avg_region:    ${PROCESSED_RESULTS_DIR}/avg_region
+  intermediate_hub_retest_reliability: ${PROCESSED_RESULTS_DIR}/hub_retest_reliability
+  intermediate_pairwise_iou:  ${PROCESSED_RESULTS_DIR}/pairwise_iou
+  # Pooled case-study connection values, re-averaged from the raw channel-level
+  # FC matrices (one pickle per behavior: pooled_<beh>.pkl). Small scalars.
+  intermediate_case_study_pooled: ${PROCESSED_RESULTS_DIR}/case_study_pooled
+  # Channel/electrode-level (no region aggregation) retest-reliability caches.
+  # The channel sess_mat pickles are large (~1 GB/behavior, like the raw
+  # per-session FC mats), so they live on scratch rather than processed_results.
+  intermediate_sess_mat_channel:      ${SCRATCH_DIR}/sess_mat_channel
+  intermediate_retest_channel:     ${PROCESSED_RESULTS_DIR}/retest_channel
+  intermediate_hub_retest_channel: ${PROCESSED_RESULTS_DIR}/hub_retest_channel
+  # Snakemake rule-completion sentinel files (.foo.done). Live in
+  # processed_results/ (not results/) since they're build-tracking
+  # artifacts, not final scientific outputs.
+  snakemake_sentinels:        ${PROCESSED_RESULTS_DIR}/snakemake
+  # Standardized statistical-result summary JSONs (results_io.py). One JSON per
+  # analysis script; combine_results() merges everything registered under the
+  # top-level `result_files:` block below into all_results.json.
+  result_summary:             ${RESULTS_DIR}/summary
+
+# Statistical-result file registry (results_io.py). Maps a config-key to the
+# JSON filename (under RESULT_SUMMARY_DIR) that one analysis script writes via
+# init_result_file/write_result. combine_results() merges every file listed
+# here into all_results.json. Add an entry whenever a new analysis script
+# starts emitting a result JSON; the LaTeX `% @result:` key path uses the JSON
+# file stem as its first dotted segment.
+result_files:
+  mean_connectivity: mean_connectivity.json
+  reliability: reliability.json
+  subsample: subsample.json
+  distance_control_retest: distance_control_retest.json
+
+# Spectral bands consumed by all FC compute functions. Tuples are loaded
+# as `tuple(v)` by project_paths.BANDS.
+bands:
+  theta:      [4, 9]
+  alpha:      [8, 13]
+  low:        [3, 8]
+  # gamma: single high-frequency band shared by the PAC amplitude band AND the
+  # AEC / AEC-c pre-envelope filter (see compute_pac / compute_aec). 70 Hz lower
+  # edge covers the high-gamma carrier; 110 Hz upper edge sits well below the
+  # 250 Hz Nyquist (500 Hz resample) so MNE can fit the filter stopband. A
+  # separate high-gamma band can be added later.
+  gamma:      [70, 110]
+  narrow_3hz: [2.5, 3.5]
+  narrow_5hz: [4.5, 5.5]
+  narrow_7hz: [6.5, 7.5]
+  # 6-12 Hz phase band used by the phase-metric FC batch (build_phase_fc.py),
+  # matching the multitaper fmin/fmax in visualize_phase_connectivity.ipynb.
+  theta_6_12: [6.0, 12.0]
+  # high_gamma: the ANALYSIS band for the high-gamma arm. Distinct from `gamma`
+  # above, which stays [70,110] because it is a FILTER band (PAC amplitude + AEC
+  # pre-envelope) whose upper edge is set by MNE stopband fitting, not by what we
+  # want to look at. Do not merge the two.
+  #
+  # 70-150 is the field-standard high-gamma range, and the one Long et al. use on
+  # this same dataset, so the two are directly comparable. Its GEOMETRIC centre is
+  # sqrt(70*150) = 102.5 Hz -- i.e. centred at ~100 Hz on the log-frequency axis
+  # that Morlet wavelets actually tile, which is the sense in which "centred at
+  # 100 Hz" is meaningful for a wavelet decomposition.
+  #
+  # Nyquist: safe. Sessions below 499 Hz native are already excluded upstream
+  # (min_sample_rate_hz -> data_check `sub_500hz`), so every retained session has
+  # Nyquist >= 249.5 Hz and the resample to 500 Hz never upsamples.
+  #
+  # Line noise: 70-150 CONTAINS the 2nd/3rd line harmonics (US 120; Germany 100
+  # and 150). Runs in this band MUST set notch_harmonics_up_to_hz below, or the
+  # band fills with mains -- at Freiburg sites the 50 Hz 2nd harmonic sits at
+  # exactly 100 Hz, the band centre.
+  high_gamma: [70, 150]
+
+# Pipeline parameters (full-run defaults)
+band: low
+cond: diff
+behaviors_main: [en, rm, word_on, voc]
+behaviors_noncontrast: [en_all, rm_all]
+# Behaviors driving group-level analyses (those with subj_mat pickles).
+# rm_all is in the full set but currently has no on-disk artifacts.
+
+# Statistical params (thesis defaults)
+Smin: 100             # min subjects per region pair
+case_study_smin: 50   # inclusion floor for the case-study connection/hub
+                      # analyses (lower than Smin: the hypothesized
+                      # hippocampus–OFC / hippocampus–fusiform edges are sparse,
+                      # and ipsilateral pooling lifts usable N over this floor)
+Nref: 100             # large-sample reference
+N_typical: 20         # typical iEEG cohort
+n_resamples: 2000     # bootstrap iterations, project-wide default for every
+                      # resampling analysis (thesis used B=1000; raised to
+                      # 2000 for more stable percentile CIs / SEs — parallelize
+                      # slow analyses rather than lowering this)
+
+# Sample-size sweeps
+Ns_similarity: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+Ns_detection: [5, 10, 20, 40, 80, 100, 120]
+
+# Local process-parallelism for multipanel_figures.py: how many composite
+# figures to render concurrently when building several at once (`--figure all`).
+# Mirrors the pipeline's local job count (run_project.sh `--jobs`, snakemake
+# `--cores`); the script caps the effective value at the figure count and the
+# available CPU cores, and falls back to serial for a single figure or an
+# interactive (`--show`) render. Override per-run with `--jobs N`.
+figure_jobs: 8
+
+# Smokescreen mode — set via `snakemake --config smokescreen=true`.
+# When true: small N, small B. Defaults to SLURM dispatch like the full
+# run (sessions/subjects auto-cap n_workers); to force serial single-process
+# execution use `--config smokescreen=true smokescreen_local=true` (helpful
+# when the cluster is unavailable or for stripped-down debugging).
+smokescreen: false
+smokescreen_local: false
+smokescreen_overrides:
+  Smin: 2
+  case_study_smin: 2
+  n_resamples: 10
+  N_typical: 10
+  Nref: 10
+  Ns_similarity: [10, 20]
+  Ns_detection: [5, 20]
+  # figures_dir redirect now handled in Snakefile via SIM_TMP_DIR (project_paths).
+smokescreen_fast_metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac, gc, gc_tr]
+
+# New-experiment-cohort (ICatFR1/IFR1/RepFR1) parameter overrides — set via the
+# FC_NEWEXPS env var or the --newexps CLI flag (the same switch that reroutes the
+# output tree; see project_paths). This cohort is far smaller than FR1/catFR1/pyFR:
+# 79 subjects but max per-connection coverage of only ~54, so NO connection clears
+# the default Smin=100 and group analyses would mask everything to NaN (the cause
+# of the empty-data / fractional-axis figures). These overrides lower the coverage
+# floor and shrink the sample-size sweeps to the cohort's range. Merged like
+# smokescreen_overrides, but BEFORE smokescreen, so a combined run still wins to
+# smokescreen's tiny values.
+newexps_overrides:
+  Smin: 30               # 29 region pairs clear this floor (vs 0 at Smin=100)
+  case_study_smin: 10    # hypothesized hipp–OFC / hipp–fusiform edges are sparse
+  Nref: 30               # reference subsample capped at Smin
+  Ns_similarity: [5, 10, 15, 20, 25, 30]
+  Ns_detection:  [5, 10, 15, 20, 25, 30]
+
+# Cluster (Stage A / Stage B FC compute)
+cluster:
+  n_workers: 400
+  mem: 10G
+  walltime: 10000
+  log_dir: cluster_logs
+  # Broken-node exclusion — the SINGLE knob. Add/remove SLURM nodes here and it
+  # propagates everywhere: project_paths.EXCLUDED_NODES / slurm_exclude_directives()
+  # (in-code cmldask dispatch), scripts/env.sh (SBATCH_EXCLUDE), and the Snakefile
+  # shell.prefix. Use flow style [a, b, c] (scripts/env.sh parses it with awk).
+  # Empty list [] disables all exclusion. TEMPORARY 2026-06-18: node18/node37
+  # (user-directory/NSS broken) + node47 (DNS + NFS broken); node06 added
+  # 2026-06-19 (controller DNS broke mid-run) — see .claude/reports/.
+  excluded_nodes: [node06, node18, node37, node47]
+
+# SLURM resource profiles for the two major analysis clusters. Each compute
+# script reads its --n-workers / --mem / --walltime argparse defaults from the
+# matching profile (via project_paths.get_compute_profile), so resource sizing
+# is centralized rather than hardcoded per script.
+#   fc_matrix  — heavy Stage-A/B FC computation (build_subj_mat): big RAM, long
+#                walltime, per-session FC matrices.
+#   downstream — light resampling / aggregation jobs (subsample similarity,
+#                disjoint retest, detection, IoU, ...): tiny per-worker data
+#                (the cohort matrix is a few MB), so 2G is ample. Over-requesting
+#                here just blocks the scheduler.
+compute_profiles:
+  fc_matrix:
+    n_workers: 400
+    mem: 10G
+    walltime: 10000
+  downstream:
+    n_workers: 200
+    mem: 1G
+    walltime: 1800
+
+# Case-study connections / hubs (per behavior). Compute scripts default
+# --region / --pair from here so standalone CLI runs match Snakefile.
+# `connections` is the per-behavior list of named case studies consumed by the
+# pooling-aware connection analyses (compute_connection_convergence,
+# compute_multi_metric_detection). Each entry has a `name` (filesystem slug), a
+# `pretty_name` (display string for plots), and EITHER a single `pair`
+# [region_a, region_b] OR a `pool` (list of [region_a, region_b] pairs whose
+# channel-level connections are averaged together as one unified connection).
+# Pooled values are RE-AVERAGED from the raw channel-level FC matrices (see
+# fc_comparison_functions.build_subj_pooled_connections) — NOT the mean of the
+# region-level FC-matrix entries.
+#
+# The same case studies (both hypothesized connections, single-L + ipsilateral
+# pool, plus the hub regions) are registered for every behavioral contrast via
+# YAML anchors. `connection_pair` / `hub_region` are the legacy single-edge
+# defaults still read by the Snakefile, compute_hub_convergence, and the
+# diagnostic scripts; `hubs` is the per-behavior list of hub regions.
+_case_study_connections: &case_connections
+  - name: hipp_ofc_L
+    pretty_name: "L Hippocampus – L Orbitofrontal Cortex"
+    pair: ["L hippocampus", "L orbitofrontal cortex"]
+  - name: hipp_ofc_ipsi
+    pretty_name: "Hippocampus – Orbitofrontal Cortex (ipsilateral)"
+    pool:
+      - ["L hippocampus", "L orbitofrontal cortex"]
+      - ["R hippocampus", "R orbitofrontal cortex"]
+  - name: hipp_fusiform_L
+    pretty_name: "L Hippocampus – L Fusiform Gyrus"
+    pair: ["L hippocampus", "L fusiform gyrus"]
+  - name: hipp_fusiform_ipsi
+    pretty_name: "Hippocampus – Fusiform Gyrus (ipsilateral)"
+    pool:
+      - ["L hippocampus", "L fusiform gyrus"]
+      - ["R hippocampus", "R fusiform gyrus"]
+_case_study_hubs: &case_hubs ["L orbitofrontal cortex", "L fusiform gyrus"]
+# `hub_cases` are named hub case studies for the hub-convergence analysis. Each
+# has a `name` (slug), a `pretty_name`, and EITHER a single `region` OR a `pool`
+# of subregions. A pooled hub's strength averages every edge from its pooled
+# subregions to regions OUTSIDE the pool, excluding within-pool edges (see
+# fc_comparison_functions.pooled_hub_strength).
+_case_study_hub_cases: &case_hub_cases
+  - name: ofc_L
+    pretty_name: "L Orbitofrontal Cortex"
+    region: "L orbitofrontal cortex"
+  - name: ofc_bilateral
+    pretty_name: "Orbitofrontal Cortex (bilateral)"
+    pool: ["L orbitofrontal cortex", "R orbitofrontal cortex"]
+  - name: fusiform_L
+    pretty_name: "L Fusiform Gyrus"
+    region: "L fusiform gyrus"
+  - name: fusiform_bilateral
+    pretty_name: "Fusiform Gyrus (bilateral)"
+    pool: ["L fusiform gyrus", "R fusiform gyrus"]
+
+case_study:
+  en:
+    connection_pair: ["L hippocampus", "L orbitofrontal cortex"]
+    hub_region:      "L orbitofrontal cortex"
+    hubs:        *case_hubs
+    hub_cases:   *case_hub_cases
+    connections: *case_connections
+  rm:
+    connection_pair: ["L hippocampus", "L orbitofrontal cortex"]
+    hub_region:      "L orbitofrontal cortex"
+    hubs:        *case_hubs
+    hub_cases:   *case_hub_cases
+    connections: *case_connections
+  word_on:
+    connection_pair: ["L hippocampus", "L fusiform gyrus"]
+    hub_region:      "L fusiform gyrus"
+    hubs:        *case_hubs
+    hub_cases:   *case_hub_cases
+    connections: *case_connections
+  voc:
+    connection_pair: ["L hippocampus", "L orbitofrontal cortex"]
+    hub_region:      "L orbitofrontal cortex"
+    hubs:        *case_hubs
+    hub_cases:   *case_hub_cases
+    connections: *case_connections
+
+# Cross-behavior heatmap pairs
+behcorrs_pairs: [en_rm, en_wordon, rm_voc, wordon_voc, en_voc, rm_wordon]
+
+# ─── Behaviors (data) ─────────────────────────────────────────────────────
+# Per-behavior data parameters consumed by FC compute + downstream plotting.
+# Title strings live in figure_io.BEHAVIOR_DISPLAY (presentation).
+# event_window is the [start, end] ms relative to event onset for EEG load;
+# matches helper.beh_to_event_windows pre-migration.
+behaviors:
+  en:
+    cond: diff
+    event_window: [250, 1250]
+    metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac]
+  rm:
+    cond: diff
+    event_window: [-1000, 0]
+    metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac]
+  word_on:
+    cond: diff
+    event_window: [-650, 600]
+    metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac]
+  voc:
+    cond: diff
+    event_window: [-1000, 1000]
+    metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac]
+  en_all:
+    cond: succ
+    event_window: [250, 1250]
+    metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac]
+  rm_all:
+    cond: succ
+    event_window: [-1000, 0]
+    metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac]
+
+# ─── Signal processing constants ──────────────────────────────────────────
+# mirror_buffer_ms: ms added to each side via helper.mirror_buffer before
+#   TFR; trimmed in compute_spectral_fc.
+# mt_bandwidth: passed to mne_connectivity.spectral_connectivity_epochs.
+#   null = MNE default (~8*sfreq/n_times). Code_issues #79 recommends 2.
+# gc_n_lags: number of VAR lags for granger causality.
+# real_data_buffer_ms: ms of REAL adjacent EEG loaded on each side of every
+#   analysis window (distinct from mirror_buffer_ms). The band-pass + Hilbert
+#   run on the buffered window; the buffer is removed before multitaper phase
+#   metrics and cropped off the analytic signal before AEC/AEC-c/PAC estimation
+#   (see fc_comparison_functions.compute_aec_buffered / compute_pac). ~50 ms
+#   covers the gamma FIR+Hilbert edge transient (sim: ~15 samples @ 500 Hz).
+#   Mutually exclusive with mirror_buffer_ms (both >0 raises NotImplementedError).
+mirror_buffer_ms: 1000
+real_data_buffer_ms: 50
+mt_bandwidth: 2
+gc_n_lags: 5
+
+# --- Morlet (cwt_morlet) FC mode ---------------------------------------------
+# fc_mode: spectral estimator for the PHASE metrics (coh/plv/ppc/ciplv/pli/wpli).
+#   'multitaper' (default) = one band-averaged estimate per pair, NO time axis.
+#   'cwt_morlet'           = Morlet wavelets, time-resolved -> latency effects.
+#   aec/aec_c/pac/gc/gc_tr ignore this and use their own internal computation.
+fc_mode: multitaper
+
+# cwt_fnum: number of LOG-SPACED Morlet centre frequencies across the band, via
+#   wavelet.Wavelet (Rao's module). Kept explicit rather than derived so the
+#   compute cost is visible. 6 spans 70-150 at roughly one wavelet per half
+#   bandwidth ([70, 81.5, 95, 110.6, 128.8, 150]); the old 1 Hz arange default
+#   would have been 81 wavelets for the same band at ~13x the cost.
+cwt_fnum: 6
+
+# cwt_morlet_reps: Morlet cycle count (PTSA `width`, wavelet.Wavelet
+#   `morlet_reps`). 5 throughout the project -- Rao's value, and the one the
+#   simulation generator uses.
+cwt_morlet_reps: 5
+
+# cwt_buffer_n_sigma: Morlet edge buffer expressed in Gaussian sigmas, where
+#   sigma = morlet_reps / (2*pi*f) (wavelet.Wavelet.get_morlet_width). 5 is the
+#   project's implied convention: 5 sigma at 4 Hz = 995 ms = mirror_buffer_ms.
+#   4.0 chosen: at 70 Hz it needs 45.5 ms/side, which the configured
+#   real_data_buffer_ms (50) already covers, leaving 9.1 ms of clean
+#   separation between the buffered word_on pre/post windows -- so the
+#   windows need no change. Leakage at 4 sigma is 3.4e-4 in amplitude,
+#   1.1e-7 in POWER; 5 sigma would cost 23 ms of window for 1e-11.
+#   Buffer is strongly frequency dependent -- 5 sigma is 995 ms at 4 Hz but only
+#   57 ms at 70 Hz -- which is why no single fixed constant works for all bands.
+cwt_buffer_n_sigma: 4.0
+
+# time_bin_ms: width (ms) of the fixed time bins the MORLET path averages within
+#   before the across-event statistic -- the latency axis. Multitaper has no time
+#   axis, so this is ignored under fc_mode: multitaper.
+#
+#   Rao uses 200 ms (helper.beh_to_epochs: 5 bins over his 1000 ms windows). 50
+#   is chosen here because high gamma affords far more temporal resolution than
+#   his 3-8 Hz band did: a 5-cycle Morlet at 70 Hz has sigma = 11.4 ms, so a
+#   50 ms bin is ~4.4 sigma wide and adjacent bins are effectively independent.
+#   (Rao's 200 ms bins at 3 Hz sit INSIDE a 265 ms sigma, so his adjacent bins
+#   are correlated -- his time axis is oversampled relative to what his wavelets
+#   resolve. At high gamma that constraint is far weaker.)
+#
+#   50 ms also separates the early latencies Long et al. report on this dataset
+#   (bitmap 40 ms, orthographic neighbourhood 80 ms, word frequency 120 ms),
+#   which 100 ms bins would merge.
+#
+#   Lower bound ~25 ms: that is ~2 sigma at 70 Hz, below which adjacent bins
+#   start to share wavelet support and are no longer independent.
+#   Divides the 600 ms word_on windows evenly (12 bins).
+time_bin_ms: 50
+
+# mt_window_ms: length (ms) of the SLIDING multitaper window used when the
+#   multitaper path is asked for a latency axis. Windows are centred on the SAME
+#   bin centres as the Morlet path, so the step is time_bin_ms, not this.
+#
+#   100 ms, stepped 50, is the working default: it matches Morlet's 12-bin axis
+#   for direct bin-for-bin comparison while sharing only 50% of the data between
+#   neighbours.
+#
+#   The floor is set by LINE-NOISE LEAKAGE, not by MNE's NW>=0.5 (which the
+#   bandwidth scaling below handles). Multitaper smooths by a half-bandwidth
+#   W = bandwidth/2, and we hold NW = T*bandwidth/2 = 0.6 constant, so W = 0.6/T:
+#       T = 200 ms -> W =  3 Hz -> estimate reaches  67-153 Hz
+#       T = 100 ms -> W =  6 Hz -> reaches           64-156 Hz   <- still clear
+#       T =  50 ms -> W = 12 Hz -> reaches           58-162 Hz   <- STRADDLES the
+#         58-62 notch, so mains leaks into the band. This is the real reason not
+#         to go below ~100 ms.
+#
+#   Measured sharpness on a 100 ms burst (peak SNR / spill to neighbours):
+#       100 ms window: 41 / 9      200 ms window: 31 / 18
+#       Morlet 50 ms : 50 / 2
+#
+#   OVERLAP: at a 50 ms step neighbouring windows share half their data, so
+#   adjacent bins have correlated errors and one brief response appears as a RUN
+#   of bins. BH-FDR remains valid (it holds under positive dependence), but do
+#   not read the WIDTH of a multitaper time course as a duration -- compare PEAK
+#   LOCATION, which both estimators recover correctly. For an overlap-free check
+#   set --time-bin-ms 100 as well, giving 6 fully independent bins.
+mt_window_ms: 100
+
+# resample_hz: target rate (Hz) that helper.get_beh_eeg downsamples every loaded
+#   clip to before notch filtering. 500 Hz keeps Nyquist at 250 Hz so the gamma
+#   amplitude band (up to 110 Hz, bands.gamma) stays below Nyquist with margin.
+#   Sessions natively below this rate are excluded upstream (see data_check).
+resample_hz: 500
+
+# min_sample_rate_hz: native sample rate (Hz) below which a session is excluded
+#   from sess_list_df (include=False) in data_check. 499 keeps the ~499.7 Hz
+#   BioSemi sessions while dropping genuinely sub-500 Hz recordings (most pyFR).
+min_sample_rate_hz: 499
+
+# notch_harmonics_up_to_hz: highest frequency (Hz) up to which INTEGER HARMONICS
+#   of the line frequency are notched by helper.notch_filter, in addition to the
+#   fundamental (50 Hz Germany / 60 Hz US) that is always removed. Each harmonic
+#   gets the same +/-2 Hz stopband as the fundamental -- the convention already
+#   assumed by wavelet.Wavelet.MakePlot, which plots 118-122 and 178-182.
+#
+#   null (default) = fundamental only = historical behaviour. Every existing
+#   low-frequency result stays bit-identical; nothing needs recomputing.
+#
+#   Set this for any run in a band that reaches the harmonics -- notably
+#   bands.high_gamma [70,150], which contains the US 2nd harmonic (120 Hz) and
+#   BOTH the German 2nd and 3rd (100, 150 Hz). Set it to the band's fmax (150
+#   for high_gamma) -- that notches exactly {100, 120, 150} and nothing outside
+#   the band; a larger value only adds pointless filter passes at 180/200 Hz.
+#   Harmonics whose stopband would reach Nyquist are skipped.
+#
+#   Notching is SITE-UNIFORM: helper.notch_filter removes the union of BOTH
+#   mains standards' harmonics for every subject, so all subjects share one
+#   effective passband (see the rationale in that function).
+#
+#   Leaving this null while analysing high gamma is a SILENT failure: the band
+#   fills with mains, and at Freiburg sites the contamination lands exactly at
+#   the 100 Hz band centre.
+notch_harmonics_up_to_hz: 150
+
+# pair_distance_threshold_mm: bipolar pairs whose inter-contact distance exceeds
+#   this (mm) are dropped in data_check.check_pairs (long-range pairs reflect
+#   volume conduction / poor localization). Scientific cutoff -> lives here;
+#   data_check's internal QC tolerances stay as constants in data_check.py.
+pair_distance_threshold_mm: 20
+
+# AEC / AEC-c operate on gamma-band-filtered EEG (Per code_issues #85, so the
+# Hipp-2012 Bedrosian condition holds — carrier well-separated from envelope).
+# Both AEC and the PAC amplitude band now read the single shared `bands.gamma`
+# above; compute_aec applies mne.filter.filter_data(data, sfreq, *bands.gamma)
+# before envelope_correlation. The previously-separate `aec_band` key is retired.
+
+# ─── Metric registry ──────────────────────────────────────────────────────
+# computation_metrics: full metric menu (Stage B compute list).
+# plotting_metrics: subset rendered by default in figures.
+# slow_metrics: subset excluded from --metrics default in build_subj_mat.
+# NOTE: `dpli` is permanently retired (never a thesis measure, exploratory only)
+# and is rejected as a hard error by project_paths._reject_banned_metrics — do
+# not re-add it to any metric list here.
+computation_metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac, gc, gc_tr]
+plotting_metrics:    [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac]
+slow_metrics:        [pac, gc, gc_tr]
