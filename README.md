@@ -1,7 +1,7 @@
 # phase_visualization
 
 Word-onset spectral power and phase connectivity in human intracranial EEG,
-across 12 Burke ROIs, from the Penn Computational Memory Lab free-recall
+across 12 ROIs (used in Burke et. al. 2013), from the Penn Computational Memory Lab free-recall
 datasets (FR1 / catFR1 / pyFR).
 
 The core contrast is **`word_on`**: high-frequency activity while a word is on
@@ -9,7 +9,7 @@ the screen (0–600 ms after onset) versus the blank inter-stimulus interval
 before it (−700 to −100 ms), for the same trials. It extends Long et al. (2020),
 *Feed-forward, feed-back, and distributed feature representation during visual
 word recognition*, to a larger electrode sample with bipolar re-referencing, and
-adds phase-connectivity analyses the original did not run.
+adds phase-connectivity analyses.
 
 ---
 
@@ -41,42 +41,28 @@ active" — in which case activate the env yourself before sourcing `env.sh`.
 source scripts/env.sh      # puts that env on PATH, adds the repo to PYTHONPATH
 ```
 
-### Upstream dependency (important)
-
-Every entry point calls `fc.load_sess_list`, which reads **`sess_list_df.json`**
-from `SCRATCH_DIR`. That file is **not produced by this repo** — it comes from
-`data_check.py` in the separate `fc_methods_comparison_cml` pipeline, which
-applies the session-inclusion rules (native sample rate ≥ 499 Hz, phase-encoded,
-denylists). Run that first, or copy the JSON into
-`/scratch/$USER/fc_comparison_dir/`.
-
----
-
 ## How it runs
 
 Every build script has two stages:
 
-| stage | what it does | where |
+| stage | function | location |
 |---|---|---|
 | `--stage compute` | one pickle per session | `SCRATCH_DIR/<beh>/…` (dask/SLURM; `--local` to stay on one node) |
 | `--stage plot` | aggregates pickles → figures + CSVs | `figures/…` |
 
-`--stage both` (the default) does both. Compute is the expensive part — hours on
-the cluster for ~950 sessions — but you only pay it once per (behaviour, band,
-estimator). Replotting is seconds.
+`--stage both` (the default) does both. 
 
-Compute is **cached**: a session with an existing, complete pickle is skipped.
+Compute is cached: a session with an existing, complete pickle is skipped.
 The cache keys on the file existing and having the expected fields, **not** on
 the settings that produced it — so after changing anything upstream (band,
-notch, buffers, windows) you must **delete the output directory**, or you will
-silently keep stale numbers.
+notch, buffers, windows) you must **delete the output directory**.
 
 ---
 
 ## Figure recipes
 
 All three assume `source scripts/env.sh` first. Defaults come from
-`config/config.yaml`; the flags below are only those worth setting explicitly.
+`config/config.yaml`.
 
 ### 1. ROI power (+ responsiveness, + latency)
 
@@ -92,7 +78,7 @@ python build_roi_power.py --stage plot --beh word_on --band high_gamma \
 Writes to `figures/burke_roi_power/` (Morlet runs go to a `cwt_morlet/`
 subfolder):
 
-| file | what |
+| file | description |
 |---|---|
 | `roi_power_<beh>_<band>.png` | per-ROI Cohen's *d*, box plot over subjects |
 | `responsiveness_<…>.png` | per-electrode \|t\| distribution + count of responsive electrodes |
@@ -132,8 +118,8 @@ distance and montages sample distances very unevenly.
 
 ### 3. Power–synchrony correlation
 
-**Requires both of the above to have been computed first** — it only consumes
-their pickles and computes nothing itself.
+**Requires both of the above to have been computed first** — consumes
+their pickles.
 
 ```bash
 python build_power_synchrony.py --beh word_on --band high_gamma --metric ppc
@@ -162,13 +148,6 @@ computed per ROI and with the distance-collapsed synchrony score.
 | `cwt_buffer_n_sigma` | 4.0 | 45.5 ms at 70 Hz |
 | `real_data_buffer_ms` | 50 | real adjacent EEG loaded around each window |
 
-**Harmonic notching is site-uniform on purpose.** Line-noise harmonics differ by
-site (Freiburg 50 Hz → 100/150; US 60 Hz → 120), so per-site notching would give
-subjects different effective passbands — 10% of the band lost vs 5%, with the
-German hole landing on the 100 Hz band centre. Notching the union costs 15% for
-everyone but guarantees an identical passband, so a site difference in the
-results cannot be a filtering artifact.
-
 ---
 
 ## Layout
@@ -194,26 +173,9 @@ config/config.yaml          all tunable parameters
 ```
 
 `region_translator.csv` maps atlas labels → region; `region_to_burke_lobe.csv`
-maps region → one of the 12 Burke ROIs.
+maps region → one of the 12 main ROIs.
 
 ---
 
-## Gotchas
 
-**Delete before recomputing.** The compute cache does not know what settings
-produced a pickle. Changing the band, notch, buffer, or window and re-running
-`--stage compute` will report `cached` and keep the old numbers.
 
-**Cohen's *d* here is unpaired.** `helper.cohens_d` uses the pooled-SD
-two-sample formula, but `word_on`'s two arms are the *same trials* at two time
-windows. That understates the effect by roughly 1/√(1−ρ); with the shared
-trial variance typical of high gamma it is a 1.4–2× understatement. Kept for
-consistency with Rao et al., where the contrast genuinely is unpaired.
-
-**Responsiveness percentages are a floor.** Bipolar re-referencing removes
-common-mode signal that monopolar recordings keep, and the unpaired test above
-is conservative, so this pipeline reports ~3.3% responsive electrodes where Long
-et al. report 25.3%. The difference is largely methodological, not biological.
-
-**Figures are gitignored.** `figures/`, `results/`, and all pickles are
-regenerable and excluded from version control.
