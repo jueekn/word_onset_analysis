@@ -1,123 +1,21 @@
-# Snakemake config for fc_methods_comparison_cml
-# Override at runtime via `snakemake --config smokescreen=true`.
-
-# Canonical python environment — the SINGLE knob that selects the interpreter
-# everywhere. Read by project_paths.py (as PYTHON_ENV_PATH; the Snakefile
-# derives its shell-rule interpreter as PYTHON_ENV_PATH/bin/python) and by
-# scripts/env.sh (which exports PATH / PYTHON / PYTHONPATH from it).
-#
-# ${USER} and ${REPO_ROOT} expand, so this works unchanged for any lab user
-# whose miniforge lives at /home1/<user>/miniforge3. `source scripts/env.sh`
-# then puts it on PATH and you can run `python build_roi_power.py ...` directly.
-#
-# CLONING ELSEWHERE: point this at your own env root (the directory containing
-# bin/python), or set it to `null` to mean "use whatever env is already active",
-# in which case activate the env yourself before sourcing scripts/env.sh.
-python_env_path: /home1/${USER}/miniforge3/envs/mod_workshop_311
-
-# Project-wide random-state offset. Each analysis derives its default seed
-# as `sha256(analysis_name) + seed_offset` (mod 2**32) via
-# project_paths.seed_for(name). Changing this single integer rerolls every
-# analysis to an independent draw; in-script overrides still take
-# precedence over the computed default.
-seed_offset: 0
+# Configuration for word_onset_analysis, read by project_paths.py.
 
 # Human-readable name of this pipeline configuration. Stamped into the
 # `config` column of the exclusion-count logs so multiple configs coexist.
 config_name: default
 
-# Centralized output paths. ${USER} / ${RESULTS_DIR} / ${PROCESSED_RESULTS_DIR} /
-# ${SCRATCH_DIR} are expanded by project_paths.py (string.Template, two passes).
+# Paths. ${USER}, ${REPO_ROOT} and ${SCRATCH_DIR} (the resolved scratch_dir)
+# expand; relative paths are joined with the repo root.
 paths:
-  results_dir: results
-  processed_results_dir: processed_results
-  scratch_dir: /scratch/${USER}/fc_comparison_dir
-  # Simulation outputs (per-tag) live under sim_tmp_dir/<tag>/. This mirrors
-  # the on-disk real-data layout so the analysis pipeline can run unchanged
-  # on simulated data via build_subj_mat.py --simulation-tag <tag>.
-  sim_tmp_dir:        ${SCRATCH_DIR}/sim_tmp
-  logs_dir: logs
-  cluster_logs_dir: cluster_logs
+  # Where the per-session artifacts live: session lists, events, electrode
+  # tables, FC / power pickles. Large (tens of GB for the full cohort); point it
+  # at a big disk. The OpenNeuro download cache is separate (CML_BIDS_CACHE,
+  # default ./bids_data -- see cml_data.py).
+  scratch_dir: scratch
+  # Event/session exclusion-count logs (per-session logs aggregate here).
+  exclusion_counts: results/exclusion_counts
   # Tracked tabular data files shipped with the repo (curated denylists, etc.)
   unrecoverable_sessions_csv: data/unrecoverable_sessions.csv
-  # Per-(subject, session) RepFR1 word-presentation duration (ms). A firmware
-  # bug set many RepFR1 sessions to 750 ms instead of the intended 1600 ms;
-  # such sessions are dropped from the encoding behaviors (en/en_all), whose
-  # [250, 1250] window overruns a 750 ms word. See presentation_times.py.
-  repfr1_presentation_times_csv: data/RepFR1_session_presentation_times.csv
-  # Per-script result subdirs. Directory names mirror the collaborator's
-  # argparse defaults from the last pre-handoff commit (Juee, 2acef87,
-  # 2026-05-08); we just relocate them from `figures/<name>` to
-  # `results/<name>` so the project ships with one canonical results tree.
-  allfcmats:               ${RESULTS_DIR}/allfcmats
-  behcorrs:                ${RESULTS_DIR}/behcorrs
-  connection_convergence:  ${RESULTS_DIR}/connection_convergence
-  hub_convergence:         ${RESULTS_DIR}/hub_convergence
-  hub_iou_figs:            ${RESULTS_DIR}/hub_iou_figs
-  mean_connectivity:       ${RESULTS_DIR}/mean_connectivity
-  measurecorrs:            ${RESULTS_DIR}/measurecorrs
-  multi_metric_detection:  ${RESULTS_DIR}/multi_metric_detection
-  selfiou:                 ${RESULTS_DIR}/selfiou
-  retest_reliability:               ${RESULTS_DIR}/retest_reliability
-  retest_hubs:          ${RESULTS_DIR}/retest_hubs
-  # Event/session exclusion-count logs (per-session logs aggregate here).
-  exclusion_counts:        ${RESULTS_DIR}/exclusion_counts
-  retest_reliability_metric_corr:   ${RESULTS_DIR}/retest_reliability_metric_corr
-  icc_reliability:         ${RESULTS_DIR}/icc_reliability
-  hedges_g_reliability:    ${RESULTS_DIR}/hedges_g_reliability
-  icc_reliability_hub:      ${RESULTS_DIR}/icc_reliability_hub
-  hedges_g_reliability_hub: ${RESULTS_DIR}/hedges_g_reliability_hub
-  subsamplesimilarity:     ${RESULTS_DIR}/subsamplesimilarity
-  subsamplesimilarity_hub: ${RESULTS_DIR}/subsamplesimilarity_hub
-  # Appendix-A scripts added after collaborator's last commit (named after
-  # their script slug; no collaborator analogue):
-  pairwise_iou:            ${RESULTS_DIR}/pairwise_iou
-  listsplit:               ${RESULTS_DIR}/listsplit
-  # Intermediate cache (replaces repo-root .pkl dumps):
-  intermediate_subj_mat:      ${PROCESSED_RESULTS_DIR}/subj_mat
-  intermediate_sess_mat:      ${PROCESSED_RESULTS_DIR}/sess_mat
-  intermediate_retest_reliability:     ${PROCESSED_RESULTS_DIR}/retest_reliability
-  # Connection-level ICC + Hedges' g caches (one pickle per behavior; small
-  # RxR matrices + per-connection vectors, so processed_results is fine).
-  intermediate_icc_reliability:        ${PROCESSED_RESULTS_DIR}/icc_reliability
-  intermediate_hedges_g_reliability:   ${PROCESSED_RESULTS_DIR}/hedges_g_reliability
-  intermediate_icc_reliability_hub:      ${PROCESSED_RESULTS_DIR}/icc_reliability_hub
-  intermediate_hedges_g_reliability_hub: ${PROCESSED_RESULTS_DIR}/hedges_g_reliability_hub
-  intermediate_iou_curve:     ${PROCESSED_RESULTS_DIR}/iou_curve
-  intermediate_similarity:    ${PROCESSED_RESULTS_DIR}/similarity_curve
-  intermediate_hub_iou:       ${PROCESSED_RESULTS_DIR}/hub_iou
-  intermediate_avg_region:    ${PROCESSED_RESULTS_DIR}/avg_region
-  intermediate_hub_retest_reliability: ${PROCESSED_RESULTS_DIR}/hub_retest_reliability
-  intermediate_pairwise_iou:  ${PROCESSED_RESULTS_DIR}/pairwise_iou
-  # Pooled case-study connection values, re-averaged from the raw channel-level
-  # FC matrices (one pickle per behavior: pooled_<beh>.pkl). Small scalars.
-  intermediate_case_study_pooled: ${PROCESSED_RESULTS_DIR}/case_study_pooled
-  # Channel/electrode-level (no region aggregation) retest-reliability caches.
-  # The channel sess_mat pickles are large (~1 GB/behavior, like the raw
-  # per-session FC mats), so they live on scratch rather than processed_results.
-  intermediate_sess_mat_channel:      ${SCRATCH_DIR}/sess_mat_channel
-  intermediate_retest_channel:     ${PROCESSED_RESULTS_DIR}/retest_channel
-  intermediate_hub_retest_channel: ${PROCESSED_RESULTS_DIR}/hub_retest_channel
-  # Snakemake rule-completion sentinel files (.foo.done). Live in
-  # processed_results/ (not results/) since they're build-tracking
-  # artifacts, not final scientific outputs.
-  snakemake_sentinels:        ${PROCESSED_RESULTS_DIR}/snakemake
-  # Standardized statistical-result summary JSONs (results_io.py). One JSON per
-  # analysis script; combine_results() merges everything registered under the
-  # top-level `result_files:` block below into all_results.json.
-  result_summary:             ${RESULTS_DIR}/summary
-
-# Statistical-result file registry (results_io.py). Maps a config-key to the
-# JSON filename (under RESULT_SUMMARY_DIR) that one analysis script writes via
-# init_result_file/write_result. combine_results() merges every file listed
-# here into all_results.json. Add an entry whenever a new analysis script
-# starts emitting a result JSON; the LaTeX `% @result:` key path uses the JSON
-# file stem as its first dotted segment.
-result_files:
-  mean_connectivity: mean_connectivity.json
-  reliability: reliability.json
-  subsample: subsample.json
-  distance_control_retest: distance_control_retest.json
 
 # Spectral bands consumed by all FC compute functions. Tuples are loaded
 # as `tuple(v)` by project_paths.BANDS.
@@ -158,221 +56,11 @@ bands:
   # exactly 100 Hz, the band centre.
   high_gamma: [70, 150]
 
-# Pipeline parameters (full-run defaults)
-band: low
-cond: diff
+# Contrastive behaviors driving the group-level analyses, and the all-events
+# robustness variants. prepare_sessions requires every behaviors_main event
+# file for a session to be included.
 behaviors_main: [en, rm, word_on, voc]
 behaviors_noncontrast: [en_all, rm_all]
-# Behaviors driving group-level analyses (those with subj_mat pickles).
-# rm_all is in the full set but currently has no on-disk artifacts.
-
-# Statistical params (thesis defaults)
-Smin: 100             # min subjects per region pair
-case_study_smin: 50   # inclusion floor for the case-study connection/hub
-                      # analyses (lower than Smin: the hypothesized
-                      # hippocampus–OFC / hippocampus–fusiform edges are sparse,
-                      # and ipsilateral pooling lifts usable N over this floor)
-Nref: 100             # large-sample reference
-N_typical: 20         # typical iEEG cohort
-n_resamples: 2000     # bootstrap iterations, project-wide default for every
-                      # resampling analysis (thesis used B=1000; raised to
-                      # 2000 for more stable percentile CIs / SEs — parallelize
-                      # slow analyses rather than lowering this)
-
-# Sample-size sweeps
-Ns_similarity: [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-Ns_detection: [5, 10, 20, 40, 80, 100, 120]
-
-# Local process-parallelism for multipanel_figures.py: how many composite
-# figures to render concurrently when building several at once (`--figure all`).
-# Mirrors the pipeline's local job count (run_project.sh `--jobs`, snakemake
-# `--cores`); the script caps the effective value at the figure count and the
-# available CPU cores, and falls back to serial for a single figure or an
-# interactive (`--show`) render. Override per-run with `--jobs N`.
-figure_jobs: 8
-
-# Smokescreen mode — set via `snakemake --config smokescreen=true`.
-# When true: small N, small B. Defaults to SLURM dispatch like the full
-# run (sessions/subjects auto-cap n_workers); to force serial single-process
-# execution use `--config smokescreen=true smokescreen_local=true` (helpful
-# when the cluster is unavailable or for stripped-down debugging).
-smokescreen: false
-smokescreen_local: false
-smokescreen_overrides:
-  Smin: 2
-  case_study_smin: 2
-  n_resamples: 10
-  N_typical: 10
-  Nref: 10
-  Ns_similarity: [10, 20]
-  Ns_detection: [5, 20]
-  # figures_dir redirect now handled in Snakefile via SIM_TMP_DIR (project_paths).
-smokescreen_fast_metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac, gc, gc_tr]
-
-# New-experiment-cohort (ICatFR1/IFR1/RepFR1) parameter overrides — set via the
-# FC_NEWEXPS env var or the --newexps CLI flag (the same switch that reroutes the
-# output tree; see project_paths). This cohort is far smaller than FR1/catFR1/pyFR:
-# 79 subjects but max per-connection coverage of only ~54, so NO connection clears
-# the default Smin=100 and group analyses would mask everything to NaN (the cause
-# of the empty-data / fractional-axis figures). These overrides lower the coverage
-# floor and shrink the sample-size sweeps to the cohort's range. Merged like
-# smokescreen_overrides, but BEFORE smokescreen, so a combined run still wins to
-# smokescreen's tiny values.
-newexps_overrides:
-  Smin: 30               # 29 region pairs clear this floor (vs 0 at Smin=100)
-  case_study_smin: 10    # hypothesized hipp–OFC / hipp–fusiform edges are sparse
-  Nref: 30               # reference subsample capped at Smin
-  Ns_similarity: [5, 10, 15, 20, 25, 30]
-  Ns_detection:  [5, 10, 15, 20, 25, 30]
-
-# Cluster (Stage A / Stage B FC compute)
-cluster:
-  n_workers: 400
-  mem: 10G
-  walltime: 10000
-  log_dir: cluster_logs
-  # Broken-node exclusion — the SINGLE knob. Add/remove SLURM nodes here and it
-  # propagates everywhere: project_paths.EXCLUDED_NODES / slurm_exclude_directives()
-  # (in-code cmldask dispatch), scripts/env.sh (SBATCH_EXCLUDE), and the Snakefile
-  # shell.prefix. Use flow style [a, b, c] (scripts/env.sh parses it with awk).
-  # Empty list [] disables all exclusion. TEMPORARY 2026-06-18: node18/node37
-  # (user-directory/NSS broken) + node47 (DNS + NFS broken); node06 added
-  # 2026-06-19 (controller DNS broke mid-run) — see .claude/reports/.
-  excluded_nodes: [node06, node18, node37, node47]
-
-# SLURM resource profiles for the two major analysis clusters. Each compute
-# script reads its --n-workers / --mem / --walltime argparse defaults from the
-# matching profile (via project_paths.get_compute_profile), so resource sizing
-# is centralized rather than hardcoded per script.
-#   fc_matrix  — heavy Stage-A/B FC computation (build_subj_mat): big RAM, long
-#                walltime, per-session FC matrices.
-#   downstream — light resampling / aggregation jobs (subsample similarity,
-#                disjoint retest, detection, IoU, ...): tiny per-worker data
-#                (the cohort matrix is a few MB), so 2G is ample. Over-requesting
-#                here just blocks the scheduler.
-compute_profiles:
-  fc_matrix:
-    n_workers: 400
-    mem: 10G
-    walltime: 10000
-  downstream:
-    n_workers: 200
-    mem: 1G
-    walltime: 1800
-
-# Case-study connections / hubs (per behavior). Compute scripts default
-# --region / --pair from here so standalone CLI runs match Snakefile.
-# `connections` is the per-behavior list of named case studies consumed by the
-# pooling-aware connection analyses (compute_connection_convergence,
-# compute_multi_metric_detection). Each entry has a `name` (filesystem slug), a
-# `pretty_name` (display string for plots), and EITHER a single `pair`
-# [region_a, region_b] OR a `pool` (list of [region_a, region_b] pairs whose
-# channel-level connections are averaged together as one unified connection).
-# Pooled values are RE-AVERAGED from the raw channel-level FC matrices (see
-# fc_comparison_functions.build_subj_pooled_connections) — NOT the mean of the
-# region-level FC-matrix entries.
-#
-# The same case studies (both hypothesized connections, single-L + ipsilateral
-# pool, plus the hub regions) are registered for every behavioral contrast via
-# YAML anchors. `connection_pair` / `hub_region` are the legacy single-edge
-# defaults still read by the Snakefile, compute_hub_convergence, and the
-# diagnostic scripts; `hubs` is the per-behavior list of hub regions.
-_case_study_connections: &case_connections
-  - name: hipp_ofc_L
-    pretty_name: "L Hippocampus – L Orbitofrontal Cortex"
-    pair: ["L hippocampus", "L orbitofrontal cortex"]
-  - name: hipp_ofc_ipsi
-    pretty_name: "Hippocampus – Orbitofrontal Cortex (ipsilateral)"
-    pool:
-      - ["L hippocampus", "L orbitofrontal cortex"]
-      - ["R hippocampus", "R orbitofrontal cortex"]
-  - name: hipp_fusiform_L
-    pretty_name: "L Hippocampus – L Fusiform Gyrus"
-    pair: ["L hippocampus", "L fusiform gyrus"]
-  - name: hipp_fusiform_ipsi
-    pretty_name: "Hippocampus – Fusiform Gyrus (ipsilateral)"
-    pool:
-      - ["L hippocampus", "L fusiform gyrus"]
-      - ["R hippocampus", "R fusiform gyrus"]
-_case_study_hubs: &case_hubs ["L orbitofrontal cortex", "L fusiform gyrus"]
-# `hub_cases` are named hub case studies for the hub-convergence analysis. Each
-# has a `name` (slug), a `pretty_name`, and EITHER a single `region` OR a `pool`
-# of subregions. A pooled hub's strength averages every edge from its pooled
-# subregions to regions OUTSIDE the pool, excluding within-pool edges (see
-# fc_comparison_functions.pooled_hub_strength).
-_case_study_hub_cases: &case_hub_cases
-  - name: ofc_L
-    pretty_name: "L Orbitofrontal Cortex"
-    region: "L orbitofrontal cortex"
-  - name: ofc_bilateral
-    pretty_name: "Orbitofrontal Cortex (bilateral)"
-    pool: ["L orbitofrontal cortex", "R orbitofrontal cortex"]
-  - name: fusiform_L
-    pretty_name: "L Fusiform Gyrus"
-    region: "L fusiform gyrus"
-  - name: fusiform_bilateral
-    pretty_name: "Fusiform Gyrus (bilateral)"
-    pool: ["L fusiform gyrus", "R fusiform gyrus"]
-
-case_study:
-  en:
-    connection_pair: ["L hippocampus", "L orbitofrontal cortex"]
-    hub_region:      "L orbitofrontal cortex"
-    hubs:        *case_hubs
-    hub_cases:   *case_hub_cases
-    connections: *case_connections
-  rm:
-    connection_pair: ["L hippocampus", "L orbitofrontal cortex"]
-    hub_region:      "L orbitofrontal cortex"
-    hubs:        *case_hubs
-    hub_cases:   *case_hub_cases
-    connections: *case_connections
-  word_on:
-    connection_pair: ["L hippocampus", "L fusiform gyrus"]
-    hub_region:      "L fusiform gyrus"
-    hubs:        *case_hubs
-    hub_cases:   *case_hub_cases
-    connections: *case_connections
-  voc:
-    connection_pair: ["L hippocampus", "L orbitofrontal cortex"]
-    hub_region:      "L orbitofrontal cortex"
-    hubs:        *case_hubs
-    hub_cases:   *case_hub_cases
-    connections: *case_connections
-
-# Cross-behavior heatmap pairs
-behcorrs_pairs: [en_rm, en_wordon, rm_voc, wordon_voc, en_voc, rm_wordon]
-
-# ─── Behaviors (data) ─────────────────────────────────────────────────────
-# Per-behavior data parameters consumed by FC compute + downstream plotting.
-# Title strings live in figure_io.BEHAVIOR_DISPLAY (presentation).
-# event_window is the [start, end] ms relative to event onset for EEG load;
-# matches helper.beh_to_event_windows pre-migration.
-behaviors:
-  en:
-    cond: diff
-    event_window: [250, 1250]
-    metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac]
-  rm:
-    cond: diff
-    event_window: [-1000, 0]
-    metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac]
-  word_on:
-    cond: diff
-    event_window: [-650, 600]
-    metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac]
-  voc:
-    cond: diff
-    event_window: [-1000, 1000]
-    metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac]
-  en_all:
-    cond: succ
-    event_window: [250, 1250]
-    metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac]
-  rm_all:
-    cond: succ
-    event_window: [-1000, 0]
-    metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac]
 
 # ─── Signal processing constants ──────────────────────────────────────────
 # mirror_buffer_ms: ms added to each side via helper.mirror_buffer before
@@ -522,12 +210,7 @@ pair_distance_threshold_mm: 20
 # before envelope_correlation. The previously-separate `aec_band` key is retired.
 
 # ─── Metric registry ──────────────────────────────────────────────────────
-# computation_metrics: full metric menu (Stage B compute list).
-# plotting_metrics: subset rendered by default in figures.
-# slow_metrics: subset excluded from --metrics default in build_subj_mat.
-# NOTE: `dpli` is permanently retired (never a thesis measure, exploratory only)
-# and is rejected as a hard error by project_paths._reject_banned_metrics — do
-# not re-add it to any metric list here.
+# computation_metrics: full metric menu. NOTE: `dpli` is permanently retired
+# (never a thesis measure, exploratory only) and is rejected as a hard error by
+# project_paths — do not re-add it.
 computation_metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac, gc, gc_tr]
-plotting_metrics:    [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac]
-slow_metrics:        [pac, gc, gc_tr]

@@ -73,12 +73,12 @@ USAGE
     python compare_distance_controls.py --n-sessions 100
     python compare_distance_controls.py --methods raw binz localz --n-reps 30
     python compare_distance_controls.py --band theta_6_12 --cond succ
-    python compare_distance_controls.py --cluster --n-reps 200   # SLURM
+    python compare_distance_controls.py --workers 8 --n-reps 200
     python compare_distance_controls.py --self-test              # no data needed
 
 One session is one unit of work: each task loads its own pickle and returns a
 handful of rows, and a session's seed comes from its position in the file list,
-so --cluster and the serial path produce bit-identical results.
+so any --workers value produces bit-identical results.
 """
 from __future__ import annotations
 
@@ -384,14 +384,13 @@ def load_session(path, cfg, ctx, edges):
     P = fc.load_pickle(path)
     dfrow = fc.dfrow_from_sid(P["sid"])
     M = P.get(cfg["metric"])
-    xyz, lead, is_depth = fc.pair_xyz_lead(dfrow, cfg["mni_cache_dir"])
+    xyz, lead = fc.pair_xyz_lead(dfrow)
     n_ch = xyz.shape[0]
     if M is None or np.asarray(M).shape[0] != n_ch:
         return None
 
     iu, dist, keep = fc.pair_distance_mask(
-        xyz, lead, is_depth, cfg["rmin"], cfg["rmax"],
-        cfg["exclude_same_shank"], cfg["drop_cross_type"])
+        xyz, lead, cfg["rmin"], cfg["rmax"], cfg["exclude_same_shank"])
     vals = np.asarray(M, float)[iu]
     keep &= np.isfinite(vals)
     if keep.sum() < cfg["min_pairs"]:
@@ -504,29 +503,21 @@ def session_bias_rows(item, cfg=None, ctx=None, edges=None, methods=(),
 
 
 def bias_fraction(args, ctx, edges):
-    """Run session_bias_rows over every session, locally or on SLURM."""
+    """Run session_bias_rows over every session."""
     fc_root = args.fc_root or fc.root_dir
     fc.root_dir = fc_root
     items = session_files(args)
     cfg = {"metric": args.metric, "rmin": args.rmin, "rmax": args.rmax,
            "exclude_same_shank": args.exclude_same_shank,
-           "drop_cross_type": args.drop_cross_type, "min_pairs": args.min_pairs,
-           "mni_cache_dir": join(fc_root, fc.MNI_CACHE_SUBDIR)}
+           "min_pairs": args.min_pairs}
     kw = dict(cfg=cfg, ctx=ctx, edges=edges, methods=tuple(args.methods),
               n_reps=args.n_reps, seed=args.seed, root_dir=fc_root,
               curves=args.plot_curves)
 
     print(f"[stage] {len(items)} sessions, {args.n_reps} null reps, "
-          f"{'SLURM' if args.cluster else 'local'}")
-    if args.cluster:
-        out = fc.run_sessions_cluster(
-            session_bias_rows, items, desc="distance controls",
-            job_name="dist_ctrl", n_workers=args.n_workers, mem=args.mem,
-            walltime=args.walltime, cluster_log_dir=args.cluster_log_dir,
-            collect=True, **kw)
-    else:
-        out = fc.run_sessions_local(session_bias_rows, items,
-                                    desc="distance controls", collect=True, **kw)
+          f"{args.workers} worker(s)")
+    out = fc.run_sessions(session_bias_rows, items, desc="distance controls",
+                          workers=args.workers, collect=True, **kw)
 
     rows = [r for chunk in out for r in chunk["bias"]]
     curves = [r for chunk in out for r in chunk["curves"]]
@@ -669,7 +660,6 @@ def parse_args():
     p.add_argument("--rmax", type=float, default=110.0)
     p.add_argument("--bin-w", type=float, default=10.0, dest="bin_w")
     p.add_argument("--exclude-same-shank", action="store_true", default=True)
-    p.add_argument("--drop-cross-type", action="store_true")
     p.add_argument("--min-pairs", type=int, default=200)
     p.add_argument("--n-sessions", type=int, default=None)
     p.add_argument("--n-reps", type=int, default=20,
@@ -688,17 +678,11 @@ def parse_args():
                    help="min pairs in a distance bin for that session to "
                         "contribute it to the curves")
     p.add_argument("--self-test", action="store_true")
-    # Serial by default, unlike the build scripts: a session here is ~0.5 s for
-    # the full rep set (they run a multitaper decomposition over thousands of
-    # events), so the whole dataset is ~10 min in one process. --cluster earns
-    # its keep when --n-reps goes into the hundreds; cost is linear in reps.
-    p.add_argument("--cluster", action="store_true",
-                   help="fan out over SLURM, one session per task "
-                        "(default: sequential in this process)")
-    p.add_argument("--n-workers", type=int, default=100)
-    p.add_argument("--mem", default="8GB")
-    p.add_argument("--walltime", default="04:00:00")
-    p.add_argument("--cluster-log-dir", default="cluster")
+    # A session here is ~0.5 s for the full rep set, so the whole dataset is
+    # ~10 min in one process; --workers earns its keep when --n-reps goes into
+    # the hundreds (cost is linear in reps).
+    p.add_argument("--workers", type=int, default=1,
+                   help="sessions processed at once in separate processes")
     return p.parse_args()
 
 

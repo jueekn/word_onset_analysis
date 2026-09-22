@@ -2,15 +2,15 @@
 
 Each (session, contrast) accumulates input / per-stage-excluded / final event
 COUNTS as a long-format table and writes ONE per-session CSV under
-``EXCLUSION_COUNTS_DIR/per_session/`` — race-free under the parallel (per-session
-dask) pipeline. ``aggregate_exclusion_logs`` concatenates them into
+``EXCLUSION_COUNTS_DIR/per_session/`` — race-free under the parallel (per-session)
+pipeline. ``aggregate_exclusion_logs`` concatenates them into
 ``event_exclusions.csv``; ``check_invariant`` confirms
 ``input_count - sum(*_excluded) == final_count`` per session×contrast (so a
 missed event-drop stage surfaces); ``summarize_event_exclusions`` builds the
 subject-level distribution report (counts, %-of-input, %-of-previous-stage).
 
 Long schema (one row per count):
-    config, subject, montage, localization, experiment, session, contrast, tag, value
+    config, subject, experiment, session, contrast, tag, value
 ``tag`` is ``input_count``, ``<stage>_excluded`` (one per ordered exclusion
 stage), or ``final_count``; ``value`` is an event count. Paths + the ``config``
 stamp come from config.yaml via project_paths.
@@ -30,8 +30,7 @@ from project_paths import CONFIG_NAME, EXCLUSION_COUNTS_DIR
 
 NDArrayAny = np.ndarray[Any, np.dtype[Any]]
 
-ID_COLS = ["config", "subject", "montage", "localization", "experiment",
-           "session", "contrast"]
+ID_COLS = ["config", "subject", "experiment", "session", "contrast"]
 LONG_COLS = ID_COLS + ["tag", "value"]
 
 
@@ -44,8 +43,6 @@ def _session_keys(dfrow: pd.Series) -> dict[str, Any]:
     row = cast("dict[str, Any]", dict(dfrow))
     return {
         "subject": str(row["sub"]),
-        "montage": int(row["mon"]),
-        "localization": int(row["loc"]),
         "experiment": str(row["exp"]),
         "session": int(row["sess"]),
     }
@@ -93,8 +90,7 @@ class ExclusionLog:
 
     def _filename(self) -> str:
         k = self.keys
-        return (f"{self.config}__{k['experiment']}_{k['subject']}_{k['session']}"
-                f"_{k['localization']}_{k['montage']}__{self.contrast}.csv")
+        return f"{self.config}__{k['experiment']}_{k['subject']}_{k['session']}__{self.contrast}.csv"
 
     def write(self) -> str:
         d = join(self.out_dir, "per_session")
@@ -244,8 +240,7 @@ def check_session_event_consistency(events: pd.DataFrame,
     event log regenerated for only some sessions — and is raised rather than
     reported silently.
     """
-    sess_id = [c for c in ("subject", "montage", "localization",
-                           "experiment", "session") if c in events.columns]
+    sess_id = [c for c in ("subject", "experiment", "session") if c in events.columns]
     bad: list[tuple[str, int, int]] = []
     for beh in sessions["contrast"].unique():
         funnel = dict(zip(sessions.loc[sessions["contrast"] == beh, "tag"],

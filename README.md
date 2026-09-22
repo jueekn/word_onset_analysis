@@ -1,4 +1,4 @@
-# phase_visualization
+# word_onset_analysis
 
 Word-onset spectral power and phase connectivity in human intracranial EEG,
 across 12 ROIs (used in Burke et. al. 2013), from the Penn Computational Memory Lab free-recall
@@ -15,42 +15,49 @@ adds phase-connectivity analyses.
 
 ## Requirements
 
-**This will not run outside the lab.** The pipeline reads raw iEEG through
-`ptsa` and `cmlreaders`, which require access to CML's protocols directory.
-Neither package is on PyPI. Without that access you can read the code but
-cannot reproduce anything.
+Python ≥ 3.11 and `pip install -r requirements.txt`. Two of the pins come
+from GitHub rather than PyPI: `ptsa` (needs a C++ compiler and FFTW —
+`brew install fftw` on macOS, then `CPPFLAGS=-I$(brew --prefix fftw)/include
+LDFLAGS=-L$(brew --prefix fftw)/lib pip install ...`) and `bidsreader`, CML's
+reader for the BIDS exports of its datasets.
 
-Python 3.11 with: `numpy scipy pandas xarray matplotlib seaborn statsmodels
-scikit-image mne mne-connectivity dask distributed ptsa cmlreaders pyyaml
-tqdm`.
+## Data
 
-### Environment
+Everything is read from the lab's public BIDS datasets on OpenNeuro
+(FR1 `ds004789`, catFR1 `ds004809`, pyFR `ds004865`); nothing needs the lab
+cluster. `cml_data.py` lists a dataset on S3 and downloads what a session needs
+on first use — events / channel / electrode tables (~1 MB) and, for the
+compute stages, the bipolar recording (300–700 MB per session) — into
+`./bids_data` (override with `CML_BIDS_CACHE`). Files are never re-downloaded.
+You are asked once per run before anything is fetched; set
+`CML_AUTO_APPROVE=1` for unattended runs.
 
-`config/config.yaml` sets the interpreter for every entry point:
-
-```yaml
-python_env_path: /home1/${USER}/miniforge3/envs/mod_workshop_311
-```
-
-`${USER}` expands, so this works unchanged for any lab user with that layout.
-Cloning elsewhere: point it at your own env root (the directory containing
-`bin/python`), or set it to `null` to mean "use whatever env is already
-active" — in which case activate the env yourself before sourcing `env.sh`.
-
-```bash
-source scripts/env.sh      # puts that env on PATH, adds the repo to PYTHONPATH
-```
+Not every rhino session is on OpenNeuro yet (as of 2026-09: FR1 149/153 of the
+original subjects, catFR1 31/33, pyFR 42/80). The session list is whatever
+OpenNeuro lists, so the cohort grows as the release is updated.
 
 ## How it runs
+
+```bash
+python prepare_sessions.py --n-subjects 3 --workers 4   # session list, data check, events
+python build_roi_power.py     --beh word_on --band high_gamma --workers 4
+python build_roi_synchrony.py --beh word_on --band high_gamma --workers 4
+python build_power_synchrony.py --beh word_on --band high_gamma
+```
+
+`prepare_sessions.py` writes the session list and per-session artifacts under
+`config.yaml paths.scratch_dir` (default `./scratch`): `sess_list_df*.json`,
+`electrode_information/pairs/`, `<beh>/events/`. `--subjects`, `--n-subjects`
+and `--n-sessions` restrict it; the whole cohort is ~1300 sessions.
 
 Every build script has two stages:
 
 | stage | function | location |
 |---|---|---|
-| `--stage compute` | one pickle per session | `SCRATCH_DIR/<beh>/…` (dask/SLURM; `--local` to stay on one node) |
+| `--stage compute` | one pickle per session | `SCRATCH_DIR/<beh>/…` (`--workers N` runs N sessions at once in separate processes) |
 | `--stage plot` | aggregates pickles → figures + CSVs | `figures/…` |
 
-`--stage both` (the default) does both. 
+`--stage both` (the default) does both.
 
 Compute is cached: a session with an existing, complete pickle is skipped.
 The cache keys on the file existing and having the expected fields, **not** on
@@ -61,8 +68,7 @@ notch, buffers, windows) you must **delete the output directory**.
 
 ## Figure recipes
 
-All three assume `source scripts/env.sh` first. Defaults come from
-`config/config.yaml`.
+Defaults come from `config/config.yaml`.
 
 ### 1. ROI power (+ responsiveness, + latency)
 
@@ -113,8 +119,9 @@ session's electrodes before being collapsed to one score per electrode
 where it sits rather than what it does, because connectivity falls off with
 distance and montages sample distances very unevenly.
 
-`--rmin/--rmax/--bin-w` control the distance bins; `--exclude-same-shank` and
-`--drop-cross-type` control which pairs are admissible.
+`--rmin/--rmax/--bin-w` control the distance bins; `--exclude-same-shank`
+drops pairs on the same lead. All pair centroids are in MNI152NLin6ASym (the
+one space the BIDS electrode tables carry), so any two are comparable.
 
 ### 3. Power–synchrony correlation
 
@@ -153,6 +160,7 @@ computed per ROI and with the distance-collapsed synchrony score.
 ## Layout
 
 ```
+prepare_sessions.py         session list, data check, events (run first)
 build_roi_power.py          power, responsiveness, latency  (entry point)
 build_roi_synchrony.py      phase connectivity              (entry point)
 build_power_synchrony.py    power-synchrony correlation     (entry point, consumes the other two)
@@ -161,13 +169,17 @@ plot_phase_conn_distance*.py  distance curves, whole-brain and per-ROI
 compare_distance_controls.py  which distance correction removes the most geometry
 roi_subregion_counts.py     ROI/subregion coverage tables
 
-fc_comparison_functions.py  FC estimators, aggregation, stats, plotting primitives
-helper.py                   EEG loading, re-referencing, notch, Morlet, regionalisation
+fc_comparison_functions.py  FC estimators, aggregation, stats, plotting primitives, session dispatch
+helper.py                   BIDS EEG / electrode loading, notch, Morlet, regionalisation
+cml_data.py                 OpenNeuro listing / download / cache (identical to the COGS4290 copy)
+data_check.py               per-session validation -> sess_list_df_data_check.json
+load_events.py  match_events.py  per-behavior events (matched succ/unsucc for en/rm)
+exclusion_log.py            event/session exclusion counts
 cstat.py                    circular statistics (PPC/PLV/ciPLV/PLI)
 wavelet.py                  Morlet bank definition (frequencies, widths)
 misc.py  matrix_operations.py  figure_io.py   small utilities
 project_paths.py            config.yaml -> paths and constants
-ptsa_patches.py             PTSA monkey-patches (numpy alias restore, params-file fix)
+ptsa_patches.py             PTSA monkey-patch (numpy alias restore)
 simulate_eeg.py             synthetic EEG for validation
 config/config.yaml          all tunable parameters
 ```

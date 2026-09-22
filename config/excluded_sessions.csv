@@ -1,6 +1,6 @@
-sub,exp,sess,loc,mon,reason
-R1061T,FR1,3,0,0,aec_triggers_pathology_channels
-R1121M,FR1,6,0,0,aec_triggers_pathology_channels
-R1060M,FR1,1,0,0,aec_triggers_pathology_channels
-R1475J,catFR1,0,0,0,aec_triggers_pathology_channels
-R1293P,catFR1,1,0,0,aec_triggers_pathology_channels
+sub,exp,sess,reason
+R1061T,FR1,3,aec_triggers_pathology_channels
+R1121M,FR1,6,aec_triggers_pathology_channels
+R1060M,FR1,1,aec_triggers_pathology_channels
+R1475J,catFR1,0,aec_triggers_pathology_channels
+R1293P,catFR1,1,aec_triggers_pathology_channels

@@ -15,7 +15,7 @@ of as one endpoint of a pair:
 
 Two stages:
 
-  compute  one pickle per session (dask/SLURM by default)
+  compute  one pickle per session (--workers N to parallelise)
              <save_root>/<beh>/power/<band>/<ftag>_power.pkl
              {"sid", "labels", "reg_full", "log10_lo", "log10_hi",
               "cohens_d", "n_events"}
@@ -72,8 +72,9 @@ Electrode -> ROI uses the canonical `regionalize_electrodes_by_type` label
 region_to_burke_lobe.csv + hemisphere, identical to the connectivity scripts.
 
 Usage:
-    python build_roi_power.py                         # compute (cluster) + plot
-    python build_roi_power.py --local --n-sessions 2  # local smoke test
+    python build_roi_power.py                         # compute + plot
+    python build_roi_power.py --n-sessions 2          # smoke test
+    python build_roi_power.py --workers 4             # 4 sessions at a time
     python build_roi_power.py --stage plot            # replot from pickles
     python build_roi_power.py --beh voc               # vocalization contrast
 """
@@ -364,9 +365,7 @@ def run_sess_power(
             f"{sid}: len(pairs)={None if pairs is None else len(pairs)} but eeg "
             f"n_ch={n_ch}; channel order misaligned for region labels.")
 
-    localization = helper.get_localization(dfrow)
-    reg_full = np.asarray(
-        helper.regionalize_electrodes_by_type(pairs, localization), dtype=object)
+    reg_full = np.asarray(helper.regionalize_electrodes_by_type(pairs), dtype=object)
     labels = pairs["label"].astype(str).to_numpy()
 
     # Same multitaper half-bandwidth the phase metrics use (config.yaml
@@ -508,8 +507,7 @@ def run_sess_power(
             d[c] = float(helper.cohens_d(a, b))
 
     out: dict[str, Any] = {
-        "sid": (dfrow["sub"], dfrow["exp"], int(dfrow["sess"]),
-                int(dfrow["loc"]), int(dfrow["mon"])),
+        "sid": (dfrow["sub"], dfrow["exp"], int(dfrow["sess"])),
         "labels": labels,
         "reg_full": reg_full,
         "log10_lo": np.nanmean(lp_lo, axis=0),
@@ -557,7 +555,7 @@ def collect_electrode_table(save_root, beh, band, lobe_of, n_sessions=None,
         raise SystemExit(
             f"no pickles in {d}\nrun the compute stage first: "
             f"python build_roi_power.py --stage compute --beh {beh} --band {band} "
-            f"--fc-mode {args.fc_mode}")
+            f"--fc-mode {fc_mode}")
 
     rows = []
     for f in tqdm(files, desc="load sessions"):
@@ -1304,11 +1302,9 @@ def main() -> None:
 
     if args.stage in ("compute", "both"):
         fc.run_compute_stage(
-            run_sess_power, desc="ROI power", job_name="roi_power",
-            root_dir_=root_dir, local=args.local, n_sessions=args.n_sessions,
-            n_subjects=args.n_subjects, n_workers=args.n_workers, mem=args.mem,
-            walltime=args.walltime, cluster_log_dir=args.cluster_log_dir,
-            save_root=save_root, beh=args.beh, band=args.band, root_dir=root_dir,
+            run_sess_power, desc="ROI power", root_dir_=root_dir,
+            n_sessions=args.n_sessions, n_subjects=args.n_subjects,
+            workers=args.workers, save_root=save_root, beh=args.beh, band=args.band, root_dir=root_dir,
             fc_mode=args.fc_mode, time_bin_ms=args.time_bin_ms,
             mt_window_ms=args.mt_window_ms)
 

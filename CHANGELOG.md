@@ -2,10 +2,113 @@
 
 Project-level change log for `phase_visualization`. Newest entries first.
 
-This repo is not under git, so entries before 2026-08-17 were not recorded as
-they happened and are not reconstructable from history. Anything earlier than
-the first entry below is undocumented; add entries going forward rather than
-trying to backfill.
+Entries before 2026-08-17 predate git and are not reconstructable; anything
+earlier than the last entry below is undocumented.
+
+---
+
+## 2026-09-21 — OpenNeuro / BIDS data; no cluster dependency
+
+The pipeline no longer needs rhino. Data comes from CML's public BIDS datasets
+on OpenNeuro through `bidsreader` (the BIDS counterpart of cmlreaders) and
+`cml_data.py` (S3 listing / download / cache, copied verbatim from
+COGS4290_DataMemoryBrainsSolutions `grader-autograder`); parallelism is a local
+process pool (`--workers N`) instead of cmldask/SLURM. Verified end to end on
+R1111M FR1 (OpenNeuro `ds004789`): prepare_sessions → build_roi_power →
+build_roi_synchrony → build_power_synchrony, single- and multi-worker.
+
+### Session key
+
+`(sub, exp, sess)`. BIDS has no localization/montage, so `loc`/`mon` are gone
+from `ftag`, `get_dfrow`, `sid` tuples, `sess_list_df*`, `excluded_sessions.csv`,
+`unrecoverable_sessions.csv` and the exclusion logs. Old pickles / session
+lists are not readable by the new code.
+
+### Data loading (`helper.py`)
+
+- `bids_reader(dfrow)` → `CMLBIDSReader` for the session, fetching its files on
+  first use; `prefetch_bids(dfrows)` fetches a list up front (used before any
+  multi-worker run so workers never download).
+- `get_eeg` epochs the bipolar recording with `mne.Epochs` on the events'
+  `eegoffset` (= BIDS `sample`) and returns the same `(event, channel, time)`
+  PTSA TimeSeries as before, in microvolts with time in ms, channels in
+  `get_pairs` order. Repeated onsets (WORD + its PRE_WORD copy) are epoched
+  once and expanded. Events whose clip would run off the recording are dropped
+  from both the EEG and the mask (reported), where cmlreaders asserted.
+- `load_pairs_table(reader)` builds the pairs table from
+  `load_combined_channels(acquisition='bipolar')` in the column vocabulary the
+  pipeline reads: `label`, `contact_label_1/2`, `type_1/2` (D/G/S from the BIDS
+  `description`), `mni.x/y/z` (pair centroid, MNI152NLin6ASym), `distance`,
+  `stein.region` / `wb.region` / `ind.region`, `hemisphere`.
+- **A pair carries an atlas label only when both contacts agree** (the rule
+  the earlier bidsreader used). cmlreaders' pairs.json looked the atlas up at
+  the pair midpoint; BIDS has no pair-level lookup. Pairs straddling two
+  regions are therefore unlabelled (R1111M: 59 of 141).
+- Regionalization cascades trimmed to the three atlases BIDS carries:
+  depths `stein → wb`, grid/strip `stein → ind`; `n/a` is a missing-label
+  sentinel. The localization-table merge is gone.
+- Removed: the cmlreaders loader + NFS retry, the legacy PTSA/`TalReader`
+  path (`/data/eeg`), `get_localization`, `coerce_unhashable_event_fields`,
+  `eeg_data_source` plumbing in the simulation hooks.
+
+### Session preparation
+
+- `data_check.py` rewritten: the session list is every (sub, exp, sess)
+  OpenNeuro lists for FR1/catFR1/pyFR (`cml_data.session_dataframe`); the
+  per-session check loads the pairs table and one WORD-locked clip through the
+  production loader, drops flat pairs by scanning the recording, checks the
+  phase path, writes `electrode_information/pairs/<ftag>_pairs.json`. Gone:
+  the hard-coded 284-row cohort list, the curated `channels_to_drop` table
+  (pairs ARE the recording's channels now), the `.mat`/`/protocols` readers,
+  the mstime/eegoffset consistency check (BIDS `sample` is derived from onset).
+- `load_events.py` and `match_events.py` (the stage-2 event writer this repo
+  imported but did not contain) are ported from fc_methods_comparison_cml
+  `riley-thesis`. `MatchedEvents.load_events` adapts BIDS events to the CML
+  schema (`type`=trial_type, `mstime`=onset·1000, `eegoffset`=sample,
+  `rectime`=response_time·1000, `trial`=list, one constant `eegfile`). The
+  per-session `R1171M` unix-mstime fix was dropped (BIDS onsets are
+  recording-relative); the cmlreaders `correct_retrieval_offsets` /
+  `sort_eegfiles` corrections are assumed applied by the BIDS conversion.
+- `prepare_sessions.py`: `--workers N`, `--subjects ...`; the new-experiment
+  cohort (`--newexps`, ICatFR1/IFR1/RepFR1, `presentation_times.py`,
+  `RepFR1_session_presentation_times.csv`, `newexps_overrides`) is removed.
+
+### Dispatch
+
+`fc.run_sessions(fn, items, desc, workers=1, ...)` (process pool) replaces
+`run_sessions_local` / `run_sessions_cluster`; `run_compute_stage` and
+`prepare_sessions` use it. `dask_client.py`, `cluster.py`, `scripts/env.sh`
+and every `--local/--n-workers/--mem/--walltime/--cluster-log-dir/--cluster`
+flag are gone; `--workers N` everywhere.
+
+### Geometry
+
+Every contact is in one space, so `pair_xyz_lead(dfrow)` → `(xyz, lead)` from
+`mni.*`, and `pair_distance_mask` no longer takes `is_depth` /
+`drop_cross_type` (the flag is removed from all scripts). The cmlreaders
+contacts-table MNI cache and the duplicate geometry code in
+`plot_phase_conn_distance.py` are deleted.
+
+### Config
+
+`config.yaml` / `project_paths.py` reduced to what this repo reads:
+`paths.{scratch_dir, exclusion_counts, unrecoverable_sessions_csv}`, bands,
+behavior lists, signal-processing constants, `computation_metrics`. Removed:
+`python_env_path`, `cluster`, `compute_profiles`, `smokescreen*`,
+`newexps_overrides`, `case_study`, the thesis results/intermediate path tree,
+`seed_offset`, `behaviors:` per-beh block, and the corresponding constants.
+Dependencies are pinned in `requirements.txt` (ptsa and bidsreader from
+GitHub).
+
+### Known gaps
+
+- OpenNeuro coverage vs the rhino cohort (2026-09-21): FR1 149/153 subjects,
+  catFR1 31/33, pyFR 42/80. The conversion fix is on rhino, not yet released.
+- `ri` events fall below the 10-event threshold on many sessions (unchanged
+  behaviour; `ri` is not a required behavior).
+- `visualize_phase_connectivity.ipynb` still builds `loc`/`mon` dfrows.
+- The `aec_envelope` simulation DGP imports `fc_aec_dgp`, which this repo
+  never contained (it lives in fc_methods_comparison_cml `sim/`).
 
 ---
 

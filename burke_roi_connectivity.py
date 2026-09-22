@@ -78,27 +78,19 @@ def _finite(v):
 
 
 def _coords_for_electrode(row):
-    """Per-electrode coordinate per the user's policy. Returns (x,y,z) or None."""
-    t = str(row.get("type_1", "")).upper()
-    if t in ("G", "S"):  # grid / strip
-        order = [("ind.x", "ind.y", "ind.z")]
-    else:                # depth (D / uD) and anything else -> mni, then tal
-        order = [("mni.x", "mni.y", "mni.z"), ("tal.x", "tal.y", "tal.z")]
-    for cx, cy, cz in order:
-        if cx in row and _finite(row[cx]) and _finite(row[cy]) and _finite(row[cz]):
-            return float(row[cx]), float(row[cy]), float(row[cz])
+    """Pair-centroid MNI coordinate. Returns (x,y,z) or None."""
+    cx, cy, cz = "mni.x", "mni.y", "mni.z"
+    if cx in row and _finite(row[cx]) and _finite(row[cy]) and _finite(row[cz]):
+        return float(row[cx]), float(row[cy]), float(row[cz])
     return None
 
 
-def assign_rois(p0, lobe_of, reg_of=None, sub=None, exp=None):
+def assign_rois(p0, lobe_of, reg_of=None):
     """Add columns: _region, _lobe, _hemi, _roi, _src, _x/_y/_z (chosen coords).
 
     Region label + hemisphere come from the repo's canonical type-aware
     cascade (volumetric for depths, surface for grid/strip). `_src` records
     which atlas column supplied the label, for auditing.
-
-    Pass sub/exp to also merge the session's localization (adds MTL atlas
-    columns like stein/das when available); optional.
     """
     p0 = p0.copy()
 
@@ -110,14 +102,9 @@ def assign_rois(p0, lobe_of, reg_of=None, sub=None, exp=None):
     p0["_z"] = [c[2] if c else np.nan for c in xyz]
 
     # canonical type-aware region label: 'L amygdala' / 'R hippocampus' / nan
-    loc = None
-    if sub is not None and exp is not None:
-        _loc = helper.get_localization(
-            pd.Series({"sub": sub, "exp": exp, "sess": 0, "loc": 0, "mon": 0}))
-        loc = _loc if (_loc is not None and len(_loc)) else None
-    labels = pd.Series(helper.regionalize_electrodes_by_type(p0, loc), index=p0.index)
+    labels = pd.Series(helper.regionalize_electrodes_by_type(p0), index=p0.index)
     # source atlas for each pair, for transparency
-    src = helper.get_atlas_labels_by_type(p0, loc)["atlas"]
+    src = helper.get_atlas_labels_by_type(p0)["atlas"]
     p0["_src"] = src.values
 
     def parse_hemi(v):
@@ -235,9 +222,9 @@ def accumulate_session(ses_row, pairs, n_chan):
 
 # ------------------------------ per subject ---------------------------------
 def analyze_subject(sub, exp, lobe_of, reg_of, verbose=True):
-    dfrow0 = pd.Series({"sub": sub, "exp": exp, "sess": 0, "loc": 0, "mon": 0})
+    dfrow0 = pd.Series({"sub": sub, "exp": exp, "sess": 0})
     p0 = helper.get_pairs(dfrow0)
-    p0 = assign_rois(p0, lobe_of, reg_of, sub=sub, exp=exp)
+    p0 = assign_rois(p0, lobe_of, reg_of)
     n = len(p0)
 
     pairs = build_eligible_pairs(p0)
@@ -248,7 +235,7 @@ def analyze_subject(sub, exp, lobe_of, reg_of, verbose=True):
 
     sessions = [s for s in range(20)
                 if helper.load_events(
-                    pd.Series({"sub": sub, "exp": exp, "sess": s, "loc": 0, "mon": 0}),
+                    pd.Series({"sub": sub, "exp": exp, "sess": s}),
                     "word_on") is not None]
     if verbose:
         print(f"[{sub} {exp}] sessions: {sessions}")
@@ -258,7 +245,7 @@ def analyze_subject(sub, exp, lobe_of, reg_of, verbose=True):
     N = {k: np.zeros(len(pairs), int) for k in ("pre", "post")}
     Ssign = {k: np.zeros(len(pairs), float) for k in ("pre", "post")}
     for s in sessions:
-        ses_row = pd.Series({"sub": sub, "exp": exp, "sess": s, "loc": 0, "mon": 0})
+        ses_row = pd.Series({"sub": sub, "exp": exp, "sess": s})
         acc = accumulate_session(ses_row, pairs, n)
         for k in ("pre", "post"):
             sz, nn, ss = acc[k]

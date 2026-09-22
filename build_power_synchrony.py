@@ -110,7 +110,6 @@ def collect(save_root, fc_root, beh, band, metric, edges, args, lobe_of):
             f"run: python build_roi_synchrony.py --stage compute --beh {beh} "
             f"--band {band}")
 
-    mni_cache_dir = join(save_root, fc.MNI_CACHE_SUBDIR)
     nb = len(edges) - 1
     rows, binrows, bars = [], [], []
 
@@ -125,7 +124,7 @@ def collect(save_root, fc_root, beh, band, metric, edges, args, lobe_of):
         fc_name = f.name.replace("_power.pkl", "_fc_mats.pkl")
 
         try:
-            xyz, lead, is_depth = fc.pair_xyz_lead(dfrow, mni_cache_dir)
+            xyz, lead = fc.pair_xyz_lead(dfrow)
         except Exception as e:
             print(f"[skip] {f.name}: get_pairs failed ({e!r})")
             continue
@@ -136,8 +135,7 @@ def collect(save_root, fc_root, beh, band, metric, edges, args, lobe_of):
             continue
 
         iu, dist, keep = fc.pair_distance_mask(
-            xyz, lead, is_depth, args.rmin, args.rmax,
-            args.exclude_same_shank, args.drop_cross_type)
+            xyz, lead, args.rmin, args.rmax, args.exclude_same_shank)
         roi = fc.roi_of_reg_full(P["reg_full"], lobe_of)
 
         for cond, pow_key in conds.items():
@@ -195,7 +193,7 @@ def to_subject(df, keys):
 def parse_args():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    fc.add_common_args(p, cluster=False)
+    fc.add_common_args(p, compute=False)
     fc.add_distance_args(p)
     p.add_argument("--fc-mode", default=fc.FC_MODE,
                    choices=list(fc.FC_MODES), dest="fc_mode",

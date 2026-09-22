@@ -1,0 +1,19 @@
+# Python >= 3.11. `pip install -r requirements.txt`
+numpy<2
+scipy
+pandas
+xarray
+pyyaml
+tqdm
+h5py
+matplotlib
+seaborn
+statsmodels
+scikit-image
+mne
+mne-connectivity
+mne-bids
+pactools
+ptsa @ git+https://github.com/pennmem/ptsa.git@2d5490a12ee450a176530368c64c169e730f12bf
+# CML's BIDS reader (the OpenNeuro counterpart of cmlreaders)
+bidsreader @ git+https://github.com/pennmem/bidsreader.git@62969ca57fa6981146724f70aa2ccabbd4ed162b

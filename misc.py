@@ -8,7 +8,6 @@ from __future__ import annotations
 
 # Basic
 from typing import Any, Callable, Sequence, cast
-import os
 from os.path import join
 
 import numpy as np
@@ -27,48 +26,14 @@ NDArrayAny = npt.NDArray[Any]
 
 
 def ftag(dfrow: pd.Series) -> str:
-    """Filename tag for a session.
-
-    Args:
-        dfrow: pandas.Series with at least keys (sub, exp, sess, loc, mon).
-
-    Returns:
-        '{sub}_{exp}_{sess}' when loc == mon == 0; otherwise
-        '{sub}_{exp}_{sess}_{loc}_{mon}'.
-    """
-    # pandas Series indexing returns Unknown via stubs; cast at boundary.
-    sub = cast(Any, dfrow['sub'])
-    exp = cast(Any, dfrow['exp'])
-    sess = cast(Any, dfrow['sess'])
-    loc = cast(Any, dfrow['loc'])
-    mon = cast(Any, dfrow['mon'])
-    if (int(loc) == 0) and (int(mon) == 0):
-        return f'{sub}_{exp}_{sess}'
-    else:
-        return f'{sub}_{exp}_{sess}_{loc}_{mon}'
+    """Filename tag for a session: '{sub}_{exp}_{sess}'."""
+    return f"{dfrow['sub']}_{dfrow['exp']}_{dfrow['sess']}"
 
 
 def get_dfrow(dfrow: Sequence[Any] | NDArrayAny) -> pd.Series:
-    """Coerce a (sub, exp, sess[, loc, mon]) tuple/list/array to a Series.
-
-    Args:
-        dfrow: length-3 (sub, exp, sess) or length-5 (sub, exp, sess, loc, mon).
-
-    Returns:
-        pandas.Series with the same keys as the input length.
-    """
-    if len(dfrow) == 3:
-        sub, exp, sess = dfrow
-        return pd.Series({'sub': sub,
-                          'exp': exp,
-                          'sess': sess})
-    else:
-        sub, exp, sess, loc, mon = dfrow
-        return pd.Series({'sub': sub,
-                          'exp': exp,
-                          'sess': sess,
-                          'loc': loc,
-                          'mon': mon})
+    """Coerce a (sub, exp, sess) tuple/list/array to a Series."""
+    sub, exp, sess = dfrow
+    return pd.Series({'sub': str(sub), 'exp': str(exp), 'sess': int(sess)})
 
 
 def load_pickle(path: str) -> Any:
@@ -291,18 +256,3 @@ def get_time_offset(
     Vectorized: scalar in / scalar out, array in / array out.
     """
     return phase_offset / (2 * np.pi * frequency)
-
-
-def get_username_from_working_directory(index: int = 2) -> str:
-    """Extract the username segment from the cwd path at `index`.
-
-    Defaults to index=2, matching '/home/user/...' or '/home1/user/...'.
-    Raises ValueError if the path has fewer segments than `index`.
-    """
-    try:
-        working_directory = os.getcwd()
-        path_parts = working_directory.split(os.sep)
-        username = path_parts[index]
-        return username
-    except IndexError:
-        raise ValueError("Unable to extract username from working directory.")

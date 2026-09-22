@@ -92,145 +92,17 @@ def _sid_from_filename(fname: str) -> dict[str, int | str]:
     return {"sub": m.group(1), "exp": m.group(2), "sess": int(m.group(3))}
 
 
-def _coord_block(p0: pd.DataFrame, prefix: str) -> np.ndarray | None:
-    """(N,3) coords for a coordinate-space prefix, or None if absent.
-
-    A prefix of "" means the bare x/y/z columns the old pyFR .mat localizations
-    carry (Talairach) -- those subjects have no mni/avg/ind blocks at all.
-    """
-    cols = ["x", "y", "z"] if prefix == "" else [
-        f"{prefix}.x", f"{prefix}.y", f"{prefix}.z"]
-    if not all(c in p0.columns for c in cols):
-        return None
-    return p0[cols].apply(pd.to_numeric, errors="coerce").to_numpy(float)
-
-
-def _first_available(p0: pd.DataFrame, prefixes: Sequence[str]) -> np.ndarray | None:
-    """First coordinate block present, trying `prefixes` in order."""
-    for pref in prefixes:
-        block = _coord_block(p0, pref)
-        if block is not None:
-            return block
-    return None
-
-
-# Native-space cascade for grid/strip contacts. `ind` is native FreeSurfer RAS
-# and is NOT surface-projected (the snapped variants are ind.corrected /
-# ind.snap / ind.dural), so it is a genuine 3D position. `stein.*` and `vox.*`
-# are deliberately absent: stein columns exist for ~89% of subjects but are
-# entirely NaN, and vox exists for ~1%.
-_NATIVE_PREFERENCE = ["ind", "avg", "tal", ""]
-
-# Per-session cache of contacts-derived pair MNI coords, relative to save_root.
-MNI_CACHE_SUBDIR = join("electrode_information", "pairs_mni")
-
-
-def _pair_mni_from_contacts(
-    dfrow: pd.Series, cache_dir: str,
-) -> dict[str, list[float]] | None:
-    """{pair_label: [x, y, z]} MNI centroid per bipolar pair, cached per session.
-
-    The bipolar `pairs` table carries `mni.*` for only ~2% of subjects, but the
-    monopolar `contacts` table has it for ~94% (99.9% finite). A bipolar's MNI
-    coord is the midpoint of its two contacts' MNI coords -- the same
-    construction the pair-level avg.*/ind.* columns already use. Joins on
-    contacts.label <-> pairs.contact_label_{1,2}.
-
-    Returns None when contacts cannot be read or carry no MNI.
-    """
-    tag = fc.ftag(dfrow)
-    path = Path(cache_dir) / f"{tag}_pairs_mni.json"
-    if path.exists():
-        try:
-            return json.loads(path.read_text())
-        except Exception:
-            pass  
-
-    try:
-        import cmlreaders as cml
-        c = cml.CMLReader(str(dfrow["sub"]), str(dfrow["exp"]),
-                          int(dfrow["sess"])).load("contacts")
-    except Exception:
-        return None
-    if c is None or not all(col in c.columns
-                            for col in ("label", "mni.x", "mni.y", "mni.z")):
-        return None
-
-    xyz = c[["mni.x", "mni.y", "mni.z"]].apply(
-        pd.to_numeric, errors="coerce").to_numpy(float)
-    by_contact = {str(lab): xyz[i] for i, lab in enumerate(c["label"].astype(str))}
-
-    p0 = helper.get_pairs(dfrow)
-    out: dict[str, list[float]] = {}
-    for lab, c1, c2 in zip(p0["label"].astype(str),
-                           p0["contact_label_1"].astype(str),
-                           p0["contact_label_2"].astype(str)):
-        a, b = by_contact.get(c1), by_contact.get(c2)
-        if a is None or b is None:
-            continue
-        mid = (a + b) / 2.0
-        if np.isfinite(mid).all():
-            out[lab] = [float(v) for v in mid]
-
-    if out:
-        os.makedirs(cache_dir, exist_ok=True)
-        path.write_text(json.dumps(out))
-    return out or None
-
-
-def _pair_xyz_lead(
-    dfrow: pd.Series, mni_cache_dir: str,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """(N,3) pair centroid coords, (N,) lead prefix, (N,) is-depth mask.
-
-    Coordinate space is chosen per electrode type (`type_1`, verified identical
-    to `type_2` for every pair in this dataset):
-
-        depth ('D','uD')     -> MNI, derived from the monopolar contacts table
-        grid/strip ('G','S') -> native ind.* (see _NATIVE_PREFERENCE)
-
-    Depth pairs with no MNI available fall back to the native cascade, so no
-    subject is dropped for lack of MNI.
-
-    NOTE: mixing spaces means a depth<->grid distance spans two frames with
-    different origin/scaling. `is_depth` is returned so those cross-type pairs
-    can be excluded downstream (--drop-cross-type).
-    """
-    p0 = helper.get_pairs(dfrow)
-    xyz = _first_available(p0, _NATIVE_PREFERENCE)
-    if xyz is None:
-        raise KeyError(f"no usable coordinate columns {_NATIVE_PREFERENCE}")
-    xyz = xyz.copy()
-
-    if "type_1" in p0.columns:
-        is_depth = p0["type_1"].astype(str).str.upper().isin(("D", "UD")).to_numpy()
-    else:
-        is_depth = np.zeros(len(p0), bool)
-
-    if is_depth.any():
-        mni = _pair_mni_from_contacts(dfrow, mni_cache_dir)
-        if mni:
-            labels = p0["label"].astype(str).to_numpy()
-            for i in np.flatnonzero(is_depth):
-                v = mni.get(labels[i])
-                if v is not None:
-                    xyz[i] = v
-
-    lead = p0["label"].str.extract(r"^([A-Za-z]+)")[0].to_numpy()
-    return xyz, lead, is_depth
-
-
 def collect_per_subject(
     save_root: str, beh: str, band: str, metrics: Sequence[str],
     rmin: float, rmax: float, exclude_same_shank: bool,
-    n_sessions: int | None, drop_cross_type: bool = False,
+    n_sessions: int | None,
 ) -> dict[str, dict[tuple[str, str], list[tuple[np.ndarray, np.ndarray]]]]:
     """Walk the saved pickles and gather (distance, connectivity) per subject.
 
     Returns per_subject[sub][(metric, cond)] = list of (dist_vec, conn_vec), one
     entry per session, covering every finite upper-triangle electrode-pair whose
     seed-target distance falls in [rmin, rmax] (and, optionally, excluding
-    same-shank pairs and depth<->grid cross-type pairs).
+    same-shank pairs).
     """
     succ_dir = Path(save_root) / beh / "fc_mats" / "succ" / band
     base_dir = Path(save_root) / beh / "fc_mats" / "baseline" / band
@@ -240,7 +112,6 @@ def collect_per_subject(
     if not files:
         raise SystemExit(f"no pickles in {succ_dir}")
 
-    mni_cache_dir = join(save_root, MNI_CACHE_SUBDIR)
     conds = {"baseline": base_dir, "succ": succ_dir}
     per_subject: dict[str, dict[tuple[str, str], list[tuple[np.ndarray, np.ndarray]]]] = \
         defaultdict(lambda: defaultdict(list))
@@ -248,9 +119,9 @@ def collect_per_subject(
     for f in tqdm(files, desc="load sessions"):
         sid = _sid_from_filename(f.name)
         sub = str(sid["sub"])
-        dfrow = pd.Series({**sid, "loc": 0, "mon": 0})
+        dfrow = pd.Series(sid)
         try:
-            xyz, lead, is_depth = _pair_xyz_lead(dfrow, mni_cache_dir)
+            xyz, lead = fc.pair_xyz_lead(dfrow)
         except Exception as e:
             print(f"[skip] {f.name}: get_pairs failed ({e!r})")
             continue
@@ -263,9 +134,6 @@ def collect_per_subject(
         keep = np.isfinite(dist_full) & (dist_full >= rmin) & (dist_full <= rmax)
         if exclude_same_shank:
             keep &= ~same_shank
-        if drop_cross_type:
-            # depth<->grid distances span two coordinate frames; drop them.
-            keep &= (is_depth[iu[0]] == is_depth[iu[1]])
 
         mats: dict[str, dict[str, np.ndarray]] = {}
         ok = True
@@ -457,9 +325,6 @@ def main() -> None:
     p.add_argument("--rmax", type=float, default=110.0)
     p.add_argument("--bin-w", type=float, default=10.0, dest="bin_w")
     p.add_argument("--exclude-same-shank", action="store_true")
-    p.add_argument("--drop-cross-type", action="store_true",
-                   help="drop depth<->grid pairs, whose distance spans the MNI "
-                        "and native frames")
     p.add_argument("--n-sessions", type=int, default=None,
                    help="limit number of sessions (quick test)")
     p.add_argument("--out-dir", default="figures")
@@ -470,8 +335,7 @@ def main() -> None:
 
     per_subject = collect_per_subject(
         args.save_root, args.beh, args.band, args.metrics,
-        args.rmin, args.rmax, args.exclude_same_shank, args.n_sessions,
-        drop_cross_type=args.drop_cross_type)
+        args.rmin, args.rmax, args.exclude_same_shank, args.n_sessions)
     subjects = sorted(per_subject)
     n_sub = len(subjects)
     print(f"[collect] {n_sub} subjects with usable pairs")

@@ -7,13 +7,12 @@ figures/
 results/
 processed_results/
 
-# Cluster / SLURM artifacts (dask worker logs, .err/.out per job)
-cluster/
-cluster_logs/
+# OpenNeuro download cache (cml_data; override with CML_BIDS_CACHE) and the
+# per-session artifact tree (config.yaml paths.scratch_dir).
+bids_data/
+scratch/
+test_root/
 logs/
-*.err
-*.out
-slurm-*.log
 
 # Computed data. Session pickles live on scratch, but guard against a stray
 # write into the repo -- these are large and always regenerable.

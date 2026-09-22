@@ -95,7 +95,7 @@ def _roi_of_reg_full(reg_full, lobe_of):
 
 def collect_per_subject_by_roi(
     save_root, beh, band, metrics, rmin, rmax, exclude_same_shank,
-    n_sessions, drop_cross_type, lobe_of, cond_lo, cond_hi,
+    n_sessions, lobe_of, cond_lo, cond_hi,
     print_bins=False, edges=None,
 ):
     """per_subject[sub][(roi, metric, cond)][seed_label] = list of
@@ -116,7 +116,6 @@ def collect_per_subject_by_roi(
             f"build '{beh}' first via build_roi_synchrony.py --stage compute --beh {beh} "
             f"--conds {cond_lo} {cond_hi} diff)")
 
-    mni_cache_dir = join(save_root, ppcd.MNI_CACHE_SUBDIR)
     conds = {cond_lo: lo_dir, cond_hi: hi_dir}
     # per_subject[sub][(roi,metric,cond)] -> {seed_label: [(dist,conn), ...]}
     per_subject = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
@@ -124,9 +123,9 @@ def collect_per_subject_by_roi(
     for f in tqdm(files, desc="load sessions"):
         sid = ppcd._sid_from_filename(f.name)
         sub = str(sid["sub"])
-        dfrow = pd.Series({**sid, "loc": 0, "mon": 0})
+        dfrow = pd.Series(sid)
         try:
-            xyz, lead, is_depth = ppcd._pair_xyz_lead(dfrow, mni_cache_dir)
+            xyz, lead = fc.pair_xyz_lead(dfrow)
             labels = helper.get_pairs(dfrow)["label"].astype(str).to_numpy()
         except Exception as e:
             print(f"[skip] {f.name}: get_pairs failed ({e!r})")
@@ -141,8 +140,6 @@ def collect_per_subject_by_roi(
         keep = np.isfinite(dist_full) & (dist_full >= rmin) & (dist_full <= rmax)
         if exclude_same_shank:
             keep &= ~same_shank
-        if drop_cross_type:
-            keep &= (is_depth[i_idx] == is_depth[j_idx])
 
         # load matrices + reg_full for both conditions
         mats, ok = {}, True
@@ -335,8 +332,6 @@ def main():
     p.add_argument("--rmax", type=float, default=100.0)
     p.add_argument("--bin-w", type=float, default=10.0, dest="bin_w")
     p.add_argument("--exclude-same-shank", action="store_true", default=True)
-    p.add_argument("--drop-cross-type", action="store_true", default=True,
-                   help="drop depth<->grid pairs (distance spans MNI vs native frames)")
     p.add_argument("--n-sessions", type=int, default=None)
     p.add_argument("--print-bins", action="store_true",
                    help="print each seed–target pair and its distance bin (first session)")
@@ -360,7 +355,7 @@ def main():
         per_subject = collect_per_subject_by_roi(
             args.save_root, contrast["beh"], args.band, args.metrics,
             args.rmin, args.rmax, args.exclude_same_shank, args.n_sessions,
-            args.drop_cross_type, lobe_of, contrast["lo"], contrast["hi"],
+            lobe_of, contrast["lo"], contrast["hi"],
             print_bins=args.print_bins, edges=edges)
         subjects = sorted(per_subject)
         print(f"[collect] {len(subjects)} subjects with usable pairs")

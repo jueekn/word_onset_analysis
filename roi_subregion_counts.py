@@ -82,11 +82,7 @@ def _label_session(sub: str, exp: str, sess: int, path: Path) -> pd.DataFrame:
     if not len(pairs):
         return pd.DataFrame()
 
-    loc = helper.get_localization(
-        pd.Series({"sub": sub, "exp": exp, "sess": sess, "loc": 0, "mon": 0}))
-    loc = loc if (loc is not None and len(loc)) else None
-
-    labels = pd.Series(helper.regionalize_electrodes_by_type(pairs, loc))
+    labels = pd.Series(helper.regionalize_electrodes_by_type(pairs))
     labels = labels.dropna()
     if not len(labels):
         return pd.DataFrame()

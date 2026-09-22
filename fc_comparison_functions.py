@@ -33,7 +33,6 @@ import seaborn as sns  # pyright: ignore[reportMissingTypeStubs]
 
 from cstat import *  # noqa: F401,F403
 from misc import *  # noqa: F401,F403
-from misc import get_username_from_working_directory  # explicit re-import
 from matrix_operations import *  # noqa: F401,F403
 from mne_connectivity import (  # pyright: ignore[reportMissingTypeStubs]
     spectral_connectivity_epochs, envelope_correlation)
@@ -51,7 +50,6 @@ from project_paths import (
     NOTCH_HARMONICS_UP_TO_HZ,
 )
 
-USERNAME: str = get_username_from_working_directory(index=2)
 root_dir: str = str(_SCRATCH_DIR)
 
 import helper
@@ -860,8 +858,6 @@ def compute_session_fc(
             "sub": dfrow["sub"],
             "exp": dfrow["exp"],
             "sess": dfrow["sess"],
-            "loc": dfrow["loc"],
-            "mon": dfrow["mon"],
             "beh": beh,
             "band": band,
             "sfreq": sfreq,
@@ -1309,14 +1305,10 @@ def run_sess_fc(
         except Exception:
             pass  # corrupt → fall through and recompute
 
-    localization = helper.get_localization(dfrow)
-    reg_full = helper.regionalize_electrodes_by_type(pairs, localization)
+    reg_full = helper.regionalize_electrodes_by_type(pairs)
 
     out: dict[str, Any] = {
-        "sid": (
-            dfrow["sub"], dfrow["exp"], int(dfrow["sess"]),  # pyright: ignore[reportArgumentType]
-            int(dfrow["loc"]), int(dfrow["mon"]),  # pyright: ignore[reportArgumentType]
-        ),
+        "sid": (dfrow["sub"], dfrow["exp"], int(dfrow["sess"])),  # pyright: ignore[reportArgumentType]
         "reg_full": reg_full,
     }
     for m in sess_metrics:
@@ -1624,7 +1616,7 @@ def build_session_region_mats(
         if r is None:
             continue
 
-        subj, _exp, sess, _loc, _mon = r["sid"]
+        subj, _exp, sess = r["sid"]
         reg_full = r["reg_full"]
 
         for m in metrics:
@@ -1671,7 +1663,7 @@ def build_session_channel_mats(
         if r is None:
             continue
 
-        subj, _exp, sess, _loc, _mon = r["sid"]
+        subj, _exp, sess = r["sid"]
 
         for m in metrics:
             if m not in r:
@@ -2322,7 +2314,7 @@ def bin_wilcoxon(m):
 #
 # Everything those scripts have in common lives here -- the behavior registry,
 # the Burke ROI vocabulary, pair geometry, the distance-bin synchrony collapse,
-# the per-ROI test, the session dispatcher (local / SLURM) and the ROI figure --
+# the per-ROI test, the session dispatcher and the ROI figure --
 # so each script contains only what is unique to it and none of them has to
 # import a plotting script to get a constant.
 #
@@ -2434,150 +2426,27 @@ def roi_of_reg_full(reg_full: Any, lobe_of: dict[str, str]) -> NDArrayAny:
 
 
 # --- pair geometry -----------------------------------------------------------
-# Native-space cascade for grid/strip contacts. `ind` is native FreeSurfer RAS
-# and is NOT surface-projected (the snapped variants are ind.corrected /
-# ind.snap / ind.dural), so it is a genuine 3D position. `stein.*` and `vox.*`
-# are deliberately absent: stein columns exist for ~89% of subjects but are
-# entirely NaN, and vox exists for ~1%.
-_NATIVE_PREFERENCE: list[str] = ["ind", "avg", "tal", ""]
+def pair_xyz_lead(dfrow: pd.Series) -> tuple[NDArrayAny, NDArrayAny]:
+    """(N,3) pair centroid MNI coords and (N,) lead prefix for a session's pairs.
 
-# Per-session cache of contacts-derived pair MNI coords, relative to save_root.
-MNI_CACHE_SUBDIR: str = join("electrode_information", "pairs_mni")
-
-
-def _coord_block(p0: pd.DataFrame, prefix: str) -> NDArrayAny | None:
-    """(N,3) coords for a coordinate-space prefix, or None if absent.
-
-    A prefix of "" means the bare x/y/z columns the old pyFR .mat localizations
-    carry (Talairach) -- those subjects have no mni/avg/ind blocks at all.
-    """
-    cols = ["x", "y", "z"] if prefix == "" else [
-        f"{prefix}.x", f"{prefix}.y", f"{prefix}.z"]
-    if not all(c in p0.columns for c in cols):
-        return None
-    return p0[cols].apply(pd.to_numeric, errors="coerce").to_numpy(float)
-
-
-def _first_available(
-    p0: pd.DataFrame, prefixes: Sequence[str],
-) -> NDArrayAny | None:
-    """First coordinate block present, trying `prefixes` in order."""
-    for pref in prefixes:
-        block = _coord_block(p0, pref)
-        if block is not None:
-            return block
-    return None
-
-
-def pair_mni_from_contacts(
-    dfrow: pd.Series, cache_dir: str,
-) -> dict[str, list[float]] | None:
-    """{pair_label: [x, y, z]} MNI centroid per bipolar pair, cached per session.
-
-    The bipolar `pairs` table carries `mni.*` for only ~2% of subjects, but the
-    monopolar `contacts` table has it for ~94% (99.9% finite). A bipolar's MNI
-    coord is the midpoint of its two contacts' MNI coords -- the same
-    construction the pair-level avg.*/ind.* columns already use. Joins on
-    contacts.label <-> pairs.contact_label_{1,2}.
-
-    Returns None when contacts cannot be read or carry no MNI.
-    """
-    import json
-
-    tag = ftag(dfrow)
-    path = Path(cache_dir) / f"{tag}_pairs_mni.json"
-    if path.exists():
-        try:
-            return json.loads(path.read_text())
-        except Exception:
-            pass
-
-    try:
-        import cmlreaders as cml
-        c = cml.CMLReader(str(dfrow["sub"]), str(dfrow["exp"]),
-                          int(dfrow["sess"])).load("contacts")
-    except Exception:
-        return None
-    if c is None or not all(col in c.columns
-                            for col in ("label", "mni.x", "mni.y", "mni.z")):
-        return None
-
-    xyz = c[["mni.x", "mni.y", "mni.z"]].apply(
-        pd.to_numeric, errors="coerce").to_numpy(float)
-    by_contact = {str(lab): xyz[i]
-                  for i, lab in enumerate(c["label"].astype(str))}
-
-    p0 = helper.get_pairs(dfrow)
-    out: dict[str, list[float]] = {}
-    for lab, c1, c2 in zip(p0["label"].astype(str),
-                           p0["contact_label_1"].astype(str),
-                           p0["contact_label_2"].astype(str)):
-        a, b = by_contact.get(c1), by_contact.get(c2)
-        if a is None or b is None:
-            continue
-        mid = (a + b) / 2.0
-        if np.isfinite(mid).all():
-            out[lab] = [float(v) for v in mid]
-
-    if out:
-        os.makedirs(cache_dir, exist_ok=True)
-        path.write_text(json.dumps(out))
-    return out or None
-
-
-def pair_xyz_lead(
-    dfrow: pd.Series, mni_cache_dir: str,
-) -> tuple[NDArrayAny, NDArrayAny, NDArrayAny]:
-    """(N,3) pair centroid coords, (N,) lead prefix, (N,) is-depth mask.
-
-    Coordinate space is chosen per electrode type (`type_1`, verified identical
-    to `type_2` for every pair in this dataset):
-
-        depth ('D','uD')     -> MNI, derived from the monopolar contacts table
-        grid/strip ('G','S') -> native ind.* (see _NATIVE_PREFERENCE)
-
-    Depth pairs with no MNI available fall back to the native cascade, so no
-    subject is dropped for lack of MNI.
-
-    NOTE: mixing spaces means a depth<->grid distance spans two frames with
-    different origin/scaling. `is_depth` is returned so those cross-type pairs
-    can be excluded downstream (--drop-cross-type).
+    The BIDS electrode table gives every contact in one space
+    (MNI152NLin6ASym), so every pair centroid -- depth, grid or strip -- lives
+    in the same frame and any two are directly comparable.
     """
     p0 = helper.get_pairs(dfrow)
-    xyz = _first_available(p0, _NATIVE_PREFERENCE)
-    if xyz is None:
-        raise KeyError(f"no usable coordinate columns {_NATIVE_PREFERENCE}")
-    xyz = xyz.copy()
-
-    if "type_1" in p0.columns:
-        is_depth = p0["type_1"].astype(str).str.upper().isin(
-            ("D", "UD")).to_numpy()
-    else:
-        is_depth = np.zeros(len(p0), bool)
-
-    if is_depth.any():
-        mni = pair_mni_from_contacts(dfrow, mni_cache_dir)
-        if mni:
-            labels = p0["label"].astype(str).to_numpy()
-            for i in np.flatnonzero(is_depth):
-                v = mni.get(labels[i])
-                if v is not None:
-                    xyz[i] = v
-
+    xyz = p0[["mni.x", "mni.y", "mni.z"]].apply(pd.to_numeric, errors="coerce").to_numpy(float)
     lead = p0["label"].str.extract(r"^([A-Za-z]+)")[0].to_numpy()
-    return xyz, lead, is_depth
+    return xyz, lead
 
 
 def pair_distance_mask(
-    xyz: NDArrayAny, lead: NDArrayAny, is_depth: NDArrayAny,
-    rmin: float, rmax: float,
-    exclude_same_shank: bool = False, drop_cross_type: bool = False,
+    xyz: NDArrayAny, lead: NDArrayAny, rmin: float, rmax: float,
+    exclude_same_shank: bool = False,
 ) -> tuple[tuple[NDArrayAny, NDArrayAny], NDArrayAny, NDArrayAny]:
     """(upper-triangle indices, pair distances, eligibility mask).
 
     A pair is eligible when its distance is finite and inside [rmin, rmax], and
-    -- optionally -- when the two contacts are on different shanks and of the
-    same electrode type (a depth<->grid distance spans two coordinate frames).
+    -- optionally -- when the two contacts are on different shanks.
     """
     n_ch = xyz.shape[0]
     iu = np.triu_indices(n_ch, 1)
@@ -2585,20 +2454,12 @@ def pair_distance_mask(
     keep = np.isfinite(dist) & (dist >= rmin) & (dist <= rmax)
     if exclude_same_shank:
         keep &= lead[iu[0]] != lead[iu[1]]
-    if drop_cross_type:
-        keep &= is_depth[iu[0]] == is_depth[iu[1]]
     return iu, dist, keep
 
 
 def dfrow_from_sid(sid: Sequence[Any]) -> pd.Series:
-    """Stored `sid` tuple -> the dfrow the loaders expect.
-
-    loc/mon are read back from the tuple rather than assumed 0: they are not
-    always 0, and helper.get_pairs returns None for the wrong (loc, mon).
-    """
-    return pd.Series({"sub": str(sid[0]), "exp": str(sid[1]),
-                      "sess": int(sid[2]), "loc": int(sid[3]),
-                      "mon": int(sid[4])})
+    """Stored `sid` tuple -> the dfrow the loaders expect."""
+    return pd.Series({"sub": str(sid[0]), "exp": str(sid[1]), "sess": int(sid[2])})
 
 
 # --- distance-bin synchrony collapse ----------------------------------------
@@ -2831,7 +2692,7 @@ def roi_panel(
 
     drawn = [i for i, v in enumerate(data) if v.size >= MIN_SUBJECTS_ROI]
 
-    if style == "box":
+    if style == "box" and drawn:          # boxplot([]) raises in matplotlib >= 3.9
         bp = ax.boxplot([data[i] for i in drawn],
                         positions=[pos[i] for i in drawn],
                         widths=0.62, showfliers=False, patch_artist=True,
@@ -2949,7 +2810,7 @@ def roi_figure(
     plt.close(fig)
 
 
-# --- session dispatch (local / SLURM) ----------------------------------------
+# --- session dispatch ---------------------------------------------------------
 def load_sess_list(
     root_dir_: str, n_sessions: int | None = None,
     n_subjects: int | None = None,
@@ -2984,110 +2845,75 @@ def _sid_str(row: Any) -> str:
         return str(row)
 
 
-def run_sessions_local(
-    fn: Callable[..., Any], sess_list: Sequence[Any], desc: str,
-    collect: bool = False, quiet: bool = False, **kwargs: Any,
-) -> list[Any]:
-    """Run `fn(item, **kwargs)` sequentially in this process.
+def _run_item(args: tuple[Callable[..., Any], Any, dict[str, Any]]) -> tuple[Any, Any, Exception | None]:
+    """One work item in a worker process; the exception is returned, not raised."""
+    fn, item, kwargs = args
+    try:
+        return item, fn(item, **kwargs), None
+    except Exception as e:
+        return item, None, e
 
-    collect=True returns each call's result (failures excluded), for callers
-    whose work returns data rather than writing a file. quiet=True drops the
-    per-item [ok] line, which is noise when there is one line per session and
-    the result is a table.
+
+def run_sessions(
+    fn: Callable[..., Any], sess_list: Sequence[Any], desc: str,
+    workers: int = 1, collect: bool = False, quiet: bool = False, **kwargs: Any,
+) -> list[Any]:
+    """Run `fn(item, **kwargs)` over `sess_list`, `workers` items at a time.
+
+    workers=1 runs in this process; more spreads the items over that many
+    worker processes (`fn` must then be importable, i.e. live in a .py file).
+    A failing item is reported and skipped, never fatal. collect=True returns
+    each call's result (failures excluded), for callers whose work returns data
+    rather than writing a file. quiet=True drops the per-item [ok] line.
     """
     from tqdm.auto import tqdm
+
+    jobs = [(fn, item, kwargs) for item in sess_list]
+    if workers > 1:
+        from concurrent.futures import ProcessPoolExecutor
+        pool = ProcessPoolExecutor(max_workers=min(workers, max(len(jobs), 1)))
+        results: Iterable[Any] = pool.map(_run_item, jobs)
+    else:
+        pool = None
+        results = map(_run_item, jobs)
 
     out: list[Any] = []
     n_ok, n_err = 0, 0
-    pbar = tqdm(sess_list, desc=f"{desc} (local)")
-    for dfrow in pbar:
-        try:
-            msg = fn(dfrow, **kwargs)
+    pbar = tqdm(results, total=len(jobs), desc=f"{desc} ({workers} worker{'s' if workers > 1 else ''})")
+    for item, res, err in pbar:
+        if err is None:
             n_ok += 1
             if collect:
-                out.append(msg)
+                out.append(res)
             elif not quiet:
-                pbar.write(f"[ok] {msg}")
-        except Exception as e:
+                pbar.write(f"[ok] {res}")
+        else:
             n_err += 1
-            pbar.write(f"[error] sess={_sid_str(dfrow)}: {e!r}")
+            pbar.write(f"[error] sess={_sid_str(item)}: {err!r}")
         pbar.set_postfix(ok=n_ok, err=n_err)
-    print(f"[local] done: ok={n_ok}, err={n_err}")
-    return out
-
-
-def run_sessions_cluster(
-    fn: Callable[..., Any], sess_list: Sequence[Any], desc: str,
-    job_name: str, n_workers: int = 100, mem: str = "20GB",
-    walltime: str = "14-00:00:00", cluster_log_dir: str = "cluster",
-    collect: bool = False, **kwargs: Any,
-) -> list[Any]:
-    """Fan `fn(item, **kwargs)` out over SLURM via dask, one task per item.
-
-    collect=True gathers each task's return value (failures excluded) instead of
-    discarding it, for work that produces data rather than writing a file. Keep
-    what a task returns small -- it travels back over the scheduler.
-    """
-    # project_dask_client, not new_dask_client_slurm directly: it also pins
-    # `local_directory` (dask worker scratch/spill), which cmldask otherwise
-    # defaults to $HOME. On this cluster /home1 is NFS and chronically full, so
-    # a big fan-out spilling there is how compute runs die at 3am.
-    from dask_client import project_dask_client
-    from dask.distributed import as_completed
-    from tqdm.auto import tqdm
-
-    os.makedirs(cluster_log_dir, exist_ok=True)
-    client = project_dask_client(
-        job_name, mem, max_n_jobs=min(n_workers, max(len(sess_list), 1)),
-        walltime=walltime, queue="RAM,RAM-GPU",
-        log_directory=cluster_log_dir,
-    )
-    out: list[Any] = []
-    try:
-        futures = client.map(fn, list(sess_list), pure=False, **kwargs)
-        fut_to_row = {f: r for f, r in zip(futures, sess_list)}
-        n_ok, n_err = 0, 0
-        pbar = tqdm(as_completed(futures), total=len(futures),
-                    desc=f"{desc} sessions", smoothing=0.05)
-        for fut in pbar:
-            try:
-                res = fut.result()
-                n_ok += 1
-                if collect:
-                    out.append(res)
-            except Exception as e:
-                n_err += 1
-                print(f"[error] sess={_sid_str(fut_to_row.get(fut))}: {e!r}",
-                      flush=True)
-            pbar.set_postfix(ok=n_ok, err=n_err)
-        print(f"[cluster] done: ok={n_ok}, err={n_err}")
-    finally:
-        client.shutdown()
+    if pool is not None:
+        pool.shutdown()
+    print(f"[{desc}] done: ok={n_ok}, err={n_err}")
     return out
 
 
 def run_compute_stage(
-    fn: Callable[..., str], desc: str, job_name: str, root_dir_: str,
-    local: bool = False, n_sessions: int | None = None,
-    n_subjects: int | None = None, n_workers: int = 100, mem: str = "20GB",
-    walltime: str = "14-00:00:00", cluster_log_dir: str = "cluster",
-    **kwargs: Any,
+    fn: Callable[..., str], desc: str, root_dir_: str,
+    n_sessions: int | None = None, n_subjects: int | None = None,
+    workers: int = 1, **kwargs: Any,
 ) -> None:
-    """Select the sessions and run `fn` over them, locally or on the cluster."""
+    """Select the sessions and run `fn` over them."""
     sess_list = load_sess_list(root_dir_, n_sessions=n_sessions,
                                n_subjects=n_subjects)
     n_subj = len({r["sub"] for r in sess_list})
     print(f"[stage] {len(sess_list)} sessions ({n_subj} subjects)")
-    if local:
-        run_sessions_local(fn, sess_list, desc, **kwargs)
-    else:
-        run_sessions_cluster(fn, sess_list, desc, job_name=job_name,
-                             n_workers=n_workers, mem=mem, walltime=walltime,
-                             cluster_log_dir=cluster_log_dir, **kwargs)
+    if workers > 1:
+        helper.prefetch_bids(sess_list)
+    run_sessions(fn, sess_list, desc, workers=workers, **kwargs)
 
 
-def add_common_args(p: Any, cluster: bool = True) -> Any:
-    """CLI flags shared by the build scripts (paths, subsetting, SLURM)."""
+def add_common_args(p: Any, compute: bool = True) -> Any:
+    """CLI flags shared by the build scripts (paths, subsetting, parallelism)."""
     p.add_argument("--beh", default="word_on", choices=BEHAVIORS,
                    help="contrast (default: word_on). word_on/voc contrast two "
                         "time windows; en/rm contrast two event groups")
@@ -3099,15 +2925,12 @@ def add_common_args(p: Any, cluster: bool = True) -> Any:
                    help="where per-session pickles live; defaults to --root-dir")
     p.add_argument("--n-sessions", type=int, default=None,
                    help="use only the first N sessions")
-    if cluster:
-        p.add_argument("--local", action="store_true",
-                       help="compute sequentially in this process (no dask/SLURM)")
+    if compute:
         p.add_argument("--n-subjects", type=int, default=None,
                        help="compute all sessions of the first K subjects")
-        p.add_argument("--n-workers", type=int, default=100)
-        p.add_argument("--mem", default="20GB")
-        p.add_argument("--walltime", default="14-00:00:00")
-        p.add_argument("--cluster-log-dir", default="cluster")
+        p.add_argument("--workers", type=int, default=1,
+                       help="sessions computed at once in separate processes "
+                            "(1 = in this process); budget a few GB of RAM each")
     return p
 
 
@@ -3118,7 +2941,6 @@ def add_distance_args(p: Any) -> Any:
     p.add_argument("--rmax", type=float, default=110.0)
     p.add_argument("--bin-w", type=float, default=10.0, dest="bin_w")
     p.add_argument("--exclude-same-shank", action="store_true")
-    p.add_argument("--drop-cross-type", action="store_true")
     return p
 
 

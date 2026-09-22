@@ -5,8 +5,8 @@ Phase synchrony per Burke ROI, end to end: compute the phase-FC matrices, then
 collapse them to one score per electrode and draw the 12-ROI figure. Two stages,
 the same shape as build_roi_power.py:
 
-  compute  multitaper phase connectivity for every session (dask/SLURM by
-           default), one pickle per condition:
+  compute  multitaper phase connectivity for every session (--workers N to
+           parallelise), one pickle per condition:
                <save_root>/<beh>/fc_mats/<cond>/<band>/<ftag>_fc_mats.pkl
                {"sid", "reg_full", <metric>: electrode x electrode matrix}
            Layout is identical to the main pipeline's output, so the existing
@@ -65,7 +65,8 @@ session's own electrode mean, which is where 0 sits after the z-score.
 
 Usage:
     python build_roi_synchrony.py                        # compute + plot
-    python build_roi_synchrony.py --local --n-sessions 2 # local smoke test
+    python build_roi_synchrony.py --n-sessions 2         # smoke test
+    python build_roi_synchrony.py --workers 4            # 4 sessions at a time
     python build_roi_synchrony.py --stage plot           # replot from pickles
     python build_roi_synchrony.py --stage compute --band theta_6_12
     python build_roi_synchrony.py --metric plv --beh en
@@ -178,10 +179,8 @@ def run_sess_phase_fc(
     if mat is None:
         return f"{sid}: compute_session_fc returned None"
 
-    localization = helper.get_localization(dfrow)
-    reg_full = helper.regionalize_electrodes_by_type(pairs, localization)
-    sid_tuple = (dfrow["sub"], dfrow["exp"], int(dfrow["sess"]),
-                 int(dfrow["loc"]), int(dfrow["mon"]))
+    reg_full = helper.regionalize_electrodes_by_type(pairs)
+    sid_tuple = (dfrow["sub"], dfrow["exp"], int(dfrow["sess"]))
 
     written, empty = 0, []
     for cond in conds:
@@ -206,7 +205,7 @@ def run_sess_phase_fc(
 # ------------------------------- plot stage ----------------------------------
 def collect_electrode_table(
     save_root: str, beh: str, band: str, metric: str, edges: np.ndarray,
-    rmin: float, rmax: float, exclude_same_shank: bool, drop_cross_type: bool,
+    rmin: float, rmax: float, exclude_same_shank: bool,
     n_sessions: int | None, lobe_of: dict[str, str],
 ) -> pd.DataFrame:
     """Per (subject, electrode): collapsed synchrony in each condition.
@@ -237,7 +236,6 @@ def collect_electrode_table(
             f"python build_roi_synchrony.py --stage compute --beh {beh} "
             f"--band {band}")
 
-    mni_cache_dir = join(save_root, fc.MNI_CACHE_SUBDIR)
     cols = list(conds.values())
     rows = []
 
@@ -260,7 +258,7 @@ def collect_electrode_table(
         dfrow = fc.dfrow_from_sid(mats[hi_cond]["sid"])
         sub = str(dfrow["sub"])
         try:
-            xyz, lead, is_depth = fc.pair_xyz_lead(dfrow, mni_cache_dir)
+            xyz, lead = fc.pair_xyz_lead(dfrow)
         except Exception as e:
             print(f"[skip] {f.name}: get_pairs failed ({e!r})")
             continue
@@ -270,7 +268,7 @@ def collect_electrode_table(
         n_ch = xyz.shape[0]
         roi = fc.roi_of_reg_full(mats[hi_cond]["reg_full"], lobe_of)
         iu, dist, keep = fc.pair_distance_mask(
-            xyz, lead, is_depth, rmin, rmax, exclude_same_shank, drop_cross_type)
+            xyz, lead, rmin, rmax, exclude_same_shank)
 
         sync = {}
         for cond in conds:
@@ -305,7 +303,7 @@ def run_plot_stage(
     lobe_of = fc.load_burke_maps()
     elec_df = collect_electrode_table(
         save_root, beh, band, metric, edges, args.rmin, args.rmax,
-        args.exclude_same_shank, args.drop_cross_type, args.n_sessions, lobe_of)
+        args.exclude_same_shank, args.n_sessions, lobe_of)
     tbl = fc.subject_roi_means(elec_df, MEASURE_KEYS,
                                min_electrodes=args.min_electrodes)
     print(f"[collect] {elec_df['sub'].nunique()} subjects, "
@@ -395,11 +393,9 @@ def main() -> None:
 
     if args.stage in ("compute", "both"):
         fc.run_compute_stage(
-            run_sess_phase_fc, desc="phase FC", job_name="phase_fc",
-            root_dir_=root_dir, local=args.local, n_sessions=args.n_sessions,
-            n_subjects=args.n_subjects, n_workers=args.n_workers, mem=args.mem,
-            walltime=args.walltime, cluster_log_dir=args.cluster_log_dir,
-            save_root=save_root, beh=args.beh, band=args.band,
+            run_sess_phase_fc, desc="phase FC", root_dir_=root_dir,
+            n_sessions=args.n_sessions, n_subjects=args.n_subjects,
+            workers=args.workers, save_root=save_root, beh=args.beh, band=args.band,
             metrics=tuple(args.metrics), root_dir=root_dir)
 
     if args.stage in ("plot", "both"):

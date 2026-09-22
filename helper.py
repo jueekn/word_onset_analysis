@@ -1,11 +1,11 @@
 """helper.py — core IO / signal-processing / FC-orchestration toolkit.
 
-The widest-reach module in the repo. Reads CML / PTSA events + EEG, applies
-notch-filter and mirror-buffer prep, builds bipolar pairs, runs Morlet phase
-or power filtering, time-bins, regionalizes electrode-level results, and
-orchestrates per-session FC pipelines.
+The widest-reach module in the repo. Reads BIDS events + EEG (OpenNeuro via
+cml_data + bidsreader), applies notch-filter and mirror-buffer prep, builds
+bipolar pairs, runs Morlet phase or power filtering, time-bins, regionalizes
+electrode-level results, and orchestrates per-session FC pipelines.
 
-This file is dominated by pandas method chains + ptsa + cmlreaders +
+This file is dominated by pandas method chains + ptsa + bidsreader +
 mne_connectivity + matplotlib pyplot calls — third-party stubs are weak
 across all of them. Narrow `reportUnknownMemberType` and friends to warning
 at the file level so the strict-mode signal we DO want (missing annotations,
@@ -15,14 +15,13 @@ unbound vars, real type drift across our own functions) still surfaces.
 from __future__ import annotations
 
 import functools
+import warnings
 from typing import Any, Sequence
 
 import numpy as np
 import numpy.typing as npt
-import os
 from pathlib import Path
 
-import cmlreaders as cml  # noqa: F401  # pyright: ignore[reportMissingTypeStubs]
 from os.path import join, exists as ex
 
 import pandas as pd
@@ -30,8 +29,7 @@ import xarray as xr  # pyright: ignore[reportMissingTypeStubs]
 
 import ptsa_patches as _ptsa_patches  # noqa: F401 — applies monkey-patches on import; must precede ptsa.* imports below
 _ = _ptsa_patches
-from ptsa.data.readers import EEGReader, TalReader  # pyright: ignore[reportMissingTypeStubs]
-from ptsa.data.filters import MonopolarToBipolarMapper, MorletWaveletFilter  # pyright: ignore[reportMissingTypeStubs]
+from ptsa.data.filters import MorletWaveletFilter  # pyright: ignore[reportMissingTypeStubs]
 from ptsa.data.timeseries import TimeSeries  # pyright: ignore[reportMissingTypeStubs]
 
 
@@ -99,7 +97,7 @@ def load_events(dfrow: pd.Series, beh: str) -> pd.DataFrame:
     
     '''
     Loads behavioral events for a particular experimental session and behavioral contrast.
-    Requires that the events data and metadata file have already been saved out (see the "Get behavioral events" section in WholeBrainConnectivityPPCRevision.ipynb).
+    Written by load_events.get_events (prepare_sessions stage 2).
     
     Parameters:
         dfrow : pandas.Series
@@ -123,76 +121,71 @@ def load_events(dfrow: pd.Series, beh: str) -> pd.DataFrame:
     return events
 
 
-def _load_cmlreaders_eeg_with_retry(
-    reader: Any,
-    events: pd.DataFrame,
-    start: int,
-    end: int,
-    pairs: pd.DataFrame,
-    sess_tag: str,
-    n_retries: int = 12,
-    backoff_s: float = 5.0,
-) -> Any:
-    """Wrap `reader.load_eeg(...)` with retry-on-FileNotFoundError.
+def bids_reader(dfrow: pd.Series, eeg: bool = True) -> Any:
+    """`CMLBIDSReader` for a session, fetching the session's BIDS files from
+    OpenNeuro on first use (cml_data caches them under CML_BIDS_CACHE).
+    eeg=False fetches only the events / channel / electrode tables."""
+    from bidsreader import CMLBIDSReader
+    from cml_data import get_bids_root
 
-    Penn cluster compute nodes occasionally return FileNotFoundError from
-    cmlreaders' params-resolution step on the FIRST access to a session
-    directory under /data/eeg/<sub>/, even though the file exists on the
-    underlying disk (autofs/NFS mount race). A short fixed-interval poll
-    with a directory-stat flush between attempts clears the race in
-    every case observed so far.
+    sub, exp, sess = dfrow['sub'], dfrow['exp'], int(dfrow['sess'])
+    root = get_bids_root(exp, subject=sub, session=sess,
+                         include_timeseries=eeg, acquisition=BIDS_ACQUISITION)
+    return CMLBIDSReader(root=root, subject=sub, task=exp, session=str(sess))
 
-    n_retries=12 × backoff_s=5 → up to ~60 s of polling per session.
+
+def prefetch_bids(dfrows: Sequence[pd.Series], eeg: bool = True) -> None:
+    """Download every listed session's BIDS files up front (one approval),
+    so parallel workers find everything cached."""
+    from cml_data import prefetch
+
+    for (exp, sub), rows in pd.DataFrame(list(dfrows)).groupby(['exp', 'sub']):
+        prefetch(str(exp), [str(sub)], sorted(set(int(s) for s in rows['sess'])),
+                 include_timeseries=eeg, acquisition=BIDS_ACQUISITION)
+
+
+# Bipolar pairs are the analysis channels throughout.
+BIDS_ACQUISITION: str = 'bipolar'
+# BIDS electrode `description` -> the single-letter electrode type the
+# regionalization cascade keys on (volumetric atlases for depths, surface for
+# grid/strip).
+_BIDS_ELECTRODE_TYPE = {'depth': 'D', 'grid': 'G', 'strip': 'S'}
+
+
+def load_pairs_table(reader: Any) -> pd.DataFrame:
+    """The session's bipolar-pair table in the column vocabulary the rest of the
+    pipeline reads (`label`, `type_1/2`, `mni.x/y/z`, `<atlas>.region`, ...).
+
+    Built from `CMLBIDSReader.load_combined_channels`, which joins the bipolar
+    channels.tsv with the electrodes.tsv of both contacts (`*_ch1` / `*_ch2`)
+    and gives the pair centroid as `*_mid` (MNI152NLin6ASym). The BIDS export
+    has no pair-level atlas lookup (cmlreaders' pairs.json looked the atlas up
+    at the pair midpoint), so a pair takes a contact's label: contact 1's, or
+    contact 2's when contact 1 has none -- the either-contact rule the
+    COGS4290 CML-vs-BIDS checks validated against pairs.json. `distance` is the
+    inter-contact distance in that space. Row order is the recording's channel
+    order, which `get_eeg` relies on.
     """
-    import time
-    last_err: Exception | None = None
-    for attempt in range(n_retries):
-        try:
-            return reader.load_eeg(events, start, end, scheme=pairs)
-        except FileNotFoundError as e:
-            last_err = e
-            # Stat the parent dirs to force autofs to mount/refresh, then sleep.
-            eegfile = str(events['eegfile'].iloc[0]) if 'eegfile' in events.columns and len(events) else ''
-            for d in (eegfile, os.path.dirname(eegfile),
-                      os.path.dirname(os.path.dirname(eegfile))):
-                if d:
-                    try: os.stat(d)
-                    except Exception: pass
-            print(f"[{sess_tag}] cmlreaders FileNotFoundError "
-                  f"(attempt {attempt+1}/{n_retries}); retrying in {backoff_s}s")
-            time.sleep(backoff_s)
-    assert last_err is not None
-    raise last_err
-
-
-def _event_cell_is_list(v: object) -> bool:
-    return isinstance(v, list)
-
-
-def _coerce_event_cell(v: object) -> object:
-    """Empty list -> "" (no item); any other list -> str repr; else unchanged."""
-    if isinstance(v, list):
-        return "" if not v else str(v)
-    return v
-
-
-def coerce_unhashable_event_fields(events: pd.DataFrame) -> None:
-    """Replace list-valued event cells with a hashable scalar, in place.
-
-    cmlreaders' ``to_ptsa()`` factorizes the event columns into the event-dim
-    MultiIndex, which raises ``TypeError: unhashable type: 'list'`` on any
-    list-valued cell. pyFR intrusion vocalizations carry ``item == []`` (an
-    empty list, i.e. no recalled dictionary word), so the ``voc`` contrast —
-    which keeps all vocalizations including intrusions — trips this while
-    ``rm`` (correct matched recalls only) does not. Coerce: empty list -> ""
-    (no item), any other list -> its string repr. Non-list cells untouched.
-    Operates only on object-dtype columns that actually contain a list.
-    """
-    for col in events.columns:
-        if events[col].dtype != object:
-            continue
-        if events[col].map(_event_cell_is_list).any():
-            events[col] = events[col].map(_coerce_event_cell)
+    t = reader.load_combined_channels(acquisition=BIDS_ACQUISITION)
+    pairs = pd.DataFrame({
+        'label': t['name'].astype(str),
+        'contact_label_1': t['ch1'].astype(str),
+        'contact_label_2': t['ch2'].astype(str),
+    })
+    etype = t['description'].astype(str).str.lower().map(_BIDS_ELECTRODE_TYPE)
+    pairs['type_1'] = pairs['type_2'] = etype.fillna('nan')
+    for ax in 'xyz':
+        pairs[f'mni.{ax}'] = pd.to_numeric(t[f'{ax}_mid'], errors='coerce')
+    c1 = t[['x_ch1', 'y_ch1', 'z_ch1']].apply(pd.to_numeric, errors='coerce').to_numpy(float)
+    c2 = t[['x_ch2', 'y_ch2', 'z_ch2']].apply(pd.to_numeric, errors='coerce').to_numpy(float)
+    pairs['distance'] = np.linalg.norm(c1 - c2, axis=1)
+    for atlas in ('stein.region', 'wb.region', 'ind.region'):
+        a = t.get(f'{atlas}_ch1', pd.Series(np.nan, index=t.index)).replace('n/a', np.nan)
+        b = t.get(f'{atlas}_ch2', pd.Series(np.nan, index=t.index)).replace('n/a', np.nan)
+        pairs[atlas] = a.fillna(b).fillna('nan').astype(str)
+    x = pairs['mni.x']
+    pairs['hemisphere'] = np.where(x < 0, 'L', np.where(x > 0, 'R', 'nan'))
+    return pairs
 
 
 def get_eeg(
@@ -201,7 +194,7 @@ def get_eeg(
     start: int,
     end: int,
     simulation_tag: str | None = None,
-) -> TimeSeries:
+) -> tuple[TimeSeries, NDArrayAny]:
     
     '''
     Returns EEG signal for a particular session and set of behavioral events.
@@ -220,128 +213,61 @@ def get_eeg(
     
     Returns:
         eeg : ptsa.data.TimeSeries
-            EEG clip.
+            EEG clip (event x channel x time), in microvolts, time in ms.
+            Channels are the session's bipolar pairs in `get_pairs` order.
         numpy.array
             List of boolean variables indicating whether the event was a successful memory event (True) or an unsuccessful memory event (False).
+            Events whose clip would run off either end of the recording are
+            dropped from BOTH outputs (reported on stdout).
     '''
-    
-    sub, exp, sess, loc, mon = dfrow[['sub', 'exp', 'sess', 'loc', 'mon']]
-    sess_list_df = pd.read_json(join(root_dir, 'sess_list_df.json'))
-    sess_list_df.set_index(['sub', 'exp', 'sess', 'loc', 'mon'], inplace=True)
-    eeg_data_source = sess_list_df.loc[(sub, exp, sess, loc, mon), 'eeg_data_source']
-    
-    events['event_idx'] = np.arange(len(events))
-    events.sort_values(by=['mstime', 'eegoffset'], inplace=True)
-    events.attrs['mask'] = events.attrs['mask'][events['event_idx']]
-    events.drop('event_idx', axis=1, inplace=True)
+    import mne
 
-    # pyFR intrusion vocalizations carry list-valued `item` ([]), which breaks
-    # cmlreaders' to_ptsa() event-index factorization. Coerce to a hashable
-    # scalar before the EEG load so both loader branches are safe.
-    coerce_unhashable_event_fields(events)
+    # mask is positional over `events`; keep it aligned through the time sort.
+    sr_expected = events.attrs.get('sr')
+    mask = np.asarray(events.attrs['mask'], dtype=bool)
+    events = events.reset_index(drop=True).sort_values(by=['mstime', 'eegoffset'], kind='stable')
+    mask = mask[events.index.to_numpy()]
 
-    if eeg_data_source == 'cmlreaders':
-        reader = cml.CMLReader(subject=sub,
-                               experiment=exp,
-                               session=sess,
-                               localization=loc,
-                               montage=mon)
-        pairs = get_pairs(dfrow)
-        eeg = _load_cmlreaders_eeg_with_retry(reader, events, start, end, pairs,
-                                              ftag(dfrow))
-        # Workaround cmlreaders' float-rounding bug in _make_time_array:
-        # for some session sample rates (e.g. sr=499.7071 → rate=2.001172 ms)
-        # `np.arange(start, n*rate+start, rate)` accumulates enough FP error
-        # to include one extra element, producing a time coord of length n+1
-        # for data of length n. Without this, to_ptsa() below raises a
-        # `conflicting sizes for dimension 'time'` ValueError and the session
-        # is dropped. Rebuild the time array using integer-arange.
-        n_t = eeg.data.shape[-1]
-        rate_ms = 1000.0 / eeg.samplerate
-        eeg.time = eeg.time[0] + np.arange(n_t) * rate_ms
-        eeg = eeg.to_ptsa()
+    raw = bids_reader(dfrow).load_raw(acquisition=BIDS_ACQUISITION)
+    labels = list(get_pairs(dfrow)['label'].astype(str))
+    missing = sorted(set(labels) - set(raw.ch_names))
+    if missing:
+        raise ValueError(f'{ftag(dfrow)}: pairs.json channels absent from the recording: {missing}')
+    raw.pick(labels)                                   # also orders the channels
+    sr = float(raw.info['sfreq'])
+    samples = events['eegoffset'].to_numpy(dtype=int)
+    # Epoch each distinct onset once (MNE refuses repeated samples), then expand
+    # back: the same onset can appear twice, e.g. WORD + its PRE_WORD copy.
+    uniq, inverse = np.unique(samples, return_inverse=True)
+    mne_events = np.column_stack([uniq, np.zeros(len(uniq), int), np.ones(len(uniq), int)])
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        epochs = mne.Epochs(raw, mne_events, tmin=start / 1000.0, tmax=end / 1000.0,
+                            baseline=None, preload=True, verbose=False)
+    row_of = {u: i for i, u in enumerate(epochs.selection)}     # uniq index -> epoch row
+    kept = np.array([i for i, u in enumerate(inverse) if u in row_of], dtype=int)
+    if len(kept) < len(samples):
+        print(f'[{ftag(dfrow)}] {len(samples) - len(kept)} of {len(samples)} events dropped '
+              f'(clip runs off the recording)')
+    mask = mask[kept]
+    # MNE reads volts; the pipeline has always worked in microvolts.
+    data = epochs.get_data()[[row_of[inverse[i]] for i in kept]] * 1e6
+    eeg = TimeSeries.create(data, sr, dims=('event', 'channel', 'time'),
+                            coords={'event': np.arange(len(kept)), 'channel': labels,
+                                    'time': epochs.times * 1000.0})
 
-    elif eeg_data_source == 'ptsa':
-        # get_ptsa_eeg normalizes its time coord to ms by default so the
-        # two loaders return matching units. Without that normalization,
-        # downstream time-axis masks like `(t <= -50)` silently produced
-        # empty selections on PTSA sessions and dropped ~3% of the dataset.
-        eeg = get_ptsa_eeg(dfrow, events, start, end)
-    else:
-        raise ValueError(f"Unknown eeg_data_source {eeg_data_source} for session {ftag(dfrow)}")
-
-    sr = float(eeg.samplerate)
-    if 'sr' in events.attrs:
-        assert events.attrs['sr'] == sr, 'sampling rate is wrong'
-
-    dim_map = {}
-    if 'events' in eeg.dims: dim_map['events'] = 'event'
-    if 'channels' in eeg.dims: dim_map['channels'] = 'channel'
-    eeg = eeg.rename(dim_map)
-    eeg = eeg.transpose('event', 'channel', 'time')
+    if sr_expected is not None:
+        assert float(sr_expected) == sr, f'sampling rate is wrong: events say {sr_expected}, recording is {sr}'
 
     if simulation_tag not in ['standard', '', None]:
         # replace experimentally recorded EEG with simulated EEG to validate analysis pipeline
         eeg = replace_w_simulated_EEG(eeg,
                                       dfrow,
-                                      eeg_data_source=eeg_data_source,
                                       time_unit='millisecond',
-                                      condition_mask=events.attrs['mask'],
+                                      condition_mask=mask,
                                       simulation_tag=simulation_tag)
     
-    return eeg, events.attrs['mask']
-
-def get_ptsa_eeg(
-    dfrow: pd.Series,
-    events: pd.DataFrame,
-    start: int,
-    end: int,
-    normalize_time_to_ms: bool = True,
-) -> TimeSeries:
-
-    '''
-    Returns EEG signal for a particular session and set of behavioral events, using the ptsa readers. Used to load EEG for pyFR experimental sessions whose data could not be loaded with cmlreaders.
-
-    Parameters:
-        dfrow : pandas.Series
-            Session label.
-        events : pandas.DataFrame
-            Behavioral events.
-        start : float
-            Time (ms) at which returned EEG clip should begin, relative to a particular event.
-        end : float
-            Time (ms) at which returned EEG clip should end, relative to a particular event.
-        normalize_time_to_ms : bool
-            PTSA's EEGReader returns the time coord in seconds. When True
-            (default), the time coord is converted to milliseconds so
-            downstream consumers can use a single unit across both loaders.
-            Pass False to preserve the native seconds coord.
-
-    Returns:
-        eeg : ptsa.data.TimeSeries
-            EEG clip.
-    '''
-
-    sub, exp, sess, loc, mon = dfrow[['sub', 'exp', 'sess', 'loc', 'mon']]
-    mon_ = '' if mon==0 else f'_{mon}' #for tal_reader path name
-
-    events = events.to_records()
-    tal_reader = TalReader(filename=f'/data/eeg/{sub}{mon_}/tal/{sub}{mon_}_talLocs_database_bipol.mat')
-    channels = tal_reader.get_monopolar_channels()
-    eeg = EEGReader(events=events, channels=channels,
-                    start_time=start/1000, end_time=end/1000).read()
-
-    bipolar_pairs = tal_reader.get_bipolar_pairs()
-    pairs = get_pairs(dfrow)
-    pair_tuples_select = [tuple((int(pair[0]), int(pair[1]))) for pair in pairs[['contact_1', 'contact_2']].values]
-    bipolar_pairs = np.asarray([pair for pair in bipolar_pairs if tuple((int(pair[0]), int(pair[1]))) in pair_tuples_select], dtype=[('ch0', 'S3'), ('ch1', 'S3')]).view(np.recarray)
-    mapper= MonopolarToBipolarMapper(bipolar_pairs=bipolar_pairs)
-    eeg = mapper.filter(timeseries=eeg)
-
-    if normalize_time_to_ms:
-        eeg = eeg.assign_coords(time=eeg.time * 1000.0)
-
-    return eeg
+    return eeg, mask
 
 def get_beh_eeg(
     dfrow: pd.Series,
@@ -569,7 +495,7 @@ def get_pairs(dfrow: pd.Series) -> pd.DataFrame | None:
     
     '''
     Returns the bipolar electrode pairs data for a session.
-    Requires that the bipolar electrode pairs data have been already saved out (see 'Check data availability' section in WholeBrainConnectivityPPCRevision.ipynb). 
+    Written by data_check.check_eeg (prepare_sessions stage 1).
     
     Parameters:
         dfrow : pandas.Series
@@ -585,33 +511,11 @@ def get_pairs(dfrow: pd.Series) -> pd.DataFrame | None:
     if ex(path): return pd.read_json(path).fillna('nan')
     else: return None
 
-def get_localization(dfrow: pd.Series) -> pd.DataFrame | None:
-    
-    '''
-    Returns the localization data for a session. Requires that the localization data have already been saved out (see the 'Check data availability' section in WholeBrainConnectivityPPCRevision.ipynb). 
-    
-    Parameters:
-        dfrow : pandas.Series
-            Session label.
-    
-    Returns:
-        localization : pandas.DataFrame
-            Localization data.
-    '''
-    
-    path = join(root_dir, 'electrode_information', 'localization', f'{ftag(dfrow)}_localization.json')
-    if ex(path): localization = pd.read_json(path).fillna('nan')
-    else: return []
-    localization['level_1'] = localization.apply(lambda r: tuple(r['level_1']) if isinstance(r['level_1'], list) else r['level_1'], axis=1)
-    localization = localization.set_index(['level_0', 'level_1']).rename_axis([None, None], axis='index')
-    
-    return localization
-
 def get_sr(dfrow: pd.Series) -> float:
     
     '''
     Returns the sampling rate of a session.
-    Requires that the localization data have been already saved out in the session list DataFrame (see 'Check data availability' section in WholeBrainConnectivityPPCRevision.ipynb). 
+    Read from sess_list_df_data_check.json (written by prepare_sessions stage 1).
     
     Parameters:
         dfrow : pandas.Series
@@ -622,12 +526,10 @@ def get_sr(dfrow: pd.Series) -> float:
             Sampling rate.
     '''
     
-    sub, exp, sess, loc, mon = dfrow[['sub', 'exp', 'sess', 'loc', 'mon']]
+    sub, exp, sess = dfrow[['sub', 'exp', 'sess']]
     sess_list_df = pd.read_json(join(root_dir, 'sess_list_df_data_check.json'))
-    sess_list_df.set_index(['sub', 'exp', 'sess', 'loc', 'mon'], inplace=True)
-    sr = sess_list_df.loc[(sub, exp, sess, loc, mon), 'sr']
-    
-    return sr
+    sess_list_df.set_index(['sub', 'exp', 'sess'], inplace=True)
+    return float(sess_list_df.loc[(sub, exp, int(sess)), 'sr'])
 
 def find_overlapping_pairs(pairs: pd.DataFrame) -> set[tuple[int, int]]:
     
@@ -647,8 +549,8 @@ def find_overlapping_pairs(pairs: pd.DataFrame) -> set[tuple[int, int]]:
     # then enumerate (i, j) in row-major order to match the legacy Python
     # double-loop output (diagonal self-pairs included — see test_helper
     # ``TestFindOverlappingPairs`` for the pinned behavior).
-    c1 = pairs["contact_1"].to_numpy()
-    c2 = pairs["contact_2"].to_numpy()
+    c1 = pairs["contact_label_1"].to_numpy()
+    c2 = pairs["contact_label_2"].to_numpy()
     n = len(pairs)
     if n == 0:
         return []
@@ -734,284 +636,64 @@ def get_region_information(key: str | None = None) -> Any:
     return region_lists[key] if key is not None else region_lists
 
 
-# --- Vectorized helpers backing get_atlas_labels / get_atlas_labels_by_type ---
+# --- Atlas-label cascade -----------------------------------------------------
 
-# Sentinel tokens compared case-insensitively against the per-cell string.
-_ATLAS_SENTINEL_TOKENS = frozenset({
-    'nan', '[nan]', 'none', 'unknown', 'misc', '', ' ', 'left tc', '*',
+# Cells compared case-insensitively against these are "no label".
+_SENTINEL_TOKENS = frozenset({
+    'nan', '[nan]', 'none', 'unknown', 'misc', 'n/a', '', ' ', 'left tc', '*',
 })
 
-# Talairach atlas columns trigger a substring-based carve-out: if the per-cell
-# string contains any of these labels, treat the cell as missing.
-_ATLAS_TAL_COLS = frozenset({'tal.region', 'mat.tal.region'})
-_ATLAS_TAL_UNRELIABLE = ('Parahippocampal Gyrus', 'Uncus',
-                         'Lentiform Nucleus', 'Caudate', 'Thalamus')
+# Atlas priority per electrode type. The BIDS electrode tables carry three
+# atlases: stein (MTL-specific, best when present), wb (whole-brain volumetric)
+# and ind (individual FreeSurfer surface). Depths get the volumetric cascade,
+# grids/strips the surface one.
+_VOLUMETRIC_ATLASES = ['stein.region', 'wb.region']
+_SURFACE_ATLASES = ['stein.region', 'ind.region']
+_ALL_ATLASES = ['stein.region', 'wb.region', 'ind.region']
 
 
-def _column_string_and_validity(
-    col_values: pd.Series, atlas: str,
+def _label_cascade(
+    pairs: pd.DataFrame, atlases: Sequence[str],
 ) -> tuple[np.ndarray, np.ndarray]:
-    """For one atlas column, return (string-view, validity-mask) numpy arrays.
-
-    String view: per-cell `str(value)` (matches the original
-    `str(pair[atlas])`). Validity mask: True iff the cell is a usable atlas
-    label (non-sentinel, plus the Talairach substring carve-out).
-    """
-    raw = col_values.to_numpy()
-    # Per-cell str() — same as the original `str(pair[atlas])`. We do this in
-    # plain Python because the values may be a mix of str / float-NaN / etc.,
-    # which pandas' .astype(str) handles but at a much higher overhead than
-    # a list comprehension on the underlying ndarray.
-    str_arr = np.array([str(v) for v in raw], dtype=object)
-    # Lowercase once via the same list comprehension pattern.
-    lower_arr = np.array([s.lower() for s in str_arr], dtype=object)
-    not_sentinel = ~np.isin(lower_arr, list(_ATLAS_SENTINEL_TOKENS))
-    if atlas in _ATLAS_TAL_COLS:
-        # Substring carve-out: True ⇔ cell contains one of the unreliable labels.
-        # np.char.find expects unicode arrays; cast just for this op.
-        s_unicode = str_arr.astype(str)
-        bad = np.zeros(len(s_unicode), dtype=bool)
-        for label in _ATLAS_TAL_UNRELIABLE:
-            bad |= (np.char.find(s_unicode, label) >= 0)
-        not_sentinel &= ~bad
-    return str_arr, not_sentinel
-
-
-def _vectorized_label_cascade(
-    pairs: pd.DataFrame,
-    atlases: Sequence[str],
-) -> tuple[np.ndarray, np.ndarray]:
-    """Vectorized atlas-priority cascade.
-
-    For each row, returns the value (as a string) of the highest-priority
-    column in `atlases` whose cell passes the sentinel + Talairach carve-out
-    checks, plus the source atlas name. Rows with no valid column get the
-    ('nan', 'no atlas') sentinel — matching the original `label_pair` return.
-    """
+    """For each row, the value of the highest-priority atlas column in `atlases`
+    that is not a sentinel, plus that column's name; ('nan', 'no atlas') when
+    none is."""
     n = len(pairs)
-    if n == 0 or len(atlases) == 0:
-        return (
-            np.array(['nan'] * n, dtype=object),
-            np.array(['no atlas'] * n, dtype=object),
-        )
-
-    # Stack per-column string views and validity masks. Column j == priority j.
-    str_cols: list[np.ndarray] = []
-    valid_cols: list[np.ndarray] = []
-    for atlas in atlases:
-        s_arr, valid = _column_string_and_validity(pairs[atlas], atlas)
-        str_cols.append(s_arr)
-        valid_cols.append(valid)
-
-    valid = np.stack(valid_cols, axis=1)  # (n_rows, n_atlases)
-    has_any = valid.any(axis=1)
-    # argmax on a boolean row returns the index of the first True (priority
-    # winner). On all-False rows, returns 0 — we mask those out below.
-    first_idx = valid.argmax(axis=1)
-
-    # Gather the chosen string per row.
-    str_mat = np.stack(str_cols, axis=1)  # (n_rows, n_atlases)
-    chosen_label = str_mat[np.arange(n), first_idx]
-    atlas_arr = np.array(atlases, dtype=object)
-    chosen_source = atlas_arr[first_idx]
-
-    labels_out = np.where(has_any, chosen_label, 'nan').astype(object)
-    sources_out = np.where(has_any, chosen_source, 'no atlas').astype(object)
-    return labels_out, sources_out
+    atlases = [a for a in atlases if a in pairs.columns]
+    labels = np.array(['nan'] * n, dtype=object)
+    source = np.array(['no atlas'] * n, dtype=object)
+    for atlas in reversed(atlases):          # highest priority wins: assign it last
+        vals = pairs[atlas].astype(str).to_numpy()
+        ok = ~np.isin(np.char.lower(vals.astype(str)), list(_SENTINEL_TOKENS))
+        labels[ok] = vals[ok]
+        source[ok] = atlas
+    return labels, source
 
 
-def _merge_localization_columns(
-    pairs: pd.DataFrame,
-    localization: pd.DataFrame,
-) -> pd.DataFrame:
-    """Vectorized counterpart of the per-row `.apply` block that injects
-    `atlases.mtl` / `atlases.dk` / `atlases.whole_brain` from `localization`
-    onto `pairs`. Mutates `pairs` in place (matches existing behavior) and
-    returns the reshaped localization DataFrame so callers can chain.
-    """
-    localization = localization.loc['pairs'].reset_index()
-    # Vectorized 'c1-c2' label assembly (was a per-row .apply).
-    # `localization['index']` is a column of (c1, c2) tuples; unpack with
-    # numpy string concat (np.char.add handles heterogeneous numpy str dtypes
-    # that the `+` operator rejects).
-    idx_arr = np.asarray(localization['index'].tolist())
-    left = idx_arr[:, 0].astype(str)
-    right = idx_arr[:, 1].astype(str)
-    localization['label'] = np.char.add(np.char.add(left, '-'), right)
-    localization = localization.set_index('label')
-    # Drop duplicate labels so .map() doesn't raise on a non-unique index.
-    localization = localization[~localization.index.duplicated(keep='first')]
-    for col in ['atlases.mtl', 'atlases.dk', 'atlases.whole_brain']:
-        # Original per-row .apply unconditionally overwrites pairs[col] — NaN
-        # when the label is missing from localization or the column is absent.
-        if col in localization.columns:
-            pairs[col] = pairs['label'].map(localization[col])
-        else:
-            pairs[col] = np.nan
-    return localization
-
-
-def get_atlas_labels(pairs: pd.DataFrame, localization: pd.DataFrame | None) -> pd.DataFrame:
-    
-    '''
-    Returns the label from the best available brain region atlas for a session's electrode channels.
-    
-    Parameters:
-        pairs : pandas.DataFrame
-            Bipolar electrode pairs data.
-        localization : pandas.DataFrame
-            Localization data.
-    
-    Returns:
-        pandas.DataFrame
-            Table of bipolar electrode pairs, their best atlas label, and the atlases from which those labels were taken.
-    '''
-    
-    if localization is not None and len(localization) > 0:
-        localization = _merge_localization_columns(pairs, localization)
-
-    _PRIORITY = ['stein.region', 'das.region', 'atlases.mtl', 'atlases.whole_brain',
-                 'wb.region', 'mni.region', 'atlases.dk', 'dk.region',
-                 'ind.corrected.region', 'mat.ind.corrected.region',
-                 'ind.snap.region', 'mat.ind.snap.region',
-                 'ind.dural.region', 'mat.ind.dural.region',
-                 'ind.region', 'mat.ind.region',
-                 'avg.corrected.region', 'avg.mat.corrected.region',
-                 'avg.snap.region', 'avg.mat.snap.region',
-                 'avg.dural.region', 'avg.mat.dural.region',
-                 'avg.region', 'avg.mat.region',
-                 'mat.tal.region']
-    atlases = [c for c in _PRIORITY if c in pairs.columns]
-
-    labels_arr, source_arr = _vectorized_label_cascade(pairs, atlases)
-    pairs['atlas_label'] = labels_arr
-    pairs['atlas'] = source_arr
-    return pairs.rename({'label': 'pair_label'}, axis=1)[['pair_label', 'atlas_label', 'atlas']]
-
-_VOLUMETRIC_ATLASES = [
-    'stein.region', 'das.region',
-    'atlases.mtl', 'atlases.whole_brain', 'wb.region',
-    'mni.region',
-    'mat.tal.region',
-]
-
-_SURFACE_ATLASES = [
-    'stein.region', 'das.region',
-    'atlases.dk', 'dk.region',
-    'ind.corrected.region', 'mat.ind.corrected.region',
-    'ind.snap.region',      'mat.ind.snap.region',
-    'ind.dural.region',     'mat.ind.dural.region',
-    'ind.region',           'mat.ind.region',
-    'avg.corrected.region', 'avg.mat.corrected.region',
-    'avg.snap.region',      'avg.mat.snap.region',
-    'avg.dural.region',     'avg.mat.dural.region',
-    'avg.region',           'avg.mat.region',
-]
-
-_SENTINEL_TOKENS = {'nan', '[nan]', 'none', 'unknown', 'misc', '', ' ', 'left tc', '*'}
-
-_TAL_UNRELIABLE = {'Parahippocampal Gyrus', 'Uncus', 'Lentiform Nucleus', 'Caudate', 'Thalamus'}
-
-# Atlas columns that exist ONLY in cmlreaders-modern pairs.json (post-2014ish).
-# pyFR data has Loc1..Loc5 + mat.{ind,avg,tal}.region, but none of these
-# unprefixed-or-`atlases.`-prefixed atlas columns. Used to disambiguate
-# "type_1 missing because pyFR" from "type_1 missing because corrupt data".
-_MODERN_ONLY_ATLAS_COLS = {
-    'stein.region', 'das.region', 'atlases.mtl', 'atlases.whole_brain', 'wb.region',
-    'mni.region', 'atlases.dk', 'dk.region',
-    'ind.region', 'ind.corrected.region', 'ind.snap.region', 'ind.dural.region',
-    'avg.region', 'avg.corrected.region', 'avg.snap.region', 'avg.dural.region',
-}
-
-
-def _label_pair_by_type(pair: pd.Series, atlases: Sequence[str]) -> tuple[str, str]:
-    """Apply the sentinel filter + Talairach carve-out on `atlases` for one
-    pair. Returns ('atlas_label', 'atlas_source') or ('nan', 'no atlas')
-    when no entry survives."""
-    for atlas in atlases:
-        if atlas not in pair.index:
-            continue
-        test_region = str(pair[atlas])
-        if atlas in ('tal.region', 'mat.tal.region') and any(
-            unreliable in test_region for unreliable in _TAL_UNRELIABLE
-        ):
-            continue
-        if test_region.lower() not in _SENTINEL_TOKENS:
-            return test_region, atlas
-    return 'nan', 'no atlas'
-
-
-def get_atlas_labels_by_type(
-    pairs: pd.DataFrame,
-    localization: pd.DataFrame | None,
-) -> pd.DataFrame:
-    """Type-aware atlas labeling. Each pair is routed to the volumetric or
-    surface cascade based on its `type_1` / `type_2` columns.
-
-    Raises ValueError if either type column is missing on a non-pyFR pairs
-    DataFrame (detected via absence of the modern-atlas columns), or if
-    `type_1 != type_2` for any pair.
-    """
-    pairs = pairs.copy()
-
-    if localization is not None and len(localization) > 0:
-        localization = _merge_localization_columns(pairs, localization)
-
-    has_type_cols = ('type_1' in pairs.columns) and ('type_2' in pairs.columns)
-    has_modern_indicators = bool(_MODERN_ONLY_ATLAS_COLS.intersection(pairs.columns))
-
-    if not has_type_cols:
-        if has_modern_indicators:
-            raise ValueError(
-                "type_1 / type_2 columns missing in pairs.json; cannot select "
-                "the volumetric vs surface cascade. (Modern atlas columns ARE "
-                "present, so this is not a pyFR-era artifact.)"
-            )
-        # Legacy pyFR-style data: fall back to the existing Aditya cascade.
-        return get_atlas_labels(pairs, localization)
-
-    if not (pairs['type_1'] == pairs['type_2']).all():
-        raise ValueError(
-            "pairs.json has rows with type_1 != type_2; "
-            "ambiguous which cascade to apply. Filter upstream."
-        )
-
-    # Type-aware vectorized cascade: split rows by cascade choice, run the
-    # vectorized cascade on each subset, then re-assemble in original order.
-    is_volumetric = pairs['type_1'].isin(('D', 'uD')).to_numpy()
+def get_atlas_labels_by_type(pairs: pd.DataFrame) -> pd.DataFrame:
+    """Per-pair atlas label: volumetric cascade for depth electrodes (`type_1`
+    D), surface cascade for grid/strip, every atlas for pairs of unknown type.
+    Returns a DataFrame with `pair_label`, `atlas_label`, `atlas` (the source
+    column)."""
+    etype = (pairs['type_1'].astype(str).str.upper() if 'type_1' in pairs.columns
+             else pd.Series(['NAN'] * len(pairs), index=pairs.index))
     labels_out = np.empty(len(pairs), dtype=object)
     source_out = np.empty(len(pairs), dtype=object)
-
-    for mask, cascade in ((is_volumetric, _VOLUMETRIC_ATLASES),
-                          (~is_volumetric, _SURFACE_ATLASES)):
-        if not mask.any():
-            continue
-        sub = pairs.loc[mask]
-        atlases_present = [c for c in cascade if c in sub.columns]
-        sub_labels, sub_sources = _vectorized_label_cascade(sub, atlases_present)
-        labels_out[mask] = sub_labels
-        source_out[mask] = sub_sources
-
-    pairs['atlas_label'] = labels_out
-    pairs['atlas'] = source_out
-    return pairs.rename({'label': 'pair_label'}, axis=1)[
-        ['pair_label', 'atlas_label', 'atlas']
-    ]
+    for mask, cascade in ((etype.isin(('D', 'UD')).to_numpy(), _VOLUMETRIC_ATLASES),
+                          (etype.isin(('G', 'S')).to_numpy(), _SURFACE_ATLASES),
+                          (~etype.isin(('D', 'UD', 'G', 'S')).to_numpy(), _ALL_ATLASES)):
+        if mask.any():
+            labels_out[mask], source_out[mask] = _label_cascade(pairs.loc[mask], cascade)
+    return pd.DataFrame({'pair_label': pairs['label'].to_numpy(),
+                         'atlas_label': labels_out, 'atlas': source_out},
+                        index=pairs.index)
 
 
-def regionalize_electrodes_by_type(
-    pairs: pd.DataFrame,
-    localization: pd.DataFrame | None,
-) -> NDArrayAny:
-    """Type-aware analog of `regionalize_electrodes`. Volumetric cascade for
-    D / uD electrodes, surface cascade for G / S. Falls back to the legacy
-    Aditya cascade for pyFR-style pairs (no `type_1` / `type_2` columns).
-
-    Returns the same shape output as `regionalize_electrodes`: one per-pair
-    label of the form `'L amygdala'` / `'R hippocampus'`, or `np.nan` for
-    unmapped channels.
-    """
-    regionalizations = get_atlas_labels_by_type(pairs, localization)
+def regionalize_electrodes_by_type(pairs: pd.DataFrame) -> NDArrayAny:
+    """One per-pair label of the form `'L amygdala'` / `'R hippocampus'`
+    (atlas label via `get_atlas_labels_by_type`, mapped through
+    region_translator.csv), or `np.nan` for unmapped channels."""
+    regionalizations = get_atlas_labels_by_type(pairs)
     region_translator = get_region_information('region_translator')
     region_translator = region_translator[~region_translator.index.duplicated(keep='first')]
     original_labels = get_region_information('original_labels')
@@ -1030,22 +712,11 @@ def regionalize_electrodes_by_type(
             hemisphere = region_translator.loc[r['atlas_label'], 'hemisphere']
             if hemisphere in ['L', 'R']:
                 return hemisphere
-        atlases_x = pd.DataFrame(
-            [(col, i) for i, col in enumerate([
-                'mni.x', 'ind.corrected.x', 'ind.snap.x', 'ind.dural.x', 'ind.x',
-                'avg.corrected.x', 'avg.snap.x', 'avg.dural.x', 'avg.x',
-                'tal.x', 'x',
-            ])],
-            columns=['atlas', 'priority'],
-        ).query('atlas in @pairs.columns').sort_values('priority')['atlas'].values
-        for atlas_x in atlases_x:
-            x_coord = pairs.loc[r.name, atlas_x]
-            if not isinstance(x_coord, (int, float)):
-                continue
-            if x_coord < 0:
-                return 'L'
-            elif x_coord > 0:
-                return 'R'
+        x_coord = pairs.loc[r.name, 'mni.x'] if 'mni.x' in pairs.columns else np.nan
+        if isinstance(x_coord, (int, float)) and x_coord < 0:
+            return 'L'
+        if isinstance(x_coord, (int, float)) and x_coord > 0:
+            return 'R'
 
     regionalizations['hemisphere'] = regionalizations.apply(
         lambda r: get_hemisphere_region_label(r), axis=1,
@@ -1205,27 +876,15 @@ def welchs_t(x: NDArrayAny, y: NDArrayAny) -> float:
     return (np.mean(x, axis=0) - np.mean(y, axis=0)) / np.sqrt(var_x / nx + var_y / ny)
 
 def _simulated_electrode_regionalizations(
-    eeg: TimeSeries, dfrow: pd.Series, eeg_data_source: str,
+    eeg: TimeSeries, dfrow: pd.Series,
 ) -> tuple[list[Any], list[str]]:
     """Per-channel region labels + L/R hemisphere groups for the simulated
     EEG, used to build the block-diagonal coupling target (phase covariance
     OR amplitude-envelope correlation). Factored out so the phase and AEC
     DGP branches of replace_w_simulated_EEG share one region mapping."""
     pairs = get_pairs(dfrow)
-    if eeg_data_source == 'ptsa':
-        # confirm that EEG channels match pairs dataframe used for localizations
-        contact_numbers = [[int(pair.item()[0].decode('utf-8')),
-                            int(pair.item()[1].decode('utf-8')),
-                            pair]
-                           for pair in eeg.channel]
-        contact_numbers = pd.DataFrame(contact_numbers, columns=['contact_1', 'contact_2', 'eeg_pair'])
-        merge_columns = ['contact_1', 'contact_2']
-        pairs = pairs.merge(contact_numbers[merge_columns], on=merge_columns)
-        assert len(pairs) == len(contact_numbers)
-    elif eeg_data_source != 'cmlreaders':
-        raise ValueError
-    localization = get_localization(dfrow)
-    regionalizations = regionalize_electrodes_by_type(pairs, localization)
+    assert len(pairs) == len(eeg.channel)
+    regionalizations = regionalize_electrodes_by_type(pairs)
     region_series = pd.Series(regionalizations)
     has_hemisphere_mask = region_series.str.startswith('L ') | region_series.str.startswith('R ') | region_series.isna()
     if not has_hemisphere_mask.all():
@@ -1241,7 +900,6 @@ def _simulate_aec_envelope_eeg(
     dfrow: pd.Series,
     parameters: dict[str, Any],
     condition_mask: NDArrayAny,
-    eeg_data_source: str,
     time_unit: str,
     random_state: int | None,
     verbose: bool = False,
@@ -1253,8 +911,7 @@ def _simulate_aec_envelope_eeg(
     (Cholesky-planted envelopes modulating a carrier). Mirrors the phase path's
     split / assemble / event-reorder steps so word_on/voc pre-post and en/rm
     matched contrasts flow through compute_session_fc identically."""
-    regionalizations, region_groups = _simulated_electrode_regionalizations(
-        eeg, dfrow, eeg_data_source)
+    regionalizations, region_groups = _simulated_electrode_regionalizations(eeg, dfrow)
     from simulate_eeg import get_block_diagonal_ppc_matrix
 
     def _aec_corr(suffix: str) -> NDArrayAny:
@@ -1281,13 +938,6 @@ def _simulate_aec_envelope_eeg(
     eeg0 = eeg[~condition_mask]
     eeg1 = eeg[condition_mask]
 
-    # cmldask workers don't inherit the driver's sys.path; add sim/ so
-    # `from fc_aec_dgp import sample_eeg_aec` resolves on remote workers.
-    import sys as _sys
-    from pathlib import Path as _Path
-    _sim_dir = str(_Path(__file__).resolve().parent / "sim")
-    if _sim_dir not in _sys.path:
-        _sys.path.insert(0, _sim_dir)
     from fc_aec_dgp import sample_eeg_aec  # pyright: ignore[reportMissingImports]
 
     carrier_freq_Hz = parameters['carrier_freq_Hz']
@@ -1343,7 +993,6 @@ def replace_w_simulated_EEG(
     dfrow: pd.Series,
     condition_mask: NDArrayAny,
     simulation_tag: str | None = None,
-    eeg_data_source: str = 'cmlreaders',
     time_unit: str = 'millisecond',
     random_state: int | None = None,
     random_state_type: str = 'offset_from_eeg_hash',
@@ -1374,27 +1023,14 @@ def replace_w_simulated_EEG(
     if parameters.get('data_generating_process') == 'aec_envelope':
         return _simulate_aec_envelope_eeg(
             original_eeg, eeg, dfrow, parameters, condition_mask,
-            eeg_data_source, time_unit, random_state, verbose)
+            time_unit, random_state, verbose)
 
     wavelet_amplitude = parameters['wavelet_amplitude']
     get_phase_covariance = parameters['phase_covariance_function']
     if get_phase_covariance == 'within_region_group':
         pairs = get_pairs(dfrow)
-        if eeg_data_source == 'ptsa':
-            # confirm that EEG channels match pairs dataframe used for localizations
-            contact_numbers = [[int(pair.item()[0].decode('utf-8')),
-                                int(pair.item()[1].decode('utf-8')),
-                                pair]
-                               for pair in eeg.channel]
-            contact_numbers = pd.DataFrame(contact_numbers, columns=['contact_1', 'contact_2', 'eeg_pair'])
-            merge_columns = ['contact_1', 'contact_2']
-            pairs = pairs.merge(contact_numbers[merge_columns], on=merge_columns)
-            assert len(pairs) == len(contact_numbers)
-        elif eeg_data_source != 'cmlreaders':
-            raise ValueError
-        
-        localization = get_localization(dfrow)
-        regionalizations = regionalize_electrodes_by_type(pairs, localization)
+        assert len(pairs) == len(eeg.channel)
+        regionalizations = regionalize_electrodes_by_type(pairs)
         region_series = pd.Series(regionalizations)
         has_hemisphere_mask = region_series.str.startswith('L ') | region_series.str.startswith('R ') | region_series.isna()
         if not has_hemisphere_mask.all():
@@ -1544,9 +1180,6 @@ def replace_w_simulated_EEG(
     if time_unit == 'second':
         simulated_eeg = simulated_eeg.assign_coords({'time': simulated_eeg['time'] / 1000})
 
-    # attributes match for EEG loaded with cmlreaders but EEG loaded with PTSA has different attributes that appear to not matter
-    # assert original_eeg.attrs == simulated_eeg.attrs, f'Attributes of simulated EEG do not match original. '
-    #         f'Original attributes:\n{original_eeg.attrs}\n\nReplacement attributes:\n{simulated_eeg.attrs}'
     return simulated_eeg
 
 
