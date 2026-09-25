@@ -41,12 +41,12 @@ import pandas as pd
 import helper
 import data_check
 import fc_comparison_functions as fc
-from project_paths import SCRATCH_DIR, BEHAVIORS_ALL, BEHAVIORS_MAIN
+from project_paths import SCRATCH_DIR, BEHAVIORS_ALL, BEHAVIORS_MAIN, LONGETAL
 
 NDArrayAny = npt.NDArray[Any]
 
 BEH_DIRS = BEHAVIORS_ALL
-REQUIRED_EVENT_BEHS = BEHAVIORS_MAIN
+REQUIRED_EVENT_BEHS = tuple(LONGETAL['behaviors_main']) if LONGETAL else BEHAVIORS_MAIN
 ALL_EVENT_BEHS = BEHAVIORS_ALL
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))

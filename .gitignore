@@ -11,6 +11,9 @@ processed_results/
 # per-session artifact tree (config.yaml paths.scratch_dir).
 bids_data/
 scratch/
+scratch.smokescreen/
+figures.smokescreen/
+.snakemake/
 test_root/
 logs/
 

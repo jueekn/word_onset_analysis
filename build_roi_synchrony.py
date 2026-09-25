@@ -120,7 +120,7 @@ def cond_dir(root: str, beh: str, cond: str, band: str,
 # ------------------------------ compute stage --------------------------------
 def run_sess_phase_fc(
     dfrow: pd.Series, save_root: str, beh: str, band: str,
-    metrics: Sequence[str], root_dir: str,
+    metrics: Sequence[str], root_dir: str, simulation_tag: str | None = None,
 ) -> str:
     """Compute FC for one session and write one pickle per condition.
 
@@ -164,7 +164,7 @@ def run_sess_phase_fc(
     if events is None:
         return f"{sid}: no events ({beh})"
 
-    mat_eeg, buffer_mask = fc.get_beh_eeg(dfrow, events, save=False)
+    mat_eeg, buffer_mask = fc.get_beh_eeg(dfrow, events, save=False, simulation_tag=simulation_tag)
     n_ch_eeg = np.asarray(mat_eeg.data).shape[1]
     if n_ch_pairs != n_ch_eeg:
         raise ValueError(
@@ -175,7 +175,8 @@ def run_sess_phase_fc(
 
     mat = fc.compute_session_fc(
         dfrow, beh=beh, band=band, metrics=metrics,
-        overlap_mask=overlap_mask, eeg=mat_eeg, mask=buffer_mask)
+        overlap_mask=overlap_mask, eeg=mat_eeg, mask=buffer_mask,
+        simulation_tag=simulation_tag)
     if mat is None:
         return f"{sid}: compute_session_fc returned None"
 
@@ -396,7 +397,7 @@ def main() -> None:
             run_sess_phase_fc, desc="phase FC", root_dir_=root_dir,
             n_sessions=args.n_sessions, n_subjects=args.n_subjects,
             workers=args.workers, save_root=save_root, beh=args.beh, band=args.band,
-            metrics=tuple(args.metrics), root_dir=root_dir)
+            metrics=tuple(args.metrics), root_dir=root_dir, simulation_tag=args.simulation_tag)
 
     if args.stage in ("plot", "both"):
         run_plot_stage(save_root, args.beh, args.band, args.metric, edges, args)

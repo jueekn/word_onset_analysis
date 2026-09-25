@@ -9,9 +9,12 @@ config_name: default
 paths:
   # Where the per-session artifacts live: session lists, events, electrode
   # tables, FC / power pickles. Large (tens of GB for the full cohort); point it
-  # at a big disk. The OpenNeuro download cache is separate (CML_BIDS_CACHE,
-  # default ./bids_data -- see cml_data.py).
-  scratch_dir: scratch
+  # at a big disk. Kept outside the repo. Smokescreen / longetal runs use
+  # sibling folders (scratch.smokescreen, scratch.longetal, ...).
+  scratch_dir: /Users/${USER}/scratch/word_onset_analysis/scratch
+  # OpenNeuro download cache (cml_data; project_paths exports it as
+  # CML_BIDS_CACHE unless that is already set). ~280 GB for FR1 monopolar.
+  bids_cache: /Users/${USER}/scratch/word_onset_analysis/bids_data
   # Event/session exclusion-count logs (per-session logs aggregate here).
   exclusion_counts: results/exclusion_counts
   # Tracked tabular data files shipped with the repo (curated denylists, etc.)
@@ -72,11 +75,13 @@ behaviors_noncontrast: [en_all, rm_all]
 #   analysis window (distinct from mirror_buffer_ms). The band-pass + Hilbert
 #   run on the buffered window; the buffer is removed before multitaper phase
 #   metrics and cropped off the analytic signal before AEC/AEC-c/PAC estimation
-#   (see fc_comparison_functions.compute_aec_buffered / compute_pac). ~50 ms
-#   covers the gamma FIR+Hilbert edge transient (sim: ~15 samples @ 500 Hz).
+#   (see fc_comparison_functions.compute_aec_buffered / compute_pac). 500 ms:
+#   the 4 Hz-wide Butterworth notches ring for a few hundred ms, and at 50 ms
+#   the in-band 100/120/150 Hz notches biased null power to d ~ -0.08
+#   (hg_null simulation; ~0 at >=500 ms). Also used by build_roi_power.
 #   Mutually exclusive with mirror_buffer_ms (both >0 raises NotImplementedError).
 mirror_buffer_ms: 1000
-real_data_buffer_ms: 50
+real_data_buffer_ms: 500
 mt_bandwidth: 2
 gc_n_lags: 5
 
@@ -214,3 +219,34 @@ pair_distance_threshold_mm: 20
 # (never a thesis measure, exploratory only) and is rejected as a hard error by
 # project_paths — do not re-add it.
 computation_metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac, gc, gc_tr]
+
+# ─── Snakefile ──────────────────────────────────────────────────────────────
+# smokescreen: true -> first N subjects; scratch, exclusion logs and figures go
+#   to *.smokescreen so a smoke run never feeds the full run's cache.
+smokescreen: false
+smokescreen_n_subjects: 3
+# One entry per analysis; each gets ROI power, ROI synchrony, power-synchrony.
+runs:
+  - {beh: word_on, band: high_gamma, fc_mode: multitaper, metric: ppc}
+# `snakemake simulations`: config/simulation_config.yaml tags run through the same
+# rules (EEG replaced, real montages/events kept); figures -> <figures>/simulations/<tag>.
+simulations: [hg_null, hg_power_frontal, hg_ppc_frontal]
+
+# ─── Long et al. 2020 replication (snakemake --config longetal=true) ─────────
+# Everything else follows the defaults above. Outputs: scratch.longetal/,
+# figures.longetal/. Power only (Long ran no synchrony).
+longetal_params:
+  experiments: [FR1]
+  min_word_events: 300       # complete sessions only (25 lists x 12 words)
+  acquisition: monopolar     # + common average reference over the kept contacts
+  envelope_hz: 100           # Hilbert amplitude at the native rate, then -> 100 Hz
+  pre_win: [-750, 0]         # blank screen (ISI is 750-1000 ms)
+  post_win: [0, 1600]        # word on screen
+  behaviors_main: [word_on]
+  min_responsive_per_region: 50
+  exclude_lobes: [limbic, hippocampus, subcortical]   # Long excluded limbic + sublobar electrodes
+  exclude_regions: [posterior cingulate gyrus]       # limbic in Long's atlas (Burke: parietal)
+  combine: word_average      # average each word over sessions, then test (Long); else d_mean
+  runs:
+    - {beh: word_on, band: high_gamma, fc_mode: hilbert, metric: ppc}
+  simulations: [hg_null, hg_power_frontal]

@@ -24,7 +24,7 @@ import pandas as pd
 import cml_data
 import helper
 from misc import ftag, get_dfrow
-from project_paths import PAIR_DISTANCE_THRESHOLD_MM
+from project_paths import PAIR_DISTANCE_THRESHOLD_MM, LONGETAL
 
 NDArrayAny = npt.NDArray[Any]
 
@@ -33,7 +33,7 @@ NDArrayAny = npt.NDArray[Any]
 # but are module-level + importable for other modules and tests.
 DATA_CHECK_EEG_WINDOW_MS: tuple[int, int] = (-1500, 1500)
 DATA_CHECK_PHASE_FREQ_HZ: float = 3.0
-COHORT_EXPERIMENTS: tuple[str, ...] = ("FR1", "catFR1", "pyFR")
+COHORT_EXPERIMENTS: tuple[str, ...] = tuple(LONGETAL["experiments"]) if LONGETAL else ("FR1", "catFR1", "pyFR")
 
 
 def build_sess_list_df_initial(root_dir: str) -> pd.DataFrame:
@@ -105,6 +105,7 @@ def check_eeg(
         pairs.to_json(_pairs_path(dfrow, root_dir))
 
         events = reader.load_events()
+        data_check['n_word'] = int((events['trial_type'] == 'WORD').sum())
         word = events[events['trial_type'] == 'WORD'].iloc[:1]
         assert len(word), 'no WORD events'
         ev = pd.DataFrame({'mstime': (word['onset'] * 1000).round().astype(int).to_numpy(),
@@ -115,7 +116,7 @@ def check_eeg(
         data_check['sr'] = float(eeg.samplerate)
         data_check['eeg_channels'] = list(eeg.channel.values)
         data_check['eeg'] = True
-        return eeg.resampled(helper.RESAMPLE_HZ), pairs, data_check
+        return (eeg.resampled(helper.RESAMPLE_HZ) if helper.RESAMPLE_HZ else eeg), pairs, data_check
     except Exception as e:
         data_check['eeg_error'] = repr(e)
         return None, None, data_check
@@ -232,6 +233,10 @@ def build_sess_list_df_data_check(root_dir: str) -> pd.DataFrame:
 
     for key in DENYLIST:
         _deny(key, 'denylist')
+    if LONGETAL:   # Long et al.: complete sessions only
+        n_word = sess_list_df.get('n_word', pd.Series(0, index=sess_list_df.index)).fillna(0)
+        for key in sess_list_df.index[n_word < LONGETAL['min_word_events']]:
+            _deny(key, 'incomplete_session')
 
     # Per-session denylist of empirically-unrecoverable sessions (curated from
     # error triage of full-pipeline runs). Columns: subject, experiment,

@@ -1539,3 +1539,79 @@ AEC_weak_contrast:
   within_group_aec1: 0.173
   within_region_aec0: 0.158
   within_region_aec1: 0.316
+
+# --- High-gamma validity checks (snakemake simulations) ---------------------
+# hg_power: pink noise + 70-150 Hz noise on every channel; on target_lobes the
+# 70-150 Hz part is scaled by hg_gain from onset on. Expect power effects only
+# in the target lobes (and none anywhere for hg_null).
+hg_null:
+  data_generating_process: hg_power
+  band: [70, 150]
+  hg_amplitude: 10
+  hg_gain: 1
+  target_lobes: [frontal]
+  pinknoise_amplitude: 10
+  pinknoise_exponent: 1
+hg_power_frontal:
+  data_generating_process: hg_power
+  band: [70, 150]
+  hg_amplitude: 10
+  hg_gain: 2
+  target_lobes: [frontal]
+  pinknoise_amplitude: 10
+  pinknoise_exponent: 1
+# 110 Hz bursts (between the 100/120 Hz notches), phase-coupled among frontal
+# channels after onset only. Expect a synchrony increase only in frontal ROIs.
+hg_ppc_frontal:
+  wavelet_amplitude: 100
+  phase_covariance_function: within_region_group
+  target_lobes: [frontal]
+  global_ppc0: 0.01
+  within_group_ppc0: 0.01
+  within_region_ppc0: 0.01
+  global_ppc1: 0.01
+  within_group_ppc1: 0.5
+  within_region_ppc1: 0.5
+  oscillation_frequency: 110
+  morlet_reps: 5
+  pinknoise_amplitude: 10
+  pinknoise_exponent: 1
+
+# --- Recovery sweeps (snakemake simulations -> <figures>/simulations/recovery.png)
+# Each value becomes its own tag `<sweep>_<value>` (expanded in simulate_eeg),
+# with every key in `keys` set to that value. Frontal electrodes carry the plant;
+# every other electrode should read 0 change.
+sweeps:
+  rec_power_noisy:     # 70-150 Hz amplitude gain after onset -> planted 20*log10(gain) dB
+    keys: [hg_gain]
+    values: [1, 1.25, 1.5, 2, 4]
+    params: &rec_power
+      data_generating_process: hg_power
+      band: [70, 150]
+      hg_amplitude: 10
+      target_lobes: [frontal]
+      pinknoise_amplitude: 10
+      pinknoise_exponent: 1
+  rec_power_clean:
+    keys: [hg_gain]
+    values: [1, 1.25, 1.5, 2, 4]
+    params: {<<: *rec_power, pinknoise_amplitude: 0}
+  rec_ppc_noisy:       # 110 Hz phase-locking among frontal pairs after onset; ~0 before
+    keys: [within_group_ppc1, within_region_ppc1]
+    values: [0.000001, 0.1, 0.25, 0.5, 0.75, 0.99]   # PPC must be > 0; 1e-6 ~ none
+    params: &rec_ppc
+      wavelet_amplitude: 100
+      phase_covariance_function: within_region_group
+      target_lobes: [frontal]
+      global_ppc0: 0.000001
+      within_group_ppc0: 0.000001
+      within_region_ppc0: 0.000001
+      global_ppc1: 0.000001
+      oscillation_frequency: 110
+      morlet_reps: 5
+      pinknoise_amplitude: 10
+      pinknoise_exponent: 1
+  rec_ppc_clean:
+    keys: [within_group_ppc1, within_region_ppc1]
+    values: [0.000001, 0.1, 0.25, 0.5, 0.75, 0.99]
+    params: {<<: *rec_ppc, pinknoise_amplitude: 0}

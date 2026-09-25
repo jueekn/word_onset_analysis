@@ -9,7 +9,7 @@ metrics; the only change is that each electrode is treated on its own instead
 of as one endpoint of a pair:
 
     per event, per electrode:  multitaper PSD over the window, averaged in band
-    per electrode:             log10, then Cohen's d of hi vs lo ACROSS events
+    per electrode:             Cohen's d of hi vs lo power ACROSS events
     per subject, per ROI:      mean of d over that ROI's electrodes
     across subjects:           box plot (one box per ROI)
 
@@ -17,17 +17,17 @@ Two stages:
 
   compute  one pickle per session (--workers N to parallelise)
              <save_root>/<beh>/power/<band>/<ftag>_power.pkl
-             {"sid", "labels", "reg_full", "log10_lo", "log10_hi",
+             {"sid", "labels", "reg_full", "pow_lo", "pow_hi",
               "cohens_d", "n_events"}
   plot     aggregate those pickles -> per-subject-per-ROI table -> box plots
 
 Relationship to Rao et al. 2025 (J Neurosci)
 --------------------------------------------
-The per-electrode summary is Cohen's d of log10 power, region-averaged, matching
+The per-electrode summary is Cohen's d of band power (no log transform), region-averaged, following
 that paper's power pipeline (helper.get_power -> comp_elpomx ->
 regionalize_electrode_powers). Specifically:
 
-  adopted    log10 BEFORE the contrast; `helper.cohens_d` verbatim (pooled-SD,
+  adopted    `helper.cohens_d` verbatim (pooled-SD,
              the same function vendored in this repo); the effect size -- not raw
              power -- as the per-electrode quantity; mean of d over the
              electrodes in a region as the region value.
@@ -50,14 +50,14 @@ therefore somewhat conservative. A paired d_z would be mean(diff)/sd(diff).
 Measures plotted. Raw log-power is not comparable across subjects (amplifier
 gain, referencing, and coverage differ); the two window-contrast measures are:
 
-  cohens_d       effect size of hi vs lo log10 power, across events, per
+  cohens_d       effect size of hi vs lo power, across events, per
                  electrode. Unitless and gain-invariant -- the panel to read for
                  a task effect, and the Rao-consistent one.
-  z_lo / z_hi    log10 power in the lo / hi condition, z-scored ACROSS that
+  z_lo / z_hi    power in the lo / hi condition, z-scored ACROSS that
                  subject's electrodes (descriptive, NOT Rao's across-events
                  z-score). Removes the per-subject gain offset, so the box plot
                  reads "which ROIs carry relatively more power in this band".
-  change_dB      10 * (log10 P_hi - log10 P_lo) -- the same contrast as
+  change_dB      10 * log10(P_hi / P_lo) of the session-mean powers -- the same contrast as
                  cohens_d but in dB rather than SD units. Written to the CSVs;
                  plot it with `--measures change_dB`.
 
@@ -120,7 +120,7 @@ def power_dir(root, beh, band, fc_mode="multitaper"):
 
 # ------------------------------ compute stage --------------------------------
 def _word_locked_eeg(dfrow: pd.Series, beh: str, win: tuple[float, float],
-                     buffer_ms: float = 0.0) -> Any:
+                     buffer_ms: float = 0.0, simulation_tag: str | None = None) -> Any:
     """EEG for the POST-type events of `beh`, loaded over one window spanning
     both the pre and post analysis windows.
 
@@ -145,9 +145,10 @@ def _word_locked_eeg(dfrow: pd.Series, beh: str, win: tuple[float, float],
     # analysis window. get_beh_eeg defaults real_data_buffer_ms to 0, so
     # omitting this silently shortened every Morlet window by 2*buffer_ms.
     eeg, _ = fc.get_beh_eeg(dfrow, words, save=False, window=win,
-                            real_data_buffer_ms=buffer_ms)
+                            real_data_buffer_ms=buffer_ms, simulation_tag=simulation_tag)
+    items = words["item_name"].to_numpy()[np.asarray(eeg.event, int)]   # word of each kept event
     return (np.asarray(eeg.data), np.asarray(eeg.time, float),
-            float(eeg.samplerate))
+            float(eeg.samplerate), items)
 
 
 def window_slice(data, t, win):
@@ -183,7 +184,7 @@ def band_power_morlet(seg, sf, fmin, fmax, fnum, morlet_reps, buf_samples,
                       bin_ms=None):
     """Per-event, per-channel MORLET power averaged over the band. (E, C).
 
-    Same contract as `band_power` (raw power, not log10 -- the caller logs), so
+    Same contract as `band_power` (raw power), so
     the two are drop-in alternatives selected by --fc-mode.
 
     Uses the same PTSA primitive as `helper.get_power`
@@ -191,7 +192,7 @@ def band_power_morlet(seg, sf, fmin, fmax, fnum, morlet_reps, buf_samples,
     log-spaced bank from `fc.default_cwt_freqs`. It does NOT call get_power
     itself, because that function is specialised for Rao's 1000 ms mirror-
     buffered theta clips: it hardcodes a 1000 ms buffer clip (which would erase
-    a 600 ms word_on window outright), and folds in log10 and an across-event
+    a 600 ms word_on window outright), and folds in an across-event
     z-score at a point in the chain where this caller needs neither.
 
     `seg` must already include `buf_samples` of REAL adjacent data on each side;
@@ -230,6 +231,21 @@ def band_power_morlet(seg, sf, fmin, fmax, fnum, morlet_reps, buf_samples,
         return helper.timebin_power_timeseries(
             p.mean(axis=2), sf, bin_width_ms=int(bin_ms))
     return p.mean(axis=(2, 3))                             # (E, C)
+
+
+def hilbert_envelope(seg, sf, fmin, fmax, buf_samples, env_hz):
+    """Long et al. 2020 high gamma: band-pass, Hilbert AMPLITUDE envelope at the
+    native rate, trim the buffer, downsample to `env_hz`. (E, C, T). Same filter
+    + Hilbert recipe as fc.compute_aec_buffered."""
+    import mne
+    from scipy.signal import hilbert
+    from mne.filter import next_fast_len
+    x = mne.filter.filter_data(np.asarray(seg, float), sf, fmin, fmax, verbose=False)
+    n = x.shape[-1]
+    env = np.abs(hilbert(x, N=next_fast_len(n), axis=-1))[..., :n]
+    if buf_samples:
+        env = env[..., buf_samples:n - buf_samples]
+    return mne.filter.resample(env, down=sf / env_hz, verbose=False)
 
 
 def band_power_windowed(seg, sf, fmin, fmax, bandwidth, bin_ms, window_ms):
@@ -297,7 +313,7 @@ def band_power_windowed(seg, sf, fmin, fmax, bandwidth, bin_ms, window_ms):
 def run_sess_power(
     dfrow: pd.Series, save_root: str, beh: str, band: str, root_dir: str,
     fc_mode: str = "multitaper", time_bin_ms: int | None = None,
-    mt_window_ms: int | None = None,
+    mt_window_ms: int | None = None, simulation_tag: str | None = None,
 ) -> str:
     """Compute per-electrode band power for one session; write one pickle.
 
@@ -320,8 +336,9 @@ def run_sess_power(
             # equalization fix. Pickles without it carry the unequal-window bias
             # (pre estimated over one more sample than post), so treat them as
             # stale and recompute rather than silently reporting them cached.
-            if all(k in cached for k in ("log10_lo", "log10_hi", "cohens_d",
-                                         "reg_full", "n_win_samples")):
+            if all(k in cached for k in ("pow_lo", "pow_hi", "cohens_d",
+                                         "reg_full", "n_win_samples")) and (
+                    fc_mode != "hilbert" or cached.get("env_lo") is not None):
                 return f"{sid}: cached"
         except Exception:
             pass
@@ -332,18 +349,22 @@ def run_sess_power(
     # Decided before the EEG load: the Morlet edge buffer must be REAL data from
     # outside the analysis window, so the clip has to be widened at load time.
     morlet = fc_mode == "cwt_morlet"
+    hilb = fc_mode == "hilbert"   # filter edge lives in the real-data buffer
+    if hilb and not prepost:
+        raise ValueError("--fc-mode hilbert is for the pre/post contrasts (word_on, voc)")
     buf_ms = (fc.morlet_buffer_ms(fmin, morlet_reps=fc.CWT_MORLET_REPS,
                                   n_sigma=fc.CWT_BUFFER_N_SIGMA)
-              if morlet else 0.0)
+              if morlet else fc.REAL_DATA_BUFFER_MS if hilb else 0.0)
 
     if prepost:
         spec = fc.PREPOST_SPEC[beh]
         pre_win, post_win = spec["pre_win"], spec["post_win"]
         loaded = _word_locked_eeg(dfrow, beh, (pre_win[0], post_win[1]),
-                                  buffer_ms=buf_ms)
+                                  buffer_ms=max(buf_ms, fc.REAL_DATA_BUFFER_MS),   # keeps notch ringing out of both windows
+                                  simulation_tag=simulation_tag)
         if loaded is None:
             return f"{sid}: no events ({beh})"
-        data, t, sf = loaded
+        data, t, sf, items = loaded
         ev_mask = None
     else:
         # en / rm: one window, two event groups (mask True = the `hi` arm),
@@ -351,7 +372,7 @@ def run_sess_power(
         ev = fc.load_events(dfrow, beh)
         if ev is None:
             return f"{sid}: no events ({beh})"
-        eeg, ev_mask = fc.get_beh_eeg(dfrow, ev, save=False)
+        eeg, ev_mask = fc.get_beh_eeg(dfrow, ev, save=False, simulation_tag=simulation_tag)
         data = np.asarray(eeg.data)
         t = np.asarray(eeg.time, float)
         sf = float(eeg.samplerate)
@@ -386,8 +407,8 @@ def run_sess_power(
     # beyond the union span, which covers this at the outer edges; the inner
     # edges sit inside the pre/post gap (fc.assert_windows_separable enforces
     # that the two buffered windows cannot meet).
-    if morlet:
-        if prepost:
+    if morlet or hilb:
+        if prepost and morlet:
             fc.assert_windows_separable(
                 pre_win, post_win, fmin,
                 morlet_reps=fc.CWT_MORLET_REPS, n_sigma=fc.CWT_BUFFER_N_SIGMA)
@@ -399,10 +420,20 @@ def run_sess_power(
 
     mt_win = int(mt_window_ms or fc.MT_WINDOW_MS)
 
+    env_hz = (fc.LONGETAL or {}).get("envelope_hz", 100)
+    env_cache = {}
+    def _env(seg):   # Hilbert envelope, computed once per segment
+        if id(seg) not in env_cache:
+            env_cache[id(seg)] = hilbert_envelope(seg, sf, fmin, fmax, nbuf, env_hz)
+        return env_cache[id(seg)]
+
     def _power(seg, bin_ms=None):
         if morlet:
             return band_power_morlet(seg, sf, fmin, fmax, fc.CWT_FNUM,
                                      fc.CWT_MORLET_REPS, nbuf, bin_ms=bin_ms)
+        if hilb:
+            e = _env(seg)
+            return helper.timebin_power_timeseries(e, env_hz, bin_width_ms=int(bin_ms)) if bin_ms else e.mean(-1)
         if bin_ms:
             # Windowed multitaper: same bin centres as Morlet, but each estimate
             # spans mt_win ms, so its effective resolution is mt_win, not bin_ms.
@@ -423,20 +454,19 @@ def run_sess_power(
         # lengths, which shifts the frequency-bin centres and biases the contrast.
         lo_seg = window_slice(data, t, widen(pre_win))
         hi_seg = window_slice(data, t, widen(post_win))
-        lo_seg, hi_seg = fc.equalize_time_length(lo_seg, hi_seg)
+        if not hilb:   # Long's windows differ in length (750 vs 1600 ms); a mean amplitude doesn't need them equal
+            lo_seg, hi_seg = fc.equalize_time_length(lo_seg, hi_seg)
         n_win = lo_seg.shape[-1] - 2 * nbuf
-        with np.errstate(divide="ignore", invalid="ignore"):
-            lp_lo = np.log10(_power(lo_seg))
-            lp_hi = np.log10(_power(hi_seg))
+        p_lo = _power(lo_seg)
+        p_hi = _power(hi_seg)
     else:
         # both arms share the loaded window, so nothing to equalize
         n_win = data.shape[-1] - 2 * nbuf
-        with np.errstate(divide="ignore", invalid="ignore"):
-            lp = np.log10(_power(data))
-        lp_lo, lp_hi = lp[~ev_mask], lp[ev_mask]
+        p = _power(data)
+        p_lo, p_hi = p[~ev_mask], p[ev_mask]
 
-    lp_lo[~np.isfinite(lp_lo)] = np.nan
-    lp_hi[~np.isfinite(lp_hi)] = np.nan
+    p_lo[~np.isfinite(p_lo)] = np.nan
+    p_hi[~np.isfinite(p_hi)] = np.nan
 
     # Per-bin contrast, (n_ch, n_bins). Same Cohen's d as the collapsed measure,
     # computed independently within each time bin -> d as a function of latency.
@@ -463,20 +493,12 @@ def run_sess_power(
         # course. nanmean also drops the multitaper edge bins that cannot fit a
         # full window.
         #
-        # LOG FIRST, THEN AVERAGE OVER BINS. Averaging power and then logging is
-        # NOT equivalent and is a real bug: the response arm is log(power of ONE
-        # bin) while the baseline would be log(MEAN power over B bins), and since
-        # the arithmetic mean of fluctuating positive power exceeds its geometric
-        # mean, the baseline sits systematically high. Measured on null data
-        # (pre and post statistically identical) that put d = -0.21 in EVERY bin
-        # -- a constant downward shift of the whole time course. Logging first
-        # puts both arms in the same units (log power of one bin) and returns
-        # d = +0.01 under the null.
-        with np.errstate(divide="ignore", invalid="ignore"):
-            l_lo = np.log10(_power(lo_seg, bin_ms=time_bin_ms))   # (E, C, B) log
-            b_hi = np.log10(_power(hi_seg, bin_ms=time_bin_ms))   # (E, C, B) log
-            l_lo[~np.isfinite(l_lo)] = np.nan
-            base = np.nanmean(l_lo, axis=-1)                      # (E, C)    log
+        # Raw power: the mean over B baseline bins and a single response bin
+        # estimate the same expected power, so the null stays unbiased.
+        l_lo = _power(lo_seg, bin_ms=time_bin_ms)             # (E, C, B)
+        b_hi = _power(hi_seg, bin_ms=time_bin_ms)             # (E, C, B)
+        l_lo[~np.isfinite(l_lo)] = np.nan
+        base = np.nanmean(l_lo, axis=-1)                      # (E, C)
         b_hi[~np.isfinite(b_hi)] = np.nan
         base[~np.isfinite(base)] = np.nan
         nb = b_hi.shape[-1]
@@ -494,27 +516,35 @@ def run_sess_power(
         bin_centers = (np.arange(nb) + 0.5) * float(time_bin_ms)
 
     # Per-electrode effect size, Rao et al. 2025's per-electrode quantity:
-    # `helper.cohens_d` (pooled SD) on log10 power, hi vs lo, across events.
+    # `helper.cohens_d` (pooled SD) on power, hi vs lo, across events.
     # Done channel by channel so a degenerate event drops only its own channel's
     # contribution instead of the whole electrode (helper.cohens_d is not
     # nan-aware); in practice every event is finite and this is one call's worth
     # of arithmetic per channel.
     d = np.full(n_ch, np.nan)
     for c in range(n_ch):
-        a = lp_hi[np.isfinite(lp_hi[:, c]), c]
-        b = lp_lo[np.isfinite(lp_lo[:, c]), c]
+        a = p_hi[np.isfinite(p_hi[:, c]), c]
+        b = p_lo[np.isfinite(p_lo[:, c]), c]
         if a.size >= 2 and b.size >= 2:
             d[c] = float(helper.cohens_d(a, b))
+
+    # Sample-level contrast (hilbert): every envelope sample is an observation,
+    # as Long et al. may have done (--t-unit sample at the plot stage).
+    d_samp = n_samp_lo = n_samp_hi = None
+    if hilb:
+        flat = lambda e: e.transpose(0, 2, 1).reshape(-1, e.shape[1])   # (E*T, C)
+        e_lo, e_hi = flat(_env(lo_seg)), flat(_env(hi_seg))
+        d_samp, n_samp_lo, n_samp_hi = helper.cohens_d(e_hi, e_lo), len(e_lo), len(e_hi)
 
     out: dict[str, Any] = {
         "sid": (dfrow["sub"], dfrow["exp"], int(dfrow["sess"])),
         "labels": labels,
         "reg_full": reg_full,
-        "log10_lo": np.nanmean(lp_lo, axis=0),
-        "log10_hi": np.nanmean(lp_hi, axis=0),
+        "pow_lo": np.nanmean(p_lo, axis=0),
+        "pow_hi": np.nanmean(p_hi, axis=0),
         "cohens_d": d,
         "n_events": int(data.shape[0]),
-        "n_lo": int(lp_lo.shape[0]), "n_hi": int(lp_hi.shape[0]),
+        "n_lo": int(p_lo.shape[0]), "n_hi": int(p_hi.shape[0]),
         "n_win_samples": int(n_win),
         "beh": beh, "band": band, "fmin": fmin, "fmax": fmax,
         "lo_win": pre_win, "hi_win": post_win,
@@ -523,10 +553,17 @@ def run_sess_power(
         # a future cache check) tell a Morlet pickle from a multitaper one, and
         # a notched run from an un-notched one, without guessing from the path.
         "fc_mode": fc_mode,
+        "measure": "amplitude" if hilb else "power",   # pow_* hold amplitude under hilbert
+        "cohens_d_samples": d_samp, "n_lo_samples": n_samp_lo, "n_hi_samples": n_samp_hi,
+        # per-event envelopes + words, for averaging each word over sessions (--combine word_average)
+        "env_lo": _env(lo_seg).astype(np.float32) if hilb else None,
+        "env_hi": _env(hi_seg).astype(np.float32) if hilb else None,
+        "items": items if hilb else None,
+        "simulation_tag": simulation_tag,
         "notch_harmonics_up_to_hz": fc.NOTCH_HARMONICS_UP_TO_HZ,
         "morlet_reps": fc.CWT_MORLET_REPS if morlet else None,
         "cwt_fnum": fc.CWT_FNUM if morlet else None,
-        "buffer_ms": (buf_ms if morlet else fc.REAL_DATA_BUFFER_MS),
+        "buffer_ms": max(buf_ms, fc.REAL_DATA_BUFFER_MS) if prepost else 0.0,
         # Latency axis (Morlet + prepost only; None otherwise).
         "cohens_d_bins": d_bins,          # (n_ch, n_bins)
         "bin_centers_ms": bin_centers,    # ms into each window
@@ -543,8 +580,8 @@ def collect_electrode_table(save_root, beh, band, lobe_of, n_sessions=None,
                             fc_mode="multitaper"):
     """Walk the per-session pickles -> tidy per-(subject, electrode) table.
 
-    Sessions of the same subject are averaged per electrode LABEL (in log10
-    units, i.e. a geometric mean over sessions) before anything else, so a
+    Sessions of the same subject are averaged per electrode LABEL before
+    anything else, so a
     subject with 4 sessions does not outweigh one with 1.
     """
     d = power_dir(save_root, beh, band, fc_mode)
@@ -564,14 +601,14 @@ def collect_electrode_table(save_root, beh, band, lobe_of, n_sessions=None,
         except Exception as e:
             print(f"[skip] {f.name}: {e!r}")
             continue
-        if "log10_lo" not in p:
+        if "pow_lo" not in p:
             print(f"[skip] {f.name}: written by an older version; "
                   "delete it and rerun the compute stage")
             continue
         sub = str(p["sid"][0])
         roi = fc.roi_of_reg_full(p["reg_full"], lobe_of)
-        for lab, r, lo, hi, dd in zip(p["labels"], roi, p["log10_lo"],
-                                      p["log10_hi"], p["cohens_d"]):
+        for lab, r, lo, hi, dd in zip(p["labels"], roi, p["pow_lo"],
+                                      p["pow_hi"], p["cohens_d"]):
             if r is None or not (np.isfinite(lo) and np.isfinite(hi)):
                 continue
             rows.append((sub, str(lab), r, float(lo), float(hi), float(dd)))
@@ -581,12 +618,12 @@ def collect_electrode_table(save_root, beh, band, lobe_of, n_sessions=None,
     df = pd.DataFrame(rows,
                       columns=["sub", "label", "roi", "lo", "hi", "cohens_d"])
     # one row per (subject, electrode): mean across that subject's sessions
-    # (log power geometrically, d as a plain mean of effect sizes)
+    # (power and d both as plain means)
     return (df.groupby(["sub", "label", "roi"], as_index=False)
               [["lo", "hi", "cohens_d"]].mean())
 
 
-def subject_roi_table(elec_df, min_electrodes=1):
+def subject_roi_table(elec_df, min_electrodes=1, db=10.0):
     """Per-electrode measures -> per-(subject, ROI) means.
 
     z_lo / z_hi are z-scored across ALL of that subject's ROI-assigned
@@ -597,7 +634,7 @@ def subject_roi_table(elec_df, min_electrodes=1):
     parts = []
     for _sub, g in elec_df.groupby("sub", sort=True):
         g = g.copy()
-        g["change_dB"] = 10.0 * (g["hi"] - g["lo"])
+        g["change_dB"] = db * np.log10(g["hi"] / g["lo"])   # db=20 for amplitude (hilbert)
         for src, dst in (("lo", "z_lo"), ("hi", "z_hi")):
             g[dst] = fc.zscore_across(g[src].to_numpy(float))
         parts.append(g)
@@ -619,7 +656,7 @@ def run_latency_stage(save_root, beh, band, args, lobe_of):
         keep = None
         if responsive_only:
             rdf = collect_responsiveness(save_root, beh, band, lobe_of,
-                                         args.n_sessions, fc_mode=args.fc_mode)
+                                         args.n_sessions, fc_mode=args.fc_mode, t_unit=args.t_unit, combine=args.combine)
             rdf = rdf[rdf["p"] < args.responsive_alpha]
             keep = set(zip(rdf["sub"], rdf["label"]))
             print(f"[latency/responsive] restricting to {len(keep)} contacts "
@@ -678,9 +715,15 @@ def run_responsiveness_stage(save_root, beh, band, args, lobe_of):
     """Long-style electrode-selection summary. Plot-stage only, no recompute."""
     for fine in ([False, True] if args.fine_labels else [False]):
         df = collect_responsiveness(save_root, beh, band, lobe_of, args.n_sessions,
-                                    fc_mode=args.fc_mode, by_fine_label=fine)
+                                    fc_mode=args.fc_mode, by_fine_label=fine, t_unit=args.t_unit, combine=args.combine)
         st = responsiveness_stats(df, alpha=args.responsive_alpha)
-        tag = (f"{beh}_{band}_{args.fc_mode}" + ("_fine" if fine else ""))
+        overall = 100 * (df["p"] < args.responsive_alpha).mean()
+        print(f"[responsive{'/fine' if fine else ''}] {len(df)} electrodes, "
+              f"{overall:.1f}% responsive (t per {args.t_unit}) at p<{args.responsive_alpha:g} "
+              f"(Long: 25.3%)")
+        tag = (f"{beh}_{band}_{args.fc_mode}" + ("_fine" if fine else "")
+               + ("_samples" if args.t_unit == "sample" else "")
+               + ("_wordavg" if args.combine == "word_average" else ""))
         os.makedirs(args.out_dir, exist_ok=True)
         # CSV is ALWAYS unfiltered -- the cut below is display only.
         st.to_csv(join(args.out_dir, f"responsiveness_{tag}.csv"), index=False)
@@ -698,16 +741,17 @@ def run_responsiveness_stage(save_root, beh, band, args, lobe_of):
                       f"<{_FINE_MIN_ELECTRODES} electrodes: "
                       f"{', '.join(tiny['grp'].head(8))}"
                       f"{' ...' if len(tiny) > 8 else ''}")
+        st_plot = st_plot[st_plot["n_responsive"] >= args.min_responsive_per_region]
+        if st_plot.empty:
+            print(f"[responsive] no region has >= {args.min_responsive_per_region} "
+                  f"responsive electrodes; figure skipped (see the CSV)")
+            continue
         df_plot = df[df["grp"].isin(set(st_plot["grp"]))]
         path = plot_responsiveness(df_plot, st_plot, args.out_dir, beh, band, tag,
                                    alpha=args.responsive_alpha)
         if fine and len(st) > len(st_plot):
             print(f"[responsive/fine] plotting top {len(st_plot)} of {len(st)} "
                   f"labels by median |t|; full table in the CSV")
-        overall = 100 * (df["p"] < args.responsive_alpha).mean()
-        print(f"[responsive{'/fine' if fine else ''}] {len(df)} electrodes, "
-              f"{overall:.1f}% responsive at p<{args.responsive_alpha:g} "
-              f"(Long: 25.3%)")
         print(st.head(6).to_string(index=False))
         print(f"[responsive] wrote {path}")
 
@@ -719,7 +763,7 @@ def run_plot_stage(save_root, beh, band, args):
     elec_df = collect_electrode_table(save_root, beh, band, lobe_of,
                                       args.n_sessions,
                                       fc_mode=args.fc_mode)
-    per_elec, tbl = subject_roi_table(elec_df,
+    per_elec, tbl = subject_roi_table(elec_df, db=20.0 if args.fc_mode == "hilbert" else 10.0,
                                       min_electrodes=args.min_electrodes)
     print(f"[collect] {elec_df['sub'].nunique()} subjects, "
           f"{len(elec_df)} ROI-assigned electrodes")
@@ -783,6 +827,18 @@ def parse_args() -> argparse.Namespace:
                         "in from the 58-62 notch. Note the "
                         "effective temporal resolution is this window, NOT "
                         "--time-bin-ms; the axis is only SAMPLED at that step.")
+    p.add_argument("--t-unit", default="trial", choices=("trial", "sample"), dest="t_unit",
+                   help="responsiveness t-test observations: trial means, or every "
+                        "envelope sample (hilbert only; Long et al. don't say which)")
+    p.add_argument("--combine", default=(fc.LONGETAL or {}).get("combine", "d_mean"),
+                   choices=("d_mean", "word_average"),
+                   help="repeated sessions: average per-session d (d_mean), or average each "
+                        "word's envelope over sessions first (word_average; hilbert only, Long)")
+    p.add_argument("--min-responsive-per-region", type=int,
+                   default=(fc.LONGETAL or {}).get("min_responsive_per_region", 0),
+                   dest="min_responsive_per_region",
+                   help="drop regions with fewer task-responsive electrodes from the "
+                        "responsiveness figure (Long et al.: 50; the CSV keeps all)")
     p.add_argument("--responsive-alpha", type=float, default=1e-8,
                    dest="responsive_alpha",
                    help="p threshold for calling an electrode task-responsive. "
@@ -1114,39 +1170,96 @@ _UNLABELLED = {"nan", "none", "", "unknown", "n/a", "na", "white matter",
 _FINE_MIN_ELECTRODES = 10
 
 
+def _long_region(fine_label):
+    """'L lateral occipital cortex' -> Long et al.'s subregion (hemispheres pooled)."""
+    if not hasattr(_long_region, "map"):
+        _long_region.map = pd.read_csv(join(os.path.dirname(os.path.abspath(__file__)),
+                                            "long_regions.csv")).set_index("region")["long_region"]
+    return _long_region.map.get(str(fine_label).split(" ", 1)[-1])
+
+
+def word_averaged_rows(files, lobe_of, t_unit, by_fine_label):
+    """Long et al.: average each word's envelope over a subject's sessions, then
+    one d per electrode across words (trial) or across all envelope samples
+    (sample). Electrodes = labels present in every session of the subject."""
+    import helper
+    by_sub = {}   # files grouped by subject; one subject's envelopes in memory at a time
+    for f in files:
+        by_sub.setdefault(Path(f).name.split("_")[0], []).append(f)
+    rows = []
+    for sub, fs in tqdm(by_sub.items(), desc="word-average"):
+        ps = [p for p in (fc.load_pickle(str(f)) for f in fs) if p.get("env_lo") is not None]
+        if not ps:
+            continue
+        labels = [l for l in ps[0]["labels"] if all(l in set(q["labels"]) for q in ps)]
+        col = lambda q: [list(q["labels"]).index(l) for l in labels]
+        acc = {}   # word -> [sum_lo, sum_hi, n]
+        for q in ps:
+            c = col(q)
+            for i, w in enumerate(q["items"]):
+                lo, hi = q["env_lo"][i][c], q["env_hi"][i][c]
+                s = acc.setdefault(str(w).upper(), [0.0, 0.0, 0])
+                s[0], s[1], s[2] = s[0] + lo, s[1] + hi, s[2] + 1
+        lo = np.stack([s[0] / s[2] for s in acc.values()])   # (W, C, T_lo)
+        hi = np.stack([s[1] / s[2] for s in acc.values()])
+        if t_unit == "sample":
+            flat = lambda e: e.transpose(0, 2, 1).reshape(-1, e.shape[1])
+            a, b = flat(hi), flat(lo)
+        else:
+            a, b = hi.mean(-1), lo.mean(-1)
+        d = helper.cohens_d(a, b)
+        reg = dict(zip(ps[0]["labels"], ps[0]["reg_full"]))
+        roi = fc.roi_of_reg_full([reg[l] for l in labels], lobe_of)
+        for l, r, dd in zip(labels, roi, d):
+            if r is None or not np.isfinite(dd):
+                continue
+            grp = _long_region(reg[l]) if by_fine_label else r
+            if grp is None:
+                continue
+            rows.append((sub, str(l), str(grp), str(r), float(dd), float(len(b)), float(len(a))))
+    return rows
+
+
 def collect_responsiveness(save_root, beh, band, lobe_of, n_sessions=None,
-                           fc_mode="multitaper", by_fine_label=False):
-    """Per-(subject, electrode) t and p for the word contrast.
+                           fc_mode="multitaper", by_fine_label=False, t_unit="trial",
+                           combine="d_mean"):
+    """Per-(subject, electrode) t and p for the word contrast. t_unit "sample"
+    (hilbert only) treats every envelope sample, not every trial, as an observation.
     """
+    dk, nk = ("cohens_d_samples", "_samples") if t_unit == "sample" else ("cohens_d", "")
     from scipy.stats import t as tdist
 
     d = power_dir(save_root, beh, band, fc_mode)
     files = sorted(d.glob("*_power.pkl"))
     if n_sessions is not None:
         files = files[:n_sessions]
-    rows = []
-    for f in tqdm(files, desc="load responsiveness"):
+    rows = word_averaged_rows(files, lobe_of, t_unit, by_fine_label) if combine == "word_average" else []
+    for f in (tqdm(files, desc="load responsiveness") if combine != "word_average" else []):
         try:
             p = fc.load_pickle(str(f))
         except Exception:
             continue
-        if "cohens_d" not in p or "n_lo" not in p:
+        if p.get(dk) is None or "n_lo" not in p:
             continue
         sub = str(p["sid"][0])
         roi = fc.roi_of_reg_full(p["reg_full"], lobe_of)
         fine = np.asarray(p["reg_full"], dtype=object)
-        nlo, nhi = float(p["n_lo"]), float(p["n_hi"])
-        for lab, r, fl, dd in zip(p["labels"], roi, fine, p["cohens_d"]):
+        nlo, nhi = float(p["n_lo" + nk]), float(p["n_hi" + nk])
+        for lab, r, fl, dd in zip(p["labels"], roi, fine, p[dk]):
             # Check the RAW value BEFORE str(). reg_full is np.nan for contacts
             # with no anatomical label (white matter, outside brain, unmapped),
             # and str(np.nan) == "nan" - which silently became its own group and
             # topped the chart, because unlabelled contacts are common.
             raw = fl if by_fine_label else r
-            if raw is None:
+            if raw is None or (fc.LONGETAL and r is None):   # longetal: excluded lobes stay out of fine labels too
                 continue
             if isinstance(raw, float) and not np.isfinite(raw):
                 continue
             grp = str(raw).strip()
+            if fc.LONGETAL and by_fine_label:   # Long et al.'s subregions, hemispheres pooled
+                grp = _long_region(grp)
+                if grp is None:
+                    continue
             if grp.lower() in _UNLABELLED:
                 continue
             if not np.isfinite(dd):
@@ -1156,7 +1269,8 @@ def collect_responsiveness(save_root, beh, band, lobe_of, n_sessions=None,
         raise SystemExit(f"no usable pickles in {d}")
     df = pd.DataFrame(rows,
                       columns=["sub", "label", "grp", "roi", "d", "n_lo", "n_hi"])
-    # one row per (subject, electrode): average d over that subject's sessions.
+    # one row per (subject, electrode): average d over that subject's sessions
+    # (word_average rows are already one per electrode; the mean is a no-op).
     # `roi` rides along so a fine-label figure can still be coloured by lobe.
     df = (df.groupby(["sub", "label", "grp", "roi"], as_index=False)
             .agg(d=("d", "mean"), n_lo=("n_lo", "mean"), n_hi=("n_hi", "mean")))
@@ -1306,7 +1420,7 @@ def main() -> None:
             n_sessions=args.n_sessions, n_subjects=args.n_subjects,
             workers=args.workers, save_root=save_root, beh=args.beh, band=args.band, root_dir=root_dir,
             fc_mode=args.fc_mode, time_bin_ms=args.time_bin_ms,
-            mt_window_ms=args.mt_window_ms)
+            mt_window_ms=args.mt_window_ms, simulation_tag=args.simulation_tag)
 
     if args.stage in ("plot", "both"):
         run_plot_stage(save_root, args.beh, args.band, args)

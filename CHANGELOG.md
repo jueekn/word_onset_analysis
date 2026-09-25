@@ -7,6 +7,97 @@ earlier than the last entry below is undocumented.
 
 ---
 
+## 2026-09-25 — Scratch and downloads moved out of the repo
+
+- `paths.scratch_dir` → `~/scratch/word_onset_analysis/scratch` (sibling
+  `scratch.smokescreen`, `scratch.longetal`, ...); new `paths.bids_cache` →
+  `~/scratch/word_onset_analysis/bids_data`, exported as `CML_BIDS_CACHE` by
+  project_paths. Existing folders were moved, not recomputed. Figures stay in
+  the repo.
+- Convention: "juee flags" = the default methods (bipolar, all experiments,
+  multitaper, own windows/stats); their results are on hold and never
+  overwritten. longetal results are wiped and regenerated on every method
+  change. Full-cohort longetal now: 262 sessions / 150 subjects; responsive at
+  p<1e-8: 2.7% (per trial), 13.2% (per sample), vs Long 25.3%.
+
+---
+
+## 2026-09-24 — longetal: Long et al. 2020 replication
+
+`snakemake [all|simulations] --config longetal=true` (settings in config
+`longetal_params:`; `WOA_LONGETAL` in project_paths; outputs `*.longetal`).
+Default runs are unchanged.
+
+- FR1 only; complete sessions only (≥300 WORD events, rule `incomplete_session`).
+- Monopolar contacts (one "pair" per contact, distance 0; ECOG/SEEG channels
+  only) + common average reference per sample over the kept contacts, applied
+  after any simulated EEG so simulations see it too.
+- No resample; `--fc-mode hilbert`: band-pass 70–150, Hilbert amplitude at the
+  native rate, 500 ms buffer trimmed, envelope → 100 Hz, mean per window (or
+  50 ms bins). Pickles store amplitude (`measure: amplitude`); change_dB and
+  recovery use 20·log10.
+- Windows: blank −750–0 ms vs word 0–1600 ms (not length-equalized).
+- Only word_on events required. Responsiveness figure keeps regions with ≥50
+  responsive electrodes (CSV keeps all). Power only, no synchrony.
+- `exclude_lobes: [limbic, hippocampus, subcortical]` (Long excluded limbic and
+  sublobar electrodes): those ROIs map to None under longetal.
+- `--t-unit {trial,sample}` (plot stage): Long doesn't say whether the
+  responsiveness t-test used trial means or every envelope sample. Hilbert
+  pickles now also store `cohens_d_samples` / `n_{lo,hi}_samples`. Smoke:
+  6.6% responsive per trial vs 19.3% per sample (Long 25.3%).
+- `--combine {d_mean,word_average}` (longetal default word_average): Long
+  averaged each word over repeated sessions before testing. Hilbert pickles
+  store per-event envelopes (`env_lo`/`env_hi`, float32) and words (`items`);
+  `word_averaged_rows` averages per word within subject (labels present in all
+  sessions), then d across words or samples. `get_eeg` now labels each epoch
+  with its position in the input events (was 0..n-1), so dropped events keep
+  their identity. Smoke: 23.1% responsive (word_average, sample) vs Long 25.3%.
+- `long_regions.csv`: approximate map from our region names to Long's 16
+  subregions (hemispheres pooled); used for longetal `--fine-labels`.
+  `exclude_regions: [posterior cingulate gyrus]` (limbic in her atlas).
+- `get_eeg` drops events whose clip isn't fully inside the recording before
+  epoching (MNE raised instead; truncated OpenNeuro EDFs, e.g. R1156D, R1161E).
+
+---
+
+## 2026-09-24 — Recovery curves
+
+- `sweeps:` in `config/simulation_config.yaml` expand (simulate_eeg loader) to
+  one tag per planted value: power gain 1–4 (0–12 dB) and frontal PPC 0–0.99,
+  each with and without pink noise. `snakemake simulations` runs them
+  compute-only and `plot_recovery.py` draws measured vs planted →
+  `<figures>/simulations/recovery.png`.
+- Smoke result: noise-free power on the identity line; noisy power below it
+  (pink noise shares the band); PPC slightly below identity mid-range (≈0.46 at
+  0.5) with or without noise; non-target electrodes 0 throughout.
+
+---
+
+## 2026-09-23 — Snakefile, smokescreen, simulations, no log power
+
+- **Snakefile** runs prepare → ROI power + ROI synchrony → power-synchrony for
+  each config `runs:` entry. `--config smokescreen=true` = first 3 subjects,
+  outputs under `*.smokescreen` (`WOA_SMOKESCREEN` in project_paths).
+  `profiles/default` sets the greedy scheduler (default solver is x86-only).
+- **`snakemake simulations`**: `--simulation-tag` on all build scripts; EEG is
+  replaced by a `config/simulation_config.yaml` generator, pickles go to
+  `<scratch>/sim/<tag>`, figures to `<figures>/simulations/<tag>`. New tags:
+  `hg_null`, `hg_power_frontal` (70-150 Hz gain after onset, frontal only),
+  `hg_ppc_frontal` (110 Hz phase coupling after onset, frontal only).
+  Smoke result: effects recovered in frontal only (power d ≈ +5.8, synchrony
+  +1.0), null ≈ 0 everywhere — after the buffer fix below.
+- **`real_data_buffer_ms` 50 → 500, and build_roi_power now uses it** (it loaded
+  0 ms for multitaper, ~45 ms for Morlet). The 4 Hz-wide 100/120/150 Hz notches
+  ring for a few hundred ms; with the windows 0–50 ms from the clip edges, null
+  power read d ≈ -0.08 in every ROI. Changes every prepost result.
+- All simulation code moved from `helper.py` to `simulate_eeg.py`.
+- **Power is no longer log-transformed** (PI): Cohen's d on raw band power.
+  Pickle keys `log10_lo/hi` → `pow_lo/hi`, so old pickles recompute.
+- `fc.run_sessions` writes `<scratch>/logs/<stage>_errors.log`, one capped line
+  per failed session, overwritten each run.
+
+---
+
 ## 2026-09-21 — OpenNeuro / BIDS data; no cluster dependency
 
 The pipeline no longer needs rhino. Data comes from CML's public BIDS datasets
@@ -40,10 +131,16 @@ lists are not readable by the new code.
   pipeline reads: `label`, `contact_label_1/2`, `type_1/2` (D/G/S from the BIDS
   `description`), `mni.x/y/z` (pair centroid, MNI152NLin6ASym), `distance`,
   `stein.region` / `wb.region` / `ind.region`, `hemisphere`.
-- **A pair carries an atlas label only when both contacts agree** (the rule
-  the earlier bidsreader used). cmlreaders' pairs.json looked the atlas up at
-  the pair midpoint; BIDS has no pair-level lookup. Pairs straddling two
-  regions are therefore unlabelled (R1111M: 59 of 141).
+- **A pair takes contact 1's atlas label, or contact 2's when contact 1 has
+  none.** cmlreaders' pairs.json looked the atlas up at the pair midpoint;
+  BIDS has no pair-level lookup, so pairs straddling two regions can be
+  labelled differently from the cmlreaders pipeline. Checked on R1111M FR1
+  ses-0 against the cmlreaders test fixtures (2026-09-22): identical 141 pairs
+  and per-contact labels (100/100), identical WORD onsets (288/288); Burke ROI
+  agrees for 129/141 pairs, fine region for 110/141. The misses are the
+  midpoint-vs-contact rule plus main's grid cascade taking `dk` where BIDS
+  takes `ind`. Monopolar contacts carry the same labels in both, so a
+  monopolar analysis regionalizes identically.
 - Regionalization cascades trimmed to the three atlases BIDS carries:
   depths `stein → wb`, grid/strip `stein → ind`; `n/a` is a missing-label
   sentinel. The localization-table merge is gone.

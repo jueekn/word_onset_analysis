@@ -78,11 +78,11 @@ import fc_comparison_functions as fc
 def power_key_of_cond(beh):
     """{saved cond dir: column in the power pickle to correlate against}.
 
-    The two arms use the mean log10 power in that condition; the diff arm uses
+    The two arms use the mean power in that condition; the diff arm uses
     the per-electrode Cohen's d, which is the same contrast Rao correlates.
     """
     lo, hi, diff = fc.beh_conds(beh)
-    return {lo: "log10_lo", hi: "log10_hi", diff: "cohens_d"}
+    return {lo: "pow_lo", hi: "pow_hi", diff: "cohens_d"}
 
 
 def collect(save_root, fc_root, beh, band, metric, edges, args, lobe_of):

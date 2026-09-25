@@ -47,7 +47,7 @@ from project_paths import (
     MT_BANDWIDTH, GC_N_LAGS, COMPUTATION_METRICS,
     REAL_DATA_BUFFER_MS,
     FC_MODE, CWT_FNUM, CWT_MORLET_REPS, CWT_BUFFER_N_SIGMA, TIME_BIN_MS, MT_WINDOW_MS,
-    NOTCH_HARMONICS_UP_TO_HZ,
+    NOTCH_HARMONICS_UP_TO_HZ, LONGETAL,
 )
 
 root_dir: str = str(_SCRATCH_DIR)
@@ -300,7 +300,7 @@ def compute_metric_matrix(
         cwt_freqs=cwt_freqs, cwt_n_cycles=cwt_n_cycles,
     )
 
-FC_MODES = ("multitaper", "cwt_morlet")
+FC_MODES = ("multitaper", "cwt_morlet", "hilbert")   # hilbert: power only (longetal)
 
 
 def band_dirname(band: str, fc_mode: str = "multitaper") -> str:
@@ -392,8 +392,7 @@ def morlet_buffer_ms(fmin: float, morlet_reps: int = 5,
 
     The frequency dependence is severe and is the reason one fixed constant
     cannot serve every band: 5 sigma is ~995 ms at 4 Hz but only ~57 ms at
-    70 Hz. Note this also means the configured `real_data_buffer_ms: 50` is
-    marginally short for a 70 Hz lower edge (~4.4 sigma).
+    70 Hz. build_roi_power loads max(this, real_data_buffer_ms).
     """
     from wavelet import Wavelet  # local: keeps matplotlib off the compute path
     # fmax/fnum are irrelevant to get_morlet_width; only morlet_reps and f are.
@@ -666,6 +665,9 @@ PREPOST_SPEC: dict[str, dict[str, Any]] = {
     "voc": {"pre_type": "PRE_REC_WORD", "post_type": "REC_WORD",
             "pre_win": (-1100.0, -100.0), "post_win": (0.0, 1000.0)},
 }
+if LONGETAL:   # Long et al.: blank screen vs word on screen
+    PREPOST_SPEC["word_on"].update(pre_win=tuple(map(float, LONGETAL["pre_win"])),
+                                   post_win=tuple(map(float, LONGETAL["post_win"])))
 
 
 def compute_prepost_separate(
@@ -2420,6 +2422,9 @@ def roi_of_reg_full(reg_full: Any, lobe_of: dict[str, str]) -> NDArrayAny:
             continue
         hemi, region = v.split(" ", 1)
         lobe = lobe_of.get(region, "")
+        if LONGETAL and (lobe in LONGETAL.get("exclude_lobes", ())            # Long et al.: no limbic/sublobar
+                         or region in LONGETAL.get("exclude_regions", ())):
+            lobe = ""
         out.append(f"{hemi}-{lobe}"
                    if (lobe in LOBES and hemi in ("L", "R")) else None)
     return np.array(out, dtype=object)
@@ -2879,6 +2884,10 @@ def run_sessions(
 
     out: list[Any] = []
     n_ok, n_err = 0, 0
+    # Overwritten each run, one capped line per failure: bounded, and never stale.
+    log_path = Path(root_dir, "logs", "_".join(desc.lower().split()) + "_errors.log")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log = open(log_path, "w")
     pbar = tqdm(results, total=len(jobs), desc=f"{desc} ({workers} worker{'s' if workers > 1 else ''})")
     for item, res, err in pbar:
         if err is None:
@@ -2889,11 +2898,14 @@ def run_sessions(
                 pbar.write(f"[ok] {res}")
         else:
             n_err += 1
-            pbar.write(f"[error] sess={_sid_str(item)}: {err!r}")
+            line = f"sess={_sid_str(item)}: {err!r}"[:500]
+            pbar.write(f"[error] {line}")
+            log.write(line + "\n")
         pbar.set_postfix(ok=n_ok, err=n_err)
+    log.close()
     if pool is not None:
         pool.shutdown()
-    print(f"[{desc}] done: ok={n_ok}, err={n_err}")
+    print(f"[{desc}] done: ok={n_ok}, err={n_err}" + (f" (errors: {log_path})" if n_err else ""))
     return out
 
 
@@ -2925,6 +2937,9 @@ def add_common_args(p: Any, compute: bool = True) -> Any:
                    help="where per-session pickles live; defaults to --root-dir")
     p.add_argument("--n-sessions", type=int, default=None,
                    help="use only the first N sessions")
+    p.add_argument("--simulation-tag", default=None,
+                   help="replace the EEG with this config/simulation_config.yaml DGP; "
+                        "pickles go to <root-dir>/sim/<tag>")
     if compute:
         p.add_argument("--n-subjects", type=int, default=None,
                        help="compute all sessions of the first K subjects")
@@ -2948,7 +2963,8 @@ def resolve_roots(args: Any) -> tuple[str, str]:
     """(root_dir, save_root) from --root-dir / --save-root; point helper at them."""
     global root_dir
     root_dir = args.root_dir or root_dir
-    save_root = getattr(args, "save_root", None) or root_dir
+    tag = getattr(args, "simulation_tag", None)   # simulated pickles never share the real cache
+    save_root = getattr(args, "save_root", None) or (join(root_dir, "sim", tag) if tag else root_dir)
     helper.root_dir = root_dir
     print(f"[setup] root_dir  = {root_dir}")
     print(f"[setup] save_root = {save_root}")

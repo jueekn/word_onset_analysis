@@ -37,7 +37,6 @@ from cstat import *  # noqa: F401,F403
 from misc import *  # noqa: F401,F403
 from misc import ftag  # explicit for type-checker visibility
 from matrix_operations import *  # noqa: F401,F403
-from simulate_eeg import AVAILABLE_SIMULATIONS, simulation_parameters, sample_eeg
 
 NDArrayAny = npt.NDArray[Any]
 
@@ -53,7 +52,7 @@ if TYPE_CHECKING:
     root_dir: str  # type: ignore[no-redef]
 
 from project_paths import BANDS as bands  # noqa: E402
-from project_paths import RESAMPLE_HZ, NOTCH_HARMONICS_UP_TO_HZ  # noqa: E402
+from project_paths import RESAMPLE_HZ, NOTCH_HARMONICS_UP_TO_HZ, LONGETAL  # noqa: E402
 
 # CFG_FLOW_VERIFY: helper.bands must equal project_paths.BANDS (config.yaml: bands)
 # Per-key pins: pre-migration helper.bands had {"alpha": (8,12), "theta": (4,9),
@@ -144,8 +143,8 @@ def prefetch_bids(dfrows: Sequence[pd.Series], eeg: bool = True) -> None:
                  include_timeseries=eeg, acquisition=BIDS_ACQUISITION)
 
 
-# Bipolar pairs are the analysis channels throughout.
-BIDS_ACQUISITION: str = 'bipolar'
+# Bipolar pairs are the analysis channels; longetal: monopolar contacts + common average reference.
+BIDS_ACQUISITION: str = LONGETAL['acquisition'] if LONGETAL else 'bipolar'
 # BIDS electrode `description` -> the single-letter electrode type the
 # regionalization cascade keys on (volumetric atlases for depths, surface for
 # grid/strip).
@@ -167,6 +166,11 @@ def load_pairs_table(reader: Any) -> pd.DataFrame:
     order, which `get_eeg` relies on.
     """
     t = reader.load_combined_channels(acquisition=BIDS_ACQUISITION)
+    if BIDS_ACQUISITION == 'monopolar':   # contacts are the channels: give each the pair schema
+        t = t[t['type'].isin(['ECOG', 'SEEG'])].reset_index(drop=True)   # no scalp/EKG channels
+        cols = [c for c in ('x', 'y', 'z', 'stein.region', 'wb.region', 'ind.region') if c in t]
+        t = t.assign(ch1=t['name'], ch2=t['name'],
+                     **{f'{c}_{s}': t[c] for c in cols for s in ('ch1', 'ch2', 'mid')})
     pairs = pd.DataFrame({
         'label': t['name'].astype(str),
         'contact_label_1': t['ch1'].astype(str),
@@ -178,7 +182,7 @@ def load_pairs_table(reader: Any) -> pd.DataFrame:
         pairs[f'mni.{ax}'] = pd.to_numeric(t[f'{ax}_mid'], errors='coerce')
     c1 = t[['x_ch1', 'y_ch1', 'z_ch1']].apply(pd.to_numeric, errors='coerce').to_numpy(float)
     c2 = t[['x_ch2', 'y_ch2', 'z_ch2']].apply(pd.to_numeric, errors='coerce').to_numpy(float)
-    pairs['distance'] = np.linalg.norm(c1 - c2, axis=1)
+    pairs['distance'] = 0.0 if BIDS_ACQUISITION == 'monopolar' else np.linalg.norm(c1 - c2, axis=1)
     for atlas in ('stein.region', 'wb.region', 'ind.region'):
         a = t.get(f'{atlas}_ch1', pd.Series(np.nan, index=t.index)).replace('n/a', np.nan)
         b = t.get(f'{atlas}_ch2', pd.Series(np.nan, index=t.index)).replace('n/a', np.nan)
@@ -239,12 +243,18 @@ def get_eeg(
     # Epoch each distinct onset once (MNE refuses repeated samples), then expand
     # back: the same onset can appear twice, e.g. WORD + its PRE_WORD copy.
     uniq, inverse = np.unique(samples, return_inverse=True)
-    mne_events = np.column_stack([uniq, np.zeros(len(uniq), int), np.ones(len(uniq), int)])
+    # Keep only onsets whose whole clip is inside the recording: MNE raises (not
+    # drops) when a clip starts past the end, e.g. truncated OpenNeuro EDFs.
+    inside = np.flatnonzero((uniq + round(start * sr / 1000) >= 0) &
+                            (uniq + round(end * sr / 1000) < raw.n_times))
+    if not len(inside):
+        raise ValueError(f'{ftag(dfrow)}: no event clip lies inside the recording')
+    mne_events = np.column_stack([uniq[inside], np.zeros(len(inside), int), np.ones(len(inside), int)])
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         epochs = mne.Epochs(raw, mne_events, tmin=start / 1000.0, tmax=end / 1000.0,
                             baseline=None, preload=True, verbose=False)
-    row_of = {u: i for i, u in enumerate(epochs.selection)}     # uniq index -> epoch row
+    row_of = {inside[s]: i for i, s in enumerate(epochs.selection)}   # uniq index -> epoch row
     kept = np.array([i for i, u in enumerate(inverse) if u in row_of], dtype=int)
     if len(kept) < len(samples):
         print(f'[{ftag(dfrow)}] {len(samples) - len(kept)} of {len(samples)} events dropped '
@@ -253,7 +263,8 @@ def get_eeg(
     # MNE reads volts; the pipeline has always worked in microvolts.
     data = epochs.get_data()[[row_of[inverse[i]] for i in kept]] * 1e6
     eeg = TimeSeries.create(data, sr, dims=('event', 'channel', 'time'),
-                            coords={'event': np.arange(len(kept)), 'channel': labels,
+                            coords={'event': events.index.to_numpy()[kept],   # position in the input events
+                                    'channel': labels,
                                     'time': epochs.times * 1000.0})
 
     if sr_expected is not None:
@@ -261,11 +272,14 @@ def get_eeg(
 
     if simulation_tag not in ['standard', '', None]:
         # replace experimentally recorded EEG with simulated EEG to validate analysis pipeline
+        from simulate_eeg import replace_w_simulated_EEG
         eeg = replace_w_simulated_EEG(eeg,
                                       dfrow,
                                       time_unit='millisecond',
                                       condition_mask=mask,
                                       simulation_tag=simulation_tag)
+    if BIDS_ACQUISITION == 'monopolar':   # common average reference, per sample, over the kept contacts
+        eeg = eeg - eeg.mean('channel')
     
     return eeg, mask
 
@@ -346,7 +360,8 @@ def get_beh_eeg(
     eeg, mask = get_eeg(dfrow, events, start, end, simulation_tag=simulation_tag)
     if save: np.save(join(root_dir, beh, 'eeg', f'{ftag(dfrow)}_raw_eeg.npy'), eeg.data)
 
-    eeg = eeg.resampled(RESAMPLE_HZ)
+    if RESAMPLE_HZ:   # None (longetal): keep the native rate
+        eeg = eeg.resampled(RESAMPLE_HZ)
     # NOTCH_HARMONICS_UP_TO_HZ is None by default -> fundamental only, i.e. every
     # pre-existing low-frequency result is unchanged. Set it in config.yaml for
     # high-gamma runs, where the line harmonics fall inside the analysis band.
@@ -808,7 +823,7 @@ def get_phase(eeg: TimeSeries, freqs: Sequence[float] | NDArrayAny) -> Any:
 def get_power(eeg: TimeSeries, freqs: Sequence[float] | NDArrayAny) -> Any:
     
     '''
-    Returns time series of spectral power values. Performs Morlet wavelet convolution, log-transforms power, clips buffer, and z-scores power values.
+    Returns time series of spectral power values. Performs Morlet wavelet convolution, clips buffer, and z-scores power values.
     
     Parameters:
         eeg : ptsa.data.TimeSeries
@@ -824,8 +839,7 @@ def get_power(eeg: TimeSeries, freqs: Sequence[float] | NDArrayAny) -> Any:
     wavelet_filter = MorletWaveletFilter(freqs=freqs, width=5, output='power', complete=True)
     power = wavelet_filter.filter(timeseries=eeg)
     power = power.transpose('event', 'channel', 'frequency', 'time')
-    
-    power = np.log10(power)
+
     
     sr = float(eeg.samplerate)
     buffer_length = int(sr/1000*1000)
@@ -874,312 +888,3 @@ def welchs_t(x: NDArrayAny, y: NDArrayAny) -> float:
     var_y = np.var(y, axis=0, ddof=1)
     # Welch's t (unequal variances); equals ttest_ind(equal_var=False).statistic
     return (np.mean(x, axis=0) - np.mean(y, axis=0)) / np.sqrt(var_x / nx + var_y / ny)
-
-def _simulated_electrode_regionalizations(
-    eeg: TimeSeries, dfrow: pd.Series,
-) -> tuple[list[Any], list[str]]:
-    """Per-channel region labels + L/R hemisphere groups for the simulated
-    EEG, used to build the block-diagonal coupling target (phase covariance
-    OR amplitude-envelope correlation). Factored out so the phase and AEC
-    DGP branches of replace_w_simulated_EEG share one region mapping."""
-    pairs = get_pairs(dfrow)
-    assert len(pairs) == len(eeg.channel)
-    regionalizations = regionalize_electrodes_by_type(pairs)
-    region_series = pd.Series(regionalizations)
-    has_hemisphere_mask = region_series.str.startswith('L ') | region_series.str.startswith('R ') | region_series.isna()
-    if not has_hemisphere_mask.all():
-        raise ValueError
-    # use hemispheres for simple regional grouping (rare NaN region -> 'Right')
-    region_groups = ['Left' if left else 'Right' for left in pd.Series(regionalizations).str.startswith('L ')]
-    return list(regionalizations), list(region_groups)
-
-
-def _simulate_aec_envelope_eeg(
-    original_eeg: TimeSeries,
-    eeg: TimeSeries,
-    dfrow: pd.Series,
-    parameters: dict[str, Any],
-    condition_mask: NDArrayAny,
-    time_unit: str,
-    random_state: int | None,
-    verbose: bool = False,
-) -> TimeSeries:
-    """AEC amplitude-envelope DGP for the pipeline path. Builds a
-    block-diagonal cross-channel ENVELOPE correlation target per contrast arm
-    (cond0 = ~mask, cond1 = mask) from within_region/within_group/global _aec
-    params, then generates envelope-coupled EEG via fc_aec_dgp.sample_eeg_aec
-    (Cholesky-planted envelopes modulating a carrier). Mirrors the phase path's
-    split / assemble / event-reorder steps so word_on/voc pre-post and en/rm
-    matched contrasts flow through compute_session_fc identically."""
-    regionalizations, region_groups = _simulated_electrode_regionalizations(eeg, dfrow)
-    from simulate_eeg import get_block_diagonal_ppc_matrix
-
-    def _aec_corr(suffix: str) -> NDArrayAny:
-        # values are envelope correlations, planted directly via Cholesky
-        # (no wrapped-normal transform — that is phase-DGP only).
-        return get_block_diagonal_ppc_matrix(
-            n_channels=None, n_regions=None, n_region_groups=None,
-            regions=list(regionalizations), region_groups=list(region_groups),
-            global_ppc=parameters[f"global_aec{suffix}"],
-            within_group_ppc=parameters[f"within_group_aec{suffix}"],
-            within_region_ppc=parameters[f"within_region_aec{suffix}"],
-            verbose=verbose,
-        )
-    envcorr0 = _aec_corr("0")
-    envcorr1 = _aec_corr("1")
-
-    start_time_ms = original_eeg.time.min()
-    duration_ms = original_eeg.time.max() - start_time_ms
-    if time_unit == 'second':
-        start_time_ms *= 1000
-        duration_ms *= 1000
-
-    eeg = eeg.assign_coords(_index=("event", np.arange(len(eeg['event'])))).set_index(event='_index', append=True)
-    eeg0 = eeg[~condition_mask]
-    eeg1 = eeg[condition_mask]
-
-    from fc_aec_dgp import sample_eeg_aec  # pyright: ignore[reportMissingImports]
-
-    carrier_freq_Hz = parameters['carrier_freq_Hz']
-    envelope_cutoff_Hz = parameters['envelope_cutoff_Hz']
-    phase_mode = parameters.get('phase_mode', 'independent')
-    noise_amplitude = parameters.get('noise_amplitude', 0.1)
-    sr = float(original_eeg.samplerate)
-
-    def _gen(n_ev: int, corr: NDArrayAny, seed_offset: int) -> NDArrayAny:
-        rng = None if random_state is None else (random_state + seed_offset) % (2**32 - 1)
-        ts = sample_eeg_aec(
-            n_events=int(n_ev), n_channels=len(eeg.channel), target_corr=corr,
-            sample_rate_Hz=sr, duration_ms=float(duration_ms),
-            carrier_freq_Hz=carrier_freq_Hz, phase_mode=phase_mode,
-            envelope_cutoff_Hz=envelope_cutoff_Hz, noise_amplitude=noise_amplitude,
-            rng=rng)
-        return np.asarray(ts.values)
-
-    data0 = _gen(len(eeg0.event), envcorr0, 0)
-    data1 = _gen(len(eeg1.event), envcorr1, 1)
-    # sample_eeg_aec emits 0-based time; rebuild absolute-time coords matching
-    # the real epoch window (length = generator n_samples).
-    n_t = data0.shape[-1]
-    aec_times = np.linspace(float(start_time_ms), float(start_time_ms) + float(duration_ms), n_t)
-    simulated_eeg0 = TimeSeries.create(
-        data=data0,
-        coords={'event': eeg0.coords['event'], 'channel': eeg0.coords['channel'], 'time': aec_times},
-        dims=('event', 'channel', 'time'), samplerate=sr)
-    simulated_eeg1 = TimeSeries.create(
-        data=data1,
-        coords={'event': eeg1.coords['event'], 'channel': eeg1.coords['channel'], 'time': aec_times},
-        dims=('event', 'channel', 'time'), samplerate=sr)
-
-    del eeg0, eeg1
-    from matrix_operations import sort_multi_index_coord
-    if not np.all(simulated_eeg0.time == simulated_eeg1.time):
-        raise ValueError('Time values in simulated EEG do not match across conditions')
-    simulated_eeg = xr.concat([simulated_eeg0, simulated_eeg1], 'event')
-    simulated_eeg = sort_multi_index_coord(simulated_eeg, 'event', '_index')
-    simulated_eeg = simulated_eeg.reset_index('_index', drop=True)
-    simulated_eeg.attrs['samplerate'] = original_eeg.samplerate
-    assert original_eeg.channel.equals(simulated_eeg.channel)
-    assert original_eeg.samplerate.equals(simulated_eeg.samplerate)
-    if 'samplerate' in original_eeg.attrs:
-        simulated_eeg.attrs['samplerate'] = simulated_eeg.samplerate
-    if time_unit == 'second':
-        simulated_eeg = simulated_eeg.assign_coords({'time': simulated_eeg['time'] / 1000})
-    return simulated_eeg
-
-
-def replace_w_simulated_EEG(
-    original_eeg: TimeSeries,
-    dfrow: pd.Series,
-    condition_mask: NDArrayAny,
-    simulation_tag: str | None = None,
-    time_unit: str = 'millisecond',
-    random_state: int | None = None,
-    random_state_type: str = 'offset_from_eeg_hash',
-    verbose: bool = False,
-) -> TimeSeries:
-    assert isinstance(original_eeg, TimeSeries)
-    assert simulation_tag in AVAILABLE_SIMULATIONS
-    
-    if random_state_type == 'offset_from_eeg_hash':
-        # fix random state to hash of original EEG
-        # ensures unique, reproducible random states for each unique input EEG recording
-        eeg_hash = hash(str(original_eeg.data))
-        random_state = eeg_hash if random_state is None else eeg_hash + random_state
-        random_state %= 2**32 - 1
-    elif random_state_type == 'standard':
-        pass
-    else:
-        raise ValueError
-    if random_state is not None:
-        np.random.seed(random_state)
-    
-    if simulation_tag in ['standard', '', None]:
-        return original_eeg
-    eeg = original_eeg.copy()
-    
-    parameters = simulation_parameters[simulation_tag]
-
-    if parameters.get('data_generating_process') == 'aec_envelope':
-        return _simulate_aec_envelope_eeg(
-            original_eeg, eeg, dfrow, parameters, condition_mask,
-            time_unit, random_state, verbose)
-
-    wavelet_amplitude = parameters['wavelet_amplitude']
-    get_phase_covariance = parameters['phase_covariance_function']
-    if get_phase_covariance == 'within_region_group':
-        pairs = get_pairs(dfrow)
-        assert len(pairs) == len(eeg.channel)
-        regionalizations = regionalize_electrodes_by_type(pairs)
-        region_series = pd.Series(regionalizations)
-        has_hemisphere_mask = region_series.str.startswith('L ') | region_series.str.startswith('R ') | region_series.isna()
-        if not has_hemisphere_mask.all():
-            # print(region_series[~has_hemisphere_mask])
-            # display(region_series)
-            raise ValueError
-        # use hemispheres for simple regional grouping (put rare NaN region channels in 'Right' group)
-        region_groups = ['Left' if left else 'Right' for left in pd.Series(regionalizations).str.startswith('L ')]
-        
-        from simulate_eeg import get_block_diagonal_ppc_matrix, ppc_matrix_to_wrapped_normal_covariance
-
-        # Read FC targets on the metric's natural scale:
-        #   *_ppc*  (PPC sims)  → values are PPC (R²); used directly.
-        #   *_coh*  (Coh sims)  → values are coh-modulus (R); squared to PPC.
-        # The wrapped-normal cov machinery expects PPC inputs, so both
-        # conventions are normalized to PPC here before cov construction.
-        def _ppc_target(scope, suffix):
-            coh_key = f"{scope}_coh{suffix}"
-            if coh_key in parameters:
-                return parameters[coh_key] ** 2
-            return parameters[f"{scope}_ppc{suffix}"]
-
-        ppc_matrix0 = get_block_diagonal_ppc_matrix(n_channels=None,
-                                                    n_regions=None,
-                                                    n_region_groups=None,
-                                                    regions=list(regionalizations),
-                                                    region_groups=list(region_groups),
-                                                    global_ppc=_ppc_target("global", "0"),
-                                                    within_group_ppc=_ppc_target("within_group", "0"),
-                                                    within_region_ppc=_ppc_target("within_region", "0"),
-                                                    verbose=verbose,
-                                                   )
-        cov0 = ppc_matrix_to_wrapped_normal_covariance(ppc_matrix0)
-
-        ppc_matrix1 = get_block_diagonal_ppc_matrix(n_channels=None,
-                                                    n_regions=None,
-                                                    n_region_groups=None,
-                                                    regions=list(regionalizations),
-                                                    region_groups=list(region_groups),
-                                                    global_ppc=_ppc_target("global", "1"),
-                                                    within_group_ppc=_ppc_target("within_group", "1"),
-                                                    within_region_ppc=_ppc_target("within_region", "1"),
-                                                    verbose=verbose,
-                                                   )
-        cov1 = ppc_matrix_to_wrapped_normal_covariance(ppc_matrix1)
-        
-    elif get_phase_covariance is None:
-        cov0 = None
-        cov1 = None
-    else:
-        raise NotImplementedError(f'Phase covariance method {get_phase_covariance} is not implemented!')
-    oscillation_frequency = parameters['oscillation_frequency']
-    morlet_reps = parameters['morlet_reps']
-    
-    pinknoise_amplitude = parameters['pinknoise_amplitude']
-    pinknoise_exponent = parameters['pinknoise_exponent']
-    
-    start_time_ms = original_eeg.time.min()
-    duration_ms = original_eeg.time.max() - start_time_ms
-    if time_unit == 'second':
-        start_time_ms *= 1000
-        duration_ms *= 1000
-    
-    eeg = eeg.assign_coords(_index=("event", np.arange(len(eeg['event'])))).set_index(event='_index', append=True)
-    eeg0 = eeg[~condition_mask]
-    eeg1 = eeg[condition_mask]
-    
-    simulated_eeg0 = sample_eeg(n_events=len(eeg0.event),
-                                n_channels=len(eeg0.channel),
-                                sample_rate_Hz=eeg0.samplerate,
-                                start_time_ms=start_time_ms,
-                                duration_ms=duration_ms,
-                                connectivity_frequency_Hz=oscillation_frequency,
-                                morlet_reps=morlet_reps,
-                                wavelet_amplitude=wavelet_amplitude,
-                                phase_mean=np.zeros(len(cov0)) if cov0 is not None else None,
-                                phase_covariance=cov0,
-                                pinknoise_amplitude=pinknoise_amplitude,
-                                pinknoise_exponent=pinknoise_exponent,
-    )
-    
-    simulated_eeg1 = sample_eeg(n_events=len(eeg1.event),
-                                n_channels=len(eeg1.channel),
-                                sample_rate_Hz=eeg1.samplerate,
-                                start_time_ms=start_time_ms,
-                                duration_ms=duration_ms,
-                                connectivity_frequency_Hz=oscillation_frequency,
-                                morlet_reps=morlet_reps,
-                                wavelet_amplitude=wavelet_amplitude,
-                                phase_mean=np.zeros(len(cov1)) if cov1 is not None else None,
-                                phase_covariance=cov1,
-                                pinknoise_amplitude=pinknoise_amplitude,
-                                pinknoise_exponent=pinknoise_exponent,
-    )
-    simulated_eeg0 = TimeSeries.create(data=simulated_eeg0.values,
-                                       coords={'event': eeg0.coords['event'],
-                                               'channel': eeg0.coords['channel'],
-                                               'time': simulated_eeg0.coords['time']},
-                                       dims=simulated_eeg0.dims,
-                                       samplerate=simulated_eeg0.samplerate.item())
-    simulated_eeg1 = TimeSeries.create(data=simulated_eeg1.values,
-                                       coords={'event': eeg1.coords['event'],
-                                               'channel': eeg1.coords['channel'],
-                                               'time': simulated_eeg1.coords['time']},
-                                       dims=simulated_eeg1.dims,
-                                       samplerate=simulated_eeg1.samplerate.item())
-    
-    del eeg0, eeg1
-    from matrix_operations import sort_multi_index_coord
-    if not np.all(simulated_eeg0.time == simulated_eeg1.time):
-        raise ValueError('Time values in simulated EEG do not match across conditions')
-    
-    simulated_eeg = xr.concat([simulated_eeg0, simulated_eeg1], 'event')
-    # sort back into original event order
-    simulated_eeg = sort_multi_index_coord(simulated_eeg, 'event', '_index')
-    simulated_eeg = simulated_eeg.reset_index('_index', drop=True)
-    simulated_eeg.attrs['samplerate'] = original_eeg.samplerate
-    
-    # n_evs = 0
-    # for i_ev, (sim_ev, orig_ev) in enumerate(zip(simulated_eeg.event, original_eeg.event)):
-    #     if not sim_ev.equals(orig_ev):
-    #         print(i_ev)
-    #         print(sim_ev)
-    #         print()
-    #         print(orig_ev)
-    #         print()
-    #         print('sim_ev == sim_ev', sim_ev.equals(sim_ev))
-    #         print('orig_ev == orig_ev', orig_ev.equals(orig_ev))
-    #         print()
-    #         print()
-    #         n_evs += 1
-    #         if n_evs == 5:
-    #             break
-    
-    # print(original_eeg.event)
-    # print(simulated_eeg.event)
-    # print(original_eeg.item_name)
-    # print(simulated_eeg.item_name)
-    
-    # matches for most sessions, but some get implicitly type cast by xarray in workshop_311 environment
-    # assert original_eeg.event.equals(simulated_eeg.event)
-    assert original_eeg.channel.equals(simulated_eeg.channel)
-    assert original_eeg.samplerate.equals(simulated_eeg.samplerate)
-    if 'samplerate' in original_eeg.attrs:
-        simulated_eeg.attrs['samplerate'] = simulated_eeg.samplerate
-    
-    if time_unit == 'second':
-        simulated_eeg = simulated_eeg.assign_coords({'time': simulated_eeg['time'] / 1000})
-
-    return simulated_eeg
-
-

@@ -28,7 +28,8 @@ Everything is read from the lab's public BIDS datasets on OpenNeuro
 cluster. `cml_data.py` lists a dataset on S3 and downloads what a session needs
 on first use — events / channel / electrode tables (~1 MB) and, for the
 compute stages, the bipolar recording (300–700 MB per session) — into
-`./bids_data` (override with `CML_BIDS_CACHE`). Files are never re-downloaded.
+`config.yaml paths.bids_cache` (default `~/scratch/word_onset_analysis/bids_data`;
+`CML_BIDS_CACHE` overrides). Files are never re-downloaded.
 You are asked once per run before anything is fetched; set
 `CML_AUTO_APPROVE=1` for unattended runs.
 
@@ -46,7 +47,8 @@ python build_power_synchrony.py --beh word_on --band high_gamma
 ```
 
 `prepare_sessions.py` writes the session list and per-session artifacts under
-`config.yaml paths.scratch_dir` (default `./scratch`): `sess_list_df*.json`,
+`config.yaml paths.scratch_dir` (default `~/scratch/word_onset_analysis/scratch`, outside
+the repo; smokescreen / longetal runs use sibling `scratch.*` folders): `sess_list_df*.json`,
 `electrode_information/pairs/`, `<beh>/events/`. `--subjects`, `--n-subjects`
 and `--n-sessions` restrict it; the whole cohort is ~1300 sessions.
 

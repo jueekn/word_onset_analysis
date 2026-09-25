@@ -1,0 +1,2 @@
+# Loaded automatically by snakemake (>=8).
+scheduler: greedy   # default ILP scheduler ships an x86-only solver; fails on Apple Silicon

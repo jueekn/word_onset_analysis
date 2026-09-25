@@ -45,9 +45,15 @@ def _resolve_paths(raw: Dict[str, Any]) -> Dict[str, Path]:
     base = {"USER": os.environ.get("USER") or getpass.getuser(), "REPO_ROOT": str(REPO_ROOT)}
     if "scratch_dir" not in raw:
         raise KeyError("config/config.yaml `paths:` block is missing `scratch_dir`")
-    scratch = Template(str(raw["scratch_dir"])).safe_substitute(base)
+    suffix = ((".longetal" if os.environ.get("WOA_LONGETAL") else "")      # both set by the Snakefile
+             + (".smokescreen" if os.environ.get("WOA_SMOKESCREEN") else ""))
+    scratch = Template(str(raw["scratch_dir"])).safe_substitute(base) + suffix   # ${SCRATCH_DIR} users follow
     base["SCRATCH_DIR"] = str(_abs(scratch))
-    return {k: _abs(Template(str(v)).safe_substitute(base)) for k, v in raw.items()}
+    out = {k: _abs(Template(str(v)).safe_substitute(base)) for k, v in raw.items()}
+    for k in ("scratch_dir", "exclusion_counts"):
+        if k in out:
+            out[k] = Path(str(out[k]) + suffix)
+    return out
 
 
 _PATHS: Dict[str, Path] = _resolve_paths(cast(dict[str, Any], _CFG.get("paths") or {}))
@@ -93,7 +99,10 @@ if BANNED_METRICS.intersection(COMPUTATION_METRICS):
 
 MIRROR_BUFFER_MS: int = int(get_default("mirror_buffer_ms"))
 REAL_DATA_BUFFER_MS: float = float(get_default("real_data_buffer_ms"))
-RESAMPLE_HZ: float = float(get_default("resample_hz"))
+# Long et al. 2020 replication settings (config `longetal_params:`), or None.
+LONGETAL: dict[str, Any] | None = get_default("longetal_params") if os.environ.get("WOA_LONGETAL") else None
+# None = keep the native rate (longetal: Hilbert at the native rate).
+RESAMPLE_HZ: float | None = None if LONGETAL else float(get_default("resample_hz"))
 MIN_SAMPLE_RATE_HZ: float = float(get_default("min_sample_rate_hz"))
 # notch_harmonics_up_to_hz: None = fundamental-only notch (historical default,
 # leaves every existing result bit-identical). A float switches on harmonic
@@ -132,6 +141,8 @@ BEHAVIORS_ALL: tuple[str, ...] = BEHAVIORS_MAIN + BEHAVIORS_NONCONTRAST
 
 
 SCRATCH_DIR: Path = get("scratch_dir")
+# cml_data reads the download cache location from CML_BIDS_CACHE.
+os.environ.setdefault("CML_BIDS_CACHE", str(get("bids_cache")))
 # Event/session exclusion-count logs + the config name stamped into them.
 EXCLUSION_COUNTS_DIR: Path = get("exclusion_counts")
 CONFIG_NAME: str = str(get_default("config_name"))
