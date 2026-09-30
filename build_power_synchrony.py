@@ -2,10 +2,9 @@
 build_power_synchrony.py
 
 Power-synchrony correlation per Burke ROI, computed the way Rao et al. 2025
-(J Neurosci) computed it: one panel for the behavior's `lo` arm, one for its
-`hi` arm, and one for the contrast (Cohen's d of power vs the saved delta
-connectivity), which is the panel that matches Rao's own contrast-vs-contrast
-correlation.
+(J Neurosci) computed it: the contrast only (Cohen's d of power vs the saved
+hi - lo connectivity), Rao's own contrast-vs-contrast correlation. One row per
+band already plotted into --out-dir (fc.band_contrast_figure).
 
 Rao's version (notebook cell 189, `compute_power_synchrony_correlations`):
 
@@ -39,17 +38,14 @@ Per-bin correlations are always reported (`*_per_bin.csv`): power vs each bin's
 z-scored column separately. If r is flat across distance the collapse choice does
 not matter; if it is not, that is the more informative result.
 
-The diff panel is the Rao-exact one: his correlation is CONTRAST vs CONTRAST --
-power Cohen's d against a raw connectivity difference. Reading the SAVED diff
-matrix keeps his order of operations (difference at the pair level, then
-aggregate over partners); differencing two collapsed scores would not be
-equivalent, since bins are z-scored per condition.
+Reading the SAVED diff matrix keeps Rao's order of operations (difference at
+the pair level, then aggregate over partners).
 
-CAVEAT, and it applies to the diff panel too: PPC is amplitude-independent but
+CAVEAT: PPC is amplitude-independent but
 not SNR-independent -- a cleaner signal gives a better-conditioned phase estimate
 and so a higher PPC. The contrast cancels the STATIC part of that, but not the
 dynamic part: an electrode whose power rises also gets a better phase estimate,
-so its PPC rises. Check a positive diff-panel r against a surrogate that
+so its PPC rises. Check a positive r against a surrogate that
 preserves the power change but destroys true connectivity.
 
 Inputs (both must already exist):
@@ -75,39 +71,29 @@ from tqdm.auto import tqdm
 import fc_comparison_functions as fc
 
 
-def power_key_of_cond(beh):
-    """{saved cond dir: column in the power pickle to correlate against}.
-
-    The two arms use the mean power in that condition; the diff arm uses
-    the per-electrode Cohen's d, which is the same contrast Rao correlates.
-    """
-    lo, hi, diff = fc.beh_conds(beh)
-    return {lo: "pow_lo", hi: "pow_hi", diff: "cohens_d"}
-
-
-def collect(save_root, fc_root, beh, band, metric, edges, args, lobe_of):
+def collect(save_root, beh, band, metric, edges, args, lobe_of):
     """Per (session, ROI, cond): r, per-bin r, and the ROI-mean bar values."""
     from scipy.stats import pearsonr
 
-    conds = power_key_of_cond(beh)
-    pow_dir = Path(save_root) / beh / "power" / fc.band_dirname(band, args.fc_mode)
+    conds = {"diff": "cohens_d"}   # saved cond dir: power pickle key
+    pow_dir = Path(save_root) / beh / "power" / band
     files = sorted(pow_dir.glob("*_power.pkl"))
     if args.n_sessions is not None:
         files = files[:args.n_sessions]
     if not files:
         raise SystemExit(
             f"no power pickles in {pow_dir}\n"
-            f"run: python build_roi_power.py --stage compute --beh {beh} "
+            f"run: python build_roi_power.py --stage compute "
             f"--band {band}")
 
     missing = [c for c in conds
-               if not (Path(fc_root) / beh / "fc_mats" / c
-                       / fc.band_dirname(band, args.fc_mode)).is_dir()]
+               if not (Path(save_root) / beh / "fc_mats" / c
+                       / band).is_dir()]
     if missing:
         raise SystemExit(
             f"missing condition dir(s) {missing} under "
-            f"{fc_root}/{beh}/fc_mats/*/{band}\n"
-            f"run: python build_roi_synchrony.py --stage compute --beh {beh} "
+            f"{save_root}/{beh}/fc_mats/*/{band}\n"
+            f"run: python build_roi_synchrony.py --stage compute "
             f"--band {band}")
 
     nb = len(edges) - 1
@@ -139,8 +125,8 @@ def collect(save_root, fc_root, beh, band, metric, edges, args, lobe_of):
         roi = fc.roi_of_reg_full(P["reg_full"], lobe_of)
 
         for cond, pow_key in conds.items():
-            fpath = (Path(fc_root) / beh / "fc_mats" / cond
-                     / fc.band_dirname(band, args.fc_mode) / fc_name)
+            fpath = (Path(save_root) / beh / "fc_mats" / cond
+                     / band / fc_name)
             if not fpath.exists():
                 continue
             try:
@@ -195,38 +181,22 @@ def parse_args():
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     fc.add_common_args(p, compute=False)
     fc.add_distance_args(p)
-    p.add_argument("--fc-mode", default=fc.FC_MODE,
-                   choices=list(fc.FC_MODES), dest="fc_mode",
-                   help="spectral estimator for the phase metrics. multitaper (default): one band-averaged estimate, no time axis. cwt_morlet: Morlet wavelets, time-resolved, enables latency analyses. Outputs land in a separate <band>__cwt_morlet directory so the two estimators never overwrite each other.")
-    p.add_argument("--fc-root", default=None,
-                   help="where the phase-FC pickles live (build_roi_synchrony.py); "
-                        "defaults to --save-root")
     p.add_argument("--out-dir", default=join("figures", "power_synchrony"))
-    p.add_argument("--conds", nargs="+", default=None,
-                   help="conditions to draw (default all: lo, hi, diff); stats CSV keeps all")
     return p.parse_args()
 
 
 def main():
     args = parse_args()
 
-    # Morlet figures go to their own subfolder so the two estimators' figures
-    # never overwrite each other, mirroring the <band>__cwt_morlet split on the
-    # compute side. An explicit --out-dir is still honoured as the parent.
-    if args.fc_mode != "multitaper":
-        args.out_dir = join(args.out_dir, args.fc_mode)
     _, save_root = fc.resolve_roots(args)
-    fc_root = args.fc_root or save_root
     edges = np.arange(args.rmin, args.rmax + 1e-9, args.bin_w)
     lobe_of = fc.load_burke_maps()
-    labels = fc.cond_labels(args.beh)
 
-    print(f"[setup] power={save_root}\n[setup] fc   ={fc_root}")
     print(f"[setup] {args.beh} {args.band} {args.metric}  "
           f"bins {args.rmin}-{args.rmax} mm / {args.bin_w} mm  "
           f"(each bin z-scored across electrodes)")
 
-    sess_r, bin_r, bars = collect(save_root, fc_root, args.beh, args.band,
+    sess_r, bin_r, bars = collect(save_root, args.beh, args.band,
                                   args.metric, edges, args, lobe_of)
 
     sub_r = to_subject(sess_r, ["roi", "cond"])
@@ -234,24 +204,11 @@ def main():
     bar_sub = (bars.groupby(["sub", "roi", "cond"], as_index=False)
                    [["power_z", "sync_z"]].mean())
 
-    # One-sample t of the subject r's vs 0, BH-FDR across the 12 ROIs -- the same
-    # per-ROI test the power and synchrony figures run, on `r` instead of a
-    # per-subject measure.
-    conds = fc.beh_conds(args.beh)
-    stats = {c: fc.roi_stats(sub_r[sub_r["cond"] == c].copy(), "r")
-             for c in conds}
-    for cond in conds:
-        fc.print_roi_stats(
-            stats[cond],
-            f"{labels[cond]}: power-synchrony r per ROI (across electrodes "
-            f"within session, mean over sessions/subject)")
-
-    fc.roi_figure(
-        [(f"r ({labels[cond]})",
-          lambda ax, cond=cond: fc.roi_bar_panel(ax, stats[cond]))
-         for cond in (args.conds or conds)],
-        args.out_dir, f"power_synchrony_{args.beh}_{args.band}_{args.metric}",
-        height=4.0)
+    # One-sample t of the subject r's vs 0, BH-FDR across the 12 ROIs.
+    stats = {"diff": fc.roi_stats(sub_r, "r")}
+    c = fc.contrast(args.beh)
+    fc.print_roi_stats(stats["diff"], f"{c['hi_label']} - {c['lo_label']}: power-synchrony r per ROI "
+                       f"(across electrodes within session, mean over sessions/subject)")
 
     os.makedirs(args.out_dir, exist_ok=True)
     tag = f"{args.beh}_{args.band}_{args.metric}"
@@ -264,6 +221,8 @@ def main():
     pd.concat([s.assign(cond=c) for c, s in stats.items()]).to_csv(
         join(args.out_dir, f"power_synchrony_{tag}_stats.csv"), index=False)
     print(f"[saved] per-subject / per-bin / bars / stats CSVs in {args.out_dir}")
+    fc.band_contrast_figure(args.out_dir, f"power_synchrony_{args.beh}_{{band}}_{args.metric}",
+                            "r", f"power-sync r ({c['hi_label']} - {c['lo_label']})")
 
 
 if __name__ == "__main__":

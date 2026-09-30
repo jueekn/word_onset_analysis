@@ -2,8 +2,7 @@
 Subregion composition of a Burke ROI: which regions get pooled, and how many
 subjects / bipolar pairs each one contributes.
 
-The ROIwise scripts (burke_roi_connectivity / build_roi_synchrony /
-build_roi_power) pool every electrode whose region maps to a Burke lobe
+The ROI scripts (build_roi_synchrony / build_roi_power) pool every electrode whose region maps to a Burke lobe
 ("occipital", "hippocampus", ...) via region_to_burke_lobe.csv. This script
 opens that pooling up: for one ROI it lists the constituent regions and plots
 
@@ -35,7 +34,6 @@ different --roi / --exp / --split-hemi reuse it. Use --refresh to rebuild.
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import sys
 from pathlib import Path
@@ -49,7 +47,6 @@ import matplotlib.pyplot as plt
 
 import helper
 from project_paths import SCRATCH_DIR
-from figure_io import SaveFigure
 
 helper.root_dir = str(SCRATCH_DIR)
 
@@ -58,7 +55,7 @@ PAIRS_DIR = Path(SCRATCH_DIR) / "electrode_information" / "pairs"
 CACHE_PATH = Path(SCRATCH_DIR) / "roi_subregion_counts_cache.csv"
 FIGDIR = HERE / "figures" / "roi_subregion_counts"
 
-# Same six ROIs the ROIwise scripts pool into (burke_roi_connectivity.LOBES).
+# Same six ROIs as fc.LOBES.
 LOBES = ["frontal", "temporal", "parietal", "occipital", "limbic", "hippocampus"]
 
 # <sub>_<exp>_<sess>_pairs.json
@@ -232,7 +229,8 @@ def main():
         Path(args.figdir).mkdir(parents=True, exist_ok=True)
         summary.to_csv(Path(args.figdir) / f"{tag}_subregion_counts.csv", index=False)
         fig = plot_counts(summary, roi, total_subs, args.exp, args.split_hemi)
-        png, _ = SaveFigure(fig, f"{tag}_subregion_counts", args.figdir)
+        png = Path(args.figdir) / f"{tag}_subregion_counts.png"
+        fig.savefig(png, dpi=200, bbox_inches="tight")
         plt.close(fig)
         print(f"saved -> {png}")
 

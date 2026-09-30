@@ -15,21 +15,21 @@ mkdir -p $ROOT/logs; DONE=$ROOT/logs/stream_done.txt; touch $DONE
 drop_raw () { find $CACHE/ds004789 $CACHE/ds004809 $CACHE/ds004865 -name "*acq-bipolar*_ieeg.*" ! -name "*.json" -delete 2>/dev/null }
 retry () { local k; for k in 1 2 3; do "$@" && return 0; echo "[stream] retry $k: $*"; sleep 120; done; return 1 }   # local: the batch loop uses $i
 
-retry $PY prepare_sessions.py --skip-data-check --skip-events || exit 1   # session listing (network)
+retry $PY prepare_sessions.py --setup-only || exit 1   # session listing (network)
 SUBS=($($PY -c "import pandas as pd; print(' '.join(sorted(pd.read_csv('$ROOT/sess_list_df_initial.csv')['sub'].unique())))"))
 echo "[stream] ${#SUBS} subjects, batches of $B, bands: $BANDS"
 for ((i = 1; i <= ${#SUBS}; i += B)); do
   batch=(${SUBS[$i,$((i + B - 1))]})
   grep -qx "$batch" $DONE && continue
   echo "[stream] $(date +%H:%M) batch $(( (i - 1) / B + 1 )): $batch"
-  retry $PY prepare_sessions.py --skip-setup --subjects $batch --workers 3 || continue   # downloads this batch
+  retry $PY prepare_sessions.py --subjects $batch --workers 3 || continue   # downloads this batch
   for band in $BANDS; do   # local only: sessions from earlier batches are cached, nothing re-downloads
-    CML_DATA_SOURCE=local $PY build_roi_power.py --stage compute --beh word_on --band $band --fc-mode multitaper --workers 3
+    CML_DATA_SOURCE=local $PY build_roi_power.py --stage compute --band $band --workers 3
   done
   for band in $BANDS; do
-    CML_DATA_SOURCE=local $PY build_roi_synchrony.py --stage compute --beh word_on --band $band --fc-mode multitaper --metrics ppc --metric ppc --workers 3
+    CML_DATA_SOURCE=local $PY build_roi_synchrony.py --stage compute --band $band --metrics ppc --workers 3
   done
   drop_raw; echo "$batch" >> $DONE
 done
-CML_DATA_SOURCE=local ~/.venvs/phase_viz/bin/snakemake all --cores 3   # plots + band contrasts from the cache
+CML_DATA_SOURCE=local ~/.venvs/phase_viz/bin/snakemake all --cores 3   # plots from the cache
 drop_raw

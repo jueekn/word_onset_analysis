@@ -1,9 +1,7 @@
-"""load_events.py — per-session event extraction + behavioral stats.
+"""load_events.py — per-session word_on event extraction.
 
-For each session row in sess_list_df, walk through the source events
-(matched by `match_events.MatchedEvents`), build per-behavior event tables
-under <root_dir>/<beh>/events/, and dump a small per-session
-behavioral_stats summary. Called from prepare_sessions.run_get_events_worker
+For each session row, build the word_on event table (WORD + PRE_WORD copies)
+under <root_dir>/word_on/events/. Called from prepare_sessions.run_get_events_worker
 per session, then aggregated by prepare_sessions.stage_build_final_df.
 
 This file is dominated by pandas method chains (.query / .copy / .astype /
@@ -48,11 +46,10 @@ def fix_event_cols(events: pd.DataFrame) -> pd.DataFrame:
 
 def add_pre_events(post_evs: pd.DataFrame, pre_type: str) -> tuple[pd.DataFrame, NDArrayAny]:
     """Append PRE-window copies of the post events for a pre/post physiological
-    contrast (word_on, voc). The copies share the post events' onsets but are
-    relabeled (type=pre_type, e.g. PRE_WORD / PRE_REC_WORD); the separate-load
-    contrast pathway epochs them at the pre window. Returns (combined, mask) with
-    mask True for the POST (original) events and False for the PRE copies — the
-    same positive/negative convention as the en/rm contrasts.
+    contrast. The copies share the post events' onsets but are relabeled
+    (type=pre_type, e.g. PRE_WORD); the separate-load contrast pathway epochs
+    them at the pre window. Returns (combined, mask) with mask True for the POST
+    (original) events and False for the PRE copies.
     """
     pre_evs = post_evs.copy()
     pre_evs['type'] = pre_type
@@ -150,215 +147,48 @@ def clean_voc_events(
     return events.loc[events.index.isin(keep_idx)]
 
 
+def recall_matching_ok(matcher: Any) -> bool:
+    """Cohort rule kept from the multi-contrast pipeline: a session is used only if
+    its recalls match for encoding (en) and retrieval (rm) and its vocalization
+    events can be cleaned -- so the juee cohort stays identical although only
+    word_on is analysed. (Not applied under longetal, which never required it.)"""
+    try:
+        clean_voc_events(matcher.events)
+        for beh, proximity_buffer in (('en', 1), ('rm', 5000)):
+            matcher.match_events(beh, proximity_buffer, 10, rec_window=[-1000, 0],
+                                 post_rec_distance=1000, pre_rec_distance=1000)
+            if not matcher.status[beh]['matching_successful']:
+                return False
+        return True
+    except Exception:
+        return False
+
+
 def get_events(dfrow: pd.Series | list[Any] | NDArrayAny) -> None:
-    """Extract per-behavior events for one session and write them to disk.
-
-    For each of {word_on, voc, rm_all, en, rm, ri, en_all}, writes a
-    `<root_dir>/<beh>/events/<ftag>_events.json` plus a metadata sidecar.
-    Then calls `analyze_behavior(matcher)` to dump behavioral_stats.
-
-    Args:
-        dfrow: session row in any of the accepted forms (Series with sub/exp/
-            sess, or a positional tuple/list/array of the same three).
-    """
+    """Write `<root_dir>/word_on/events/<ftag>_events.json` (+ metadata) for one
+    session: WORD events and their PRE_WORD copies (mask True = WORD). Nothing is
+    written for a session failing recall_matching_ok, which excludes it."""
     helper.root_dir = root_dir
-    
     np.random.seed(202406)
-    
-    # pd.Series is iterable but pyright's stubs don't expose it as a
-    # Sequence; cast at the boundary.
     dfrow = get_dfrow(cast("list[Any]", list(dfrow)) if isinstance(dfrow, pd.Series) else dfrow)
     sr = get_sr(dfrow)
 
-    beh_to_proximity_buffer = {'en': 1, 'rm': 5000, 'ri': 5000, 
-                               'word_on': 1, 'voc': 1, 'rm_all':1} 
-    beh_to_event_count_threshold = {'en': 10, 'rm': 10, 'ri': 10, 
-                                    'word_on': 0, 'voc': 0, 'rm_all':0}
-    # beh_to_event_count_threshold = {'en': 6, 'rm': 6, 'ri': 6}
-    
     import match_events
     matcher = match_events.MatchedEvents(dfrow, sr)
-    
-    for beh in ['word_on']:
-        elog = ExclusionLog(dfrow, beh)
-        all_word = matcher.events.query('type == "WORD"')
-        elog.input(all_word)
-        # first word of each list follows the countdown, not a blank screen
-        word_evs = all_word.copy() if (LONGETAL or {}).get('include_first_word') else all_word.query('serialpos > 1').copy()
-        elog.excluded('word_on_serialpos1', all_word, word_evs); elog.final(word_evs); elog.write()
-        word_evs = fix_event_cols(word_evs)
+    if not LONGETAL and not recall_matching_ok(matcher):
+        return
 
-        # Add PRE_WORD copies (pre window); mask True=WORD (post), False=PRE_WORD.
-        word_evs, mask = add_pre_events(word_evs, 'PRE_WORD')
-
-        metadata = pd.Series({'beh': beh, 'sr': sr, 'mask': mask, 'matching_successful': True})
-        metadata.to_json(join(root_dir, beh, 'events', f'{ftag(dfrow)}_events_metadata.json'))
-        word_evs.to_json(join(root_dir, beh, 'events', f'{ftag(dfrow)}_events.json'))
-
-    for beh in ['voc']:
-        # Keep only REC_WORD events whose pre-baseline / active windows are free
-        # of other vocalizations (REC_WORD or REC_WORD_VV) and that sit clear of
-        # the recall-period boundaries — mirrors the rm contamination rule.
-        elog = ExclusionLog(dfrow, beh)
-        all_rec = matcher.events.query('type == "REC_WORD"')
-        elog.input(all_rec)
-        voc_evs = clean_voc_events(matcher.events).copy()
-        elog.excluded('voc_cleaning', all_rec, voc_evs); elog.final(voc_evs); elog.write()
-
-        voc_evs = fix_event_cols(voc_evs)
-
-        # Add PRE_REC_WORD copies (pre window); mask True=REC_WORD (post), False=pre.
-        voc_evs, mask = add_pre_events(voc_evs, 'PRE_REC_WORD')
-
-        metadata = pd.Series({'beh': beh, 'sr': sr, 'mask': mask, 'matching_successful': True})
-        metadata.to_json(join(root_dir, beh, 'events', f'{ftag(dfrow)}_events_metadata.json'))
-        voc_evs.to_json(join(root_dir, beh, 'events', f'{ftag(dfrow)}_events.json'))
-        
-    for beh in ['rm_all']:
-        # MatchedEvents.all_recs is typed as DataFrame | None but is always a
-        # DataFrame when get_events is reached (matcher's __init__ populates
-        # it from the source events table).
-        rec_evs = cast(pd.DataFrame, matcher.all_recs).copy()
-        rec_evs = rec_evs.query('type == "REC_WORD"')
-        rec_evs = fix_event_cols(rec_evs)
-        mask = np.ones(len(rec_evs), dtype=bool)
-
-        metadata = pd.Series({'beh': beh,
-                              'sr': sr,
-                              'mask': mask,
-                              'matching_successful': True})
-        metadata.to_json(join(root_dir, beh, 'events', f'{ftag(dfrow)}_events_metadata.json'))
-        rec_evs.to_json(join(root_dir, beh, 'events', f'{ftag(dfrow)}_events.json'))
-    
-    for beh in ['en', 'rm', 'ri']:
-        
-        proximity_buffer = beh_to_proximity_buffer[beh]
-        event_count_threshold = beh_to_event_count_threshold[beh]
-        matched_events = matcher.match_events(beh, proximity_buffer, event_count_threshold,
-                                              rec_window=[-1000, 0], post_rec_distance=1000, pre_rec_distance=1000)
-        mask = matcher.mask[beh]
-        status = pd.Series(matcher.status[beh])
-        metadata = pd.Series({'beh': beh,
-                              'sr': sr,
-                              'mask': mask,
-                              'proximity_buffer': proximity_buffer,
-                              'event_count_threshold': event_count_threshold})
-        metadata = pd.concat([status, metadata], axis=0)
-        metadata.to_json(join(root_dir, beh, 'events', f'{ftag(dfrow)}_events_metadata.json'))
-
-        if matcher.status[beh]['matching_successful']:
-            # match_events return type can be DataFrame | None; only reached
-            # here when matching_successful, so cast to DataFrame.
-            matched_events = fix_event_cols(cast(pd.DataFrame, matched_events))
-            if beh in ('en', 'rm'):
-                # Track each matched arm separately (counts should agree; a
-                # mismatch flags a matching bug). Primary arm drives the
-                # input/excluded/final invariant; the other arm is an extra tag.
-                elog = ExclusionLog(dfrow, beh)
-                if beh == 'rm':
-                    all_rec = cast(pd.DataFrame, matcher.all_recs).query('type == "REC_WORD"')
-                    mrec = matched_events.query('type == "REC_WORD"')
-                    elog.input(all_rec); elog.excluded('rm_deliberation', all_rec, mrec); elog.final(mrec)
-                    elog.count('matched_deliberation_count', len(matched_events.query('type != "REC_WORD"')))
-                else:  # en
-                    recalled = cast(pd.DataFrame, matcher.study_events).query('correct_recall == 1')
-                    mrec = matched_events.query('correct_recall == 1')
-                    elog.input(recalled); elog.excluded('en_subsequent_memory', recalled, mrec); elog.final(mrec)
-                    elog.count('matched_notrecalled_count', len(matched_events.query('correct_recall == 0')))
-                elog.write()
-            matched_events.to_json(join(root_dir, beh, 'events', f'{ftag(dfrow)}_events.json'))
-         
-    if matcher.study_events is not None:
-        en_all_events = matcher.study_events
-
-        mask = en_all_events['correct_recall'].values == 1
-        en_all_events_metadata = pd.Series({'beh': 'en_all', 
-                                            'sr': sr,
-                                            'mask': mask})
-        en_all_events_metadata.to_json(join(root_dir, 'en_all', 'events', f'{ftag(dfrow)}_events_metadata.json'))
-        en_all_events = fix_event_cols(en_all_events)
-        en_all_events.to_json(join(root_dir, 'en_all', 'events', f'{ftag(dfrow)}_events.json'))
-    
-    analyze_behavior(matcher)
-    
-def analyze_behavior(matcher: Any) -> None:
-    """Compute per-session behavioral summary stats and dump to disk.
-
-    Writes `<root_dir>/behavioral_stats/<ftag>_behavioral_stats.json` with
-    counts of presented/recalled/intrusions and per-behavior match counts +
-    mean event times (succ vs unsucc).
-
-    Args:
-        matcher: a `match_events.MatchedEvents` instance. Typed as Any here
-            because match_events is a cluster-only import; no stubs.
-
-    TODO(types): once match_events.MatchedEvents has explicit annotations,
-    swap Any for that class. The matcher carries .dfrow, .study_events,
-    .status[beh], .matched_events[beh], .mask[beh].
-    """
-    
-    no_presented = len(matcher.study_events) if matcher.study_events is not None else np.nan
-    no_recalled = matcher.status['rm']['no_successful']
-    no_intrusions = matcher.status['ri']['no_unsuccessful']
-    
-    no_matches = {}
-    mean_succ_times = {}
-    mean_unsucc_times = {}
-    beh_to_time_col = {'en': 'serialpos', 
-                       'rm': 'rectime', 
-                       'ri': 'rectime',
-                       'word_on': 'serialpos',
-                       'voc': 'rectime',
-                       'rm_all': 'rectime', 
-                      }
-    
-    for beh in ['en', 'rm', 'ri']:
-        if matcher.status[beh]['matching_successful']:       
-            no_matches[beh] = matcher.status[beh]['no_matched']
-            matched_events = matcher.matched_events[beh]
-            mask = matcher.mask[beh]
-            time_col = beh_to_time_col[beh]
-            mean_succ_times[beh] = np.mean(matched_events[time_col][mask])
-            mean_unsucc_times[beh] = np.mean(matched_events[time_col][~mask])
-        else:
-            no_matches[beh] = np.nan
-            mean_succ_times[beh] = np.nan
-            mean_unsucc_times[beh] = np.nan
-            
-    # Build the stats dict explicitly rather than going through locals() so
-    # pyright can see every name. Behavior is identical: same keys + values,
-    # same order, same Series construction.
-    by_var = {
-        'no_matches': no_matches,
-        'mean_succ_times': mean_succ_times,
-        'mean_unsucc_times': mean_unsucc_times,
-    }
-    stats: dict[str, Any] = {
-        'no_presented': no_presented,
-        'no_recalled': no_recalled,
-        'no_intrusions': no_intrusions,
-    }
-    for beh in ['en', 'rm', 'ri']:
-        for var, src in by_var.items():
-            stats[f'{var}_{beh}'] = src[beh]
-
-    behavioral_stats = pd.Series(stats)
-    behavioral_stats.to_json(join(root_dir, 'behavioral_stats', f'{ftag(matcher.dfrow)}_behavioral_stats.json'))
-    
-def load_behavioral_stats(dfrow: pd.Series) -> pd.Series:
-    """Load the per-session behavioral_stats Series written by analyze_behavior.
-
-    The dfrow's .name attribute is expected to be a tuple-like (sub, exp,
-    sess) — caller is typically `df.apply(...)` over a sess_list_df.
-    """
-    # df.apply over sess_list_df sets row.name to a tuple multi-index entry;
-    # pandas stubs type that as Hashable. Cast to tuple at the boundary.
-    name_tuple = cast("tuple[Any, ...]", dfrow.name)
-    dfrow = get_dfrow(list(name_tuple))
-    data_check = pd.read_json(
-        join(root_dir, 'behavioral_stats', f'{ftag(dfrow)}_behavioral_stats.json'),
-        typ='series')
-    return data_check
+    beh = 'word_on'
+    elog = ExclusionLog(dfrow, beh)
+    all_word = matcher.events.query('type == "WORD"')
+    elog.input(all_word)
+    # first word of each list follows the countdown, not a blank screen
+    word_evs = all_word.copy() if (LONGETAL or {}).get('include_first_word') else all_word.query('serialpos > 1').copy()
+    elog.excluded('word_on_serialpos1', all_word, word_evs); elog.final(word_evs); elog.write()
+    word_evs, mask = add_pre_events(fix_event_cols(word_evs), 'PRE_WORD')
+    metadata = pd.Series({'beh': beh, 'sr': sr, 'mask': mask, 'matching_successful': True})
+    metadata.to_json(join(root_dir, beh, 'events', f'{ftag(dfrow)}_events_metadata.json'))
+    word_evs.to_json(join(root_dir, beh, 'events', f'{ftag(dfrow)}_events.json'))
 
 
 def check_events(dfrow: pd.Series, beh: str) -> bool:

@@ -7,6 +7,49 @@ earlier than the last entry below is undocumented.
 
 ---
 
+## 2026-09-30 — word onset, multitaper only: large cut
+
+Outputs checked unchanged on a recomputed session (power, d, time bins, PPC:
+max difference 0); cohort unchanged (716/1019 recomputed recall checks match).
+
+- Removed: Morlet everywhere (cwt_morlet mode, `--fc-mode`, cwt_* config,
+  wavelet.py, data_check's Morlet phase check, which never excluded a session);
+  AEC/AEC-c and GC/GC-TR (metrics now coh/plv/ppc/ciplv/pli/wpli/pac); the
+  en/rm/voc/ri/en_all/rm_all contrasts (`--beh`; only word_on events are written,
+  but load_events.recall_matching_ok keeps the cohort rule); mirror buffer;
+  compare_distance_controls.py, plot_phase_conn_distance*.py,
+  burke_roi_connectivity.py, visualize_phase_connectivity.ipynb; cstat.py,
+  matrix_operations.py, figure_io.py; ~40 dead fc/helper/misc functions and the
+  CFG_FLOW_VERIFY pins; unused bands (theta, narrow_*, theta_6_12).
+- Long et al. options are no longer flags: `--t-unit`, `--combine`,
+  `--min-responsive-per-region`, `--responsive-alpha`, `--responsive-only`
+  come from `longetal_params` (new key `t_unit: sample`); p < 1e-8 is fixed.
+  Also removed `--tfce-perm` (TFCE), `--time-bin-ms`, `--mt-window-ms` (config),
+  `--fine-top-n` (argument, default 15), `--fc-root`.
+- Power time course only for gamma bands (fmin >= 30 Hz).
+- New: `roi_synchrony_distance_*` (on - off synchrony per distance bin per ROI);
+  fc.bin_stats / fc.roi_curve_figure shared by it and the power time course.
+- Synchrony compute: one EEG load per window (the extra union load is gone).
+- prepare_sessions flags: `--subjects`, `--n-subjects`, `--workers`,
+  `--setup-only` (was 11 flags; setup runs when the listing is missing).
+- Simulations: simulate_eeg.py rewritten for the two high-gamma processes
+  (hg_power, hg_ppc; ~1600 legacy config lines dropped, the broken AEC process
+  removed); seed = CRC of the real clip, so reruns are reproducible (was
+  Python's per-process hash). Snakefile recovery sweeps now run on the
+  high-gamma run (were on the first run, alpha, so recovery.png came out empty).
+- Deleted all smokescreen outputs.
+
+## 2026-09-30 — contrast-only figures, raw synchrony
+
+- Power, synchrony and power-synchrony draw only word on - word off: one figure
+  per analysis (a row per band plotted into that directory,
+  fc.band_contrast_figure) in its own figure dir. Removed the lo/hi panels and
+  measures (z_lo/z_hi, sync_lo/sync_hi, lo/hi power-sync r), `--measures`,
+  `--conds`, `--style`, fc.roi_bar_panel, fc.cond_labels, plot_band_contrasts.py
+  and figures/band_contrasts/. Synchrony compute writes only fc_mats/diff/.
+- Synchrony is raw PPC by default (whole-brain changes show); `--zscore` restores
+  the per-distance-bin z-score. Power-synchrony still z-scores.
+
 ## 2026-09-30 — longetal replication closed
 
 Final longetal settings (config `longetal_params`): FR1, English only, monopolar

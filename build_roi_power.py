@@ -31,10 +31,8 @@ regionalize_electrode_powers). Specifically:
              the same function vendored in this repo); the effect size -- not raw
              power -- as the per-electrode quantity; mean of d over the
              electrodes in a region as the region value.
-  not adopted  the Morlet (width=5, discrete 3-8 Hz) front end. This analysis
-             keeps the multitaper estimator of the phase metrics it accompanies,
-             so power and connectivity describe the same band with the same
-             spectral estimator.
+  not adopted  Rao's Morlet front end: power uses the same multitaper estimator
+             as the phase metrics.
   no-op here  get_power's z-score across events. It is one (mean, std) per
              channel/frequency applied to both samples, and Cohen's d is
              invariant to an affine transform -- so with a single band-averaged
@@ -47,25 +45,21 @@ groups, while pre vs post word onset are the same trials at two windows. The
 pooled-SD formula is kept for consistency; it ignores that pairing and is
 therefore somewhat conservative. A paired d_z would be mean(diff)/sd(diff).
 
-Measures plotted. Raw log-power is not comparable across subjects (amplifier
-gain, referencing, and coverage differ); the two window-contrast measures are:
+Measures. Raw power is not comparable across subjects (amplifier gain,
+referencing, and coverage differ), so only window contrasts are used:
 
-  cohens_d       effect size of hi vs lo power, across events, per
-                 electrode. Unitless and gain-invariant -- the panel to read for
-                 a task effect, and the Rao-consistent one.
-  z_lo / z_hi    power in the lo / hi condition, z-scored ACROSS that
-                 subject's electrodes (descriptive, NOT Rao's across-events
-                 z-score). Removes the per-subject gain offset, so the box plot
-                 reads "which ROIs carry relatively more power in this band".
-  change_dB      10 * log10(P_hi / P_lo) of the session-mean powers -- the same contrast as
-                 cohens_d but in dB rather than SD units. Written to the CSVs;
-                 plot it with `--measures change_dB`.
+  cohens_d       effect size of hi vs lo power, across events, per electrode.
+                 Unitless and gain-invariant; the plotted measure.
+  change_dB      10 * log10(P_hi / P_lo) of the session-mean powers -- the same
+                 contrast in dB. Written to the CSVs only.
 
-Every panel gets a per-ROI one-sample t of the subject values vs 0, FDR-corrected
-across the 12 ROIs (fc.roi_stats). What that test IS depends on the measure:
-on the contrast measures (cohens_d, change_dB) it is algebraically the PAIRED t;
-on the level measures (z_lo, z_hi) it asks whether the ROI departs from that
-subject's whole-brain mean, which is where 0 sits after the z-score.
+Per ROI, a one-sample t of the subject values vs 0 (= paired t), FDR across the
+12 ROIs (fc.roi_stats). The figure has one row per band already plotted into
+--out-dir (fc.band_contrast_figure).
+
+Timing (power time course) is computed for gamma bands only (fmin >= TIMING_MIN_HZ):
+latency is not meaningful for slow oscillations. Long et al. settings (Hilbert,
+responsiveness, fine labels) come from config `longetal_params`, never from flags.
 
 Electrode -> ROI uses the canonical `regionalize_electrodes_by_type` label
 (volumetric cascade for depths, surface for grid/strip) mapped through
@@ -76,7 +70,6 @@ Usage:
     python build_roi_power.py --n-sessions 2          # smoke test
     python build_roi_power.py --workers 4             # 4 sessions at a time
     python build_roi_power.py --stage plot            # replot from pickles
-    python build_roi_power.py --beh voc               # vocalization contrast
 """
 from __future__ import annotations
 
@@ -93,29 +86,14 @@ from tqdm.auto import tqdm
 
 import fc_comparison_functions as fc
 
-# lo/hi are this behavior's two conditions: word_on/voc contrast two TIME
-# WINDOWS of the same events, en/rm contrast two EVENT GROUPS in one window.
-MEASURES = {
-    "z_lo": "{lo}\n{band} power (z across electrodes)",
-    "z_hi": "{hi}\n{band} power (z across electrodes)",
-    "cohens_d": "{hi} vs {lo}\n{band} power (Cohen's d)",
-    "change_dB": "{hi} - {lo}\n{band} power (dB)",
-}
-
-# change_dB is the same contrast as cohens_d in dB rather than SD units; it stays
-# out of the default figure (it would be a redundant panel) but is written to the
-# CSVs and can be plotted with --measures.
-DEFAULT_MEASURES = ("z_lo", "z_hi", "cohens_d")
+MEASURES = ("cohens_d", "change_dB")
+TIMING_MIN_HZ = 30          # time course only for gamma (PI: latency meaningless at low freqs)
+RESPONSIVE_ALPHA = 1e-8     # Long et al.'s responsiveness threshold
+LONG = fc.LONGETAL or {}
 
 
-def panel_labels(beh, band):
-    c = fc.contrast(beh)
-    return {k: v.format(lo=c["lo_label"], hi=c["hi_label"], band=band)
-            for k, v in MEASURES.items()}
-
-
-def power_dir(root, beh, band, fc_mode="multitaper"):
-    return Path(root) / beh / "power" / fc.band_dirname(band, fc_mode)
+def power_dir(root, beh, band):
+    return Path(root) / beh / "power" / fc.band_dirname(band, fc.POWER_MODE)
 
 
 # ------------------------------ compute stage --------------------------------
@@ -141,12 +119,9 @@ def _word_locked_eeg(dfrow: pd.Series, beh: str, win: tuple[float, float],
         return None
     words = ev[post_mask].reset_index(drop=True)
     words.attrs = dict(ev.attrs)
-    # buffer_ms widens the LOADED clip beyond `win` so a downstream Morlet
-    # buffer is taken from REAL ADJACENT data rather than eaten out of the
-    # analysis window. get_beh_eeg defaults real_data_buffer_ms to 0, so
-    # omitting this silently shortened every Morlet window by 2*buffer_ms.
-    eeg, _ = fc.get_beh_eeg(dfrow, words, save=False, window=win,
-                            real_data_buffer_ms=buffer_ms, simulation_tag=simulation_tag)
+    # buffer_ms widens the LOADED clip beyond `win` with real adjacent data, so
+    # resample/notch (and Hilbert) edge effects stay outside the analysis windows.
+    eeg, _ = fc.get_beh_eeg(dfrow, words, win, buffer_ms, simulation_tag)
     kept = np.asarray(eeg.event, int)
     items = words["item_name"].to_numpy()[kept]   # word of each kept event
     if (fc.LONGETAL or {}).get("baseline") != "full_isi":
@@ -192,59 +167,6 @@ def band_power(seg, sf, fmin, fmax, bandwidth):
     return np.asarray(psds).mean(-1)                       # (E, C)
 
 
-def band_power_morlet(seg, sf, fmin, fmax, fnum, morlet_reps, buf_samples,
-                      bin_ms=None):
-    """Per-event, per-channel MORLET power averaged over the band. (E, C).
-
-    Same contract as `band_power` (raw power), so
-    the two are drop-in alternatives selected by --fc-mode.
-
-    Uses the same PTSA primitive as `helper.get_power`
-    (`MorletWaveletFilter(width=5, output='power', complete=True)`) over the
-    log-spaced bank from `fc.default_cwt_freqs`. It does NOT call get_power
-    itself, because that function is specialised for Rao's 1000 ms mirror-
-    buffered theta clips: it hardcodes a 1000 ms buffer clip (which would erase
-    a 600 ms word_on window outright), and folds in an across-event
-    z-score at a point in the chain where this caller needs neither.
-
-    `seg` must already include `buf_samples` of REAL adjacent data on each side;
-    the wavelet is convolved over the buffered segment and the buffer is then
-    trimmed, so no analysed sample sits inside the Morlet edge artifact.
-
-    `bin_ms` (None = collapse time, as multitaper does) instead returns
-    (E, C, n_bins) -- the latency axis. Binning uses Rao's own
-    `helper.timebin_power_timeseries`, the function behind his 200 ms epochs.
-    """
-    from ptsa.data.timeseries import TimeSeries
-    from ptsa.data.filters import MorletWaveletFilter
-    import fc_comparison_functions as fc
-
-    freqs = fc.default_cwt_freqs(fmin, fmax, fnum=fnum, morlet_reps=morlet_reps)
-    ts = TimeSeries(
-        np.asarray(seg, float),
-        dims=('event', 'channel', 'time'),
-        coords={'event': np.arange(seg.shape[0]),
-                'channel': np.arange(seg.shape[1]),
-                'time': np.arange(seg.shape[2]) / sf,
-                'samplerate': sf},
-    )
-    power = MorletWaveletFilter(
-        freqs=freqs, width=morlet_reps, output='power', complete=True,
-    ).filter(timeseries=ts).transpose('event', 'channel', 'frequency', 'time')
-
-    p = np.asarray(power)                                  # (E, C, F, T)
-    if buf_samples:
-        p = p[..., buf_samples:p.shape[-1] - buf_samples]
-    if bin_ms:
-        # Latency axis. Average over frequency first -> (E, C, T), then bin along
-        # time with Rao's own binner (helper.timebin_power_timeseries, the same
-        # function behind his 200 ms epochs) -> (E, C, n_bins).
-        import helper
-        return helper.timebin_power_timeseries(
-            p.mean(axis=2), sf, bin_width_ms=int(bin_ms))
-    return p.mean(axis=(2, 3))                             # (E, C)
-
-
 def hilbert_envelope(seg, sf, fmin, fmax, buf_samples, env_hz, n_bands=1):
     """Long et al. 2020 high gamma: Hilbert AMPLITUDE envelope at the native rate,
     trim the buffer, downsample to `env_hz`. (E, C, T). n_bands=1: one band-pass
@@ -274,32 +196,11 @@ def hilbert_envelope(seg, sf, fmin, fmax, buf_samples, env_hz, n_bands=1):
 
 
 def band_power_windowed(seg, sf, fmin, fmax, bandwidth, bin_ms, window_ms):
-    """Sliding-window multitaper power at the SAME bin centres as the Morlet path.
-
-    Returns (E, C, n_bins) so it is a drop-in peer of band_power_morlet's binned
-    output, with an IDENTICAL time axis -- the windows are centred on Morlet's
-    bin centres and stepped by bin_ms, not by window_ms. That is what makes the
-    two estimators directly comparable bin for bin.
-
-    Why the window is 200 ms and not 50: multitaper is CONSTANT-BANDWIDTH, so its
-    frequency resolution is 1/T and the NW=2 half-bandwidth is NW/T regardless of
-    centre frequency. At T = 50 ms that is 20 Hz resolution and a 40 Hz
-    half-bandwidth -- the whole 80 Hz band becomes ~one resolution element. Unlike
-    Morlet (constant-Q, sigma proportional to 1/f), multitaper gains no time
-    resolution by moving up in frequency.
-
-    CONSEQUENCE: consecutive windows overlap by (window_ms - bin_ms), so the
-    EFFECTIVE temporal resolution is window_ms. The axis is merely SAMPLED at
-    bin_ms. Morlet's 50 ms bins are ~4.4 sigma apart at 70 Hz and effectively
-    independent; these are not. Read this as a cross-check on the Morlet time
-    course, not as an equivalent measurement.
-
-    Bins whose full window would fall outside the analysis window are returned as
-    NaN rather than truncated -- a shorter window has different spectral
-    resolution and would not be comparable to its neighbours. With a 600 ms
-    window, 50 ms bins and a 200 ms window that is the first two and last two
-    bins (centres 25, 75, 525, 575), leaving 8 comparable centres at 125-475 ms.
-    """
+    """Sliding-window multitaper power, (E, C, n_bins): windows of window_ms
+    centred every bin_ms. Consecutive windows overlap, so the EFFECTIVE temporal
+    resolution is window_ms; the axis is only SAMPLED at bin_ms. Bins whose full
+    window falls outside the segment are NaN (a shorter window would have a
+    different spectral resolution)."""
     n_t = seg.shape[-1]
     dur_ms = 1000.0 * n_t / sf
     n_bins = int(round(dur_ms / float(bin_ms)))
@@ -337,8 +238,7 @@ def band_power_windowed(seg, sf, fmin, fmax, bandwidth, bin_ms, window_ms):
 
 def run_sess_power(
     dfrow: pd.Series, save_root: str, beh: str, band: str, root_dir: str,
-    fc_mode: str = "multitaper", time_bin_ms: int | None = None,
-    mt_window_ms: int | None = None, simulation_tag: str | None = None,
+    simulation_tag: str | None = None,
 ) -> str:
     """Compute per-electrode band power for one session; write one pickle.
 
@@ -351,7 +251,8 @@ def run_sess_power(
     helper.root_dir = root_dir
 
     sid = f"{dfrow['sub']}_{dfrow['exp']}_{dfrow['sess']}"
-    out_dir = str(power_dir(save_root, beh, band, fc_mode))
+    fc_mode = fc.POWER_MODE
+    out_dir = str(power_dir(save_root, beh, band))
     out_path = join(out_dir, f"{fc.ftag(dfrow)}_power.pkl")
 
     if os.path.exists(out_path):
@@ -369,40 +270,16 @@ def run_sess_power(
             pass
 
     fmin, fmax = fc.bands[band]
-    prepost = beh in fc.PREPOST_SPEC
-
-    # Decided before the EEG load: the Morlet edge buffer must be REAL data from
-    # outside the analysis window, so the clip has to be widened at load time.
-    morlet = fc_mode == "cwt_morlet"
     hilb = fc_mode == "hilbert"   # filter edge lives in the real-data buffer
-    if hilb and not prepost:
-        raise ValueError("--fc-mode hilbert is for the pre/post contrasts (word_on, voc)")
-    buf_ms = (fc.morlet_buffer_ms(fmin, morlet_reps=fc.CWT_MORLET_REPS,
-                                  n_sigma=fc.CWT_BUFFER_N_SIGMA)
-              if morlet else fc.REAL_DATA_BUFFER_MS if hilb else 0.0)
-
-    if prepost:
-        spec = fc.PREPOST_SPEC[beh]
-        pre_win, post_win = spec["pre_win"], spec["post_win"]
-        loaded = _word_locked_eeg(dfrow, beh, (pre_win[0], post_win[1]),
-                                  buffer_ms=max(buf_ms, fc.REAL_DATA_BUFFER_MS),   # keeps notch ringing out of both windows
-                                  simulation_tag=simulation_tag)
-        if loaded is None:
-            return f"{sid}: no events ({beh})"
-        data, t, sf, items, blank_ms = loaded
-        ev_mask = None
-    else:
-        # en / rm: one window, two event groups (mask True = the `hi` arm),
-        # exactly the split compute_session_fc makes for these behaviors.
-        ev = fc.load_events(dfrow, beh)
-        if ev is None:
-            return f"{sid}: no events ({beh})"
-        eeg, ev_mask = fc.get_beh_eeg(dfrow, ev, save=False, simulation_tag=simulation_tag)
-        data = np.asarray(eeg.data)
-        t = np.asarray(eeg.time, float)
-        sf = float(eeg.samplerate)
-        ev_mask = np.asarray(ev_mask, bool)
-        pre_win = post_win = tuple(helper.beh_to_event_windows[beh])
+    buf_ms = fc.REAL_DATA_BUFFER_MS if hilb else 0.0
+    spec = fc.PREPOST_SPEC[beh]
+    pre_win, post_win = spec["pre_win"], spec["post_win"]
+    loaded = _word_locked_eeg(dfrow, beh, (pre_win[0], post_win[1]),
+                              buffer_ms=fc.REAL_DATA_BUFFER_MS,   # keeps notch ringing out of both windows
+                              simulation_tag=simulation_tag)
+    if loaded is None:
+        return f"{sid}: no events ({beh})"
+    data, t, sf, items, blank_ms = loaded
 
     pairs = helper.get_pairs(dfrow)
     n_ch = data.shape[1]
@@ -424,26 +301,10 @@ def run_sess_power(
             "config.yaml mt_bandwidth is unset; power and the phase metrics must "
             "share one multitaper bandwidth (default mt_bandwidth: 2)")
 
-    # Morlet needs REAL data either side of the analysis window, because the
-    # wavelet's support reaches outside it; multitaper does not. The buffer is
-    # frequency dependent (fc.morlet_buffer_ms, from Wavelet.get_morlet_width),
-    # so widen each window by it here and trim it back off after the transform.
-    # The clip loaded by _word_locked_eeg already extends real_data_buffer_ms
-    # beyond the union span, which covers this at the outer edges; the inner
-    # edges sit inside the pre/post gap (fc.assert_windows_separable enforces
-    # that the two buffered windows cannot meet).
-    if morlet or hilb:
-        if prepost and morlet:
-            fc.assert_windows_separable(
-                pre_win, post_win, fmin,
-                morlet_reps=fc.CWT_MORLET_REPS, n_sigma=fc.CWT_BUFFER_N_SIGMA)
-        nbuf = int(buf_ms * sf / 1000.0)
-        widen = lambda w: (w[0] - buf_ms, w[1] + buf_ms)
-    else:
-        nbuf = 0
-        widen = lambda w: w
-
-    mt_win = int(mt_window_ms or fc.MT_WINDOW_MS)
+    nbuf = int(buf_ms * sf / 1000.0)
+    widen = lambda w: (w[0] - buf_ms, w[1] + buf_ms)
+    mt_win = fc.MT_WINDOW_MS
+    time_bin_ms = fc.TIME_BIN_MS if fmin >= TIMING_MIN_HZ else None
 
     env_hz = (fc.LONGETAL or {}).get("envelope_hz", 100)
     env_cache = {}
@@ -454,47 +315,29 @@ def run_sess_power(
         return env_cache[id(seg)]
 
     def _power(seg, bin_ms=None):
-        if morlet:
-            return band_power_morlet(seg, sf, fmin, fmax, fc.CWT_FNUM,
-                                     fc.CWT_MORLET_REPS, nbuf, bin_ms=bin_ms)
         if hilb:
             e = _env(seg)
             return helper.timebin_power_timeseries(e, env_hz, bin_width_ms=int(bin_ms)) if bin_ms else np.nanmean(e, -1)
         if bin_ms:
-            # Windowed multitaper: same bin centres as Morlet, but each estimate
-            # spans mt_win ms, so its effective resolution is mt_win, not bin_ms.
             return band_power_windowed(seg, sf, fmin, fmax, bandwidth,
                                        bin_ms, mt_win)
         return band_power(seg, sf, fmin, fmax, bandwidth)
 
-    # Latency axis. Available to BOTH estimators now, but only for the prepost
-    # behaviours -- en/rm contrast two EVENT GROUPS in one window, so there is no
-    # pre/post time course to resolve.
-    binned = bool(time_bin_ms and prepost)
-
-    if prepost:
-        # Inclusive time masks give the pre window one more sample than the post
-        # window (the clip's last sample is one step short of the requested end),
-        # so equalize them exactly as the FC path does before estimating spectra
-        # -- otherwise the two are estimated over slightly different window
-        # lengths, which shifts the frequency-bin centres and biases the contrast.
-        lo_seg = window_slice(data, t, widen(pre_win))
-        hi_seg = window_slice(data, t, widen(post_win))
-        if not hilb:   # Long's windows differ in length (750 vs 1600 ms); a mean amplitude doesn't need them equal
-            lo_seg, hi_seg = fc.equalize_time_length(lo_seg, hi_seg)
-        n_win = lo_seg.shape[-1] - 2 * nbuf
-        if hilb and (fc.LONGETAL or {}).get("baseline") == "full_isi":
-            # each trial's whole blank screen: blank the pre samples before the previous word's offset
-            e = _env(lo_seg)
-            t_env = pre_win[0] + np.arange(e.shape[-1]) * 1000.0 / env_hz
-            e[np.broadcast_to(t_env[None, None, :] < -blank_ms[:, None, None], e.shape)] = np.nan
-        p_lo = _power(lo_seg)
-        p_hi = _power(hi_seg)
-    else:
-        # both arms share the loaded window, so nothing to equalize
-        n_win = data.shape[-1] - 2 * nbuf
-        p = _power(data)
-        p_lo, p_hi = p[~ev_mask], p[ev_mask]
+    # Inclusive time masks give the pre window one more sample than the post
+    # window, so equalize them exactly as the FC path does before estimating
+    # spectra -- otherwise the frequency-bin centres shift between the arms.
+    lo_seg = window_slice(data, t, widen(pre_win))
+    hi_seg = window_slice(data, t, widen(post_win))
+    if not hilb:   # Long's windows differ in length (750 vs 1600 ms); a mean amplitude doesn't need them equal
+        lo_seg, hi_seg = fc.equalize_time_length(lo_seg, hi_seg)
+    n_win = lo_seg.shape[-1] - 2 * nbuf
+    if hilb and LONG.get("baseline") == "full_isi":
+        # each trial's whole blank screen: blank the pre samples before the previous word's offset
+        e = _env(lo_seg)
+        t_env = pre_win[0] + np.arange(e.shape[-1]) * 1000.0 / env_hz
+        e[np.broadcast_to(t_env[None, None, :] < -blank_ms[:, None, None], e.shape)] = np.nan
+    p_lo = _power(lo_seg)
+    p_hi = _power(hi_seg)
 
     p_lo[~np.isfinite(p_lo)] = np.nan
     p_hi[~np.isfinite(p_hi)] = np.nan
@@ -502,7 +345,7 @@ def run_sess_power(
     # Per-bin contrast, (n_ch, n_bins). Same Cohen's d as the collapsed measure,
     # computed independently within each time bin -> d as a function of latency.
     d_bins = bin_centers = None
-    if binned:
+    if time_bin_ms:
         # BASELINE = the WHOLE pre window, not the matching pre bin.
         #
         # Every post bin is contrasted against one baseline value per event, the
@@ -518,11 +361,9 @@ def run_sess_power(
         # (z-score to the whole blank-screen period).
         #
         # The baseline is built from the SAME binned estimator as the response,
-        # then averaged over bins -- not from the whole-window call. For the
-        # windowed multitaper those differ (600 ms @ 2 Hz vs 100 ms @ 12 Hz, both
-        # NW=0.6), and mixing them would put a constant offset on the whole time
-        # course. nanmean also drops the multitaper edge bins that cannot fit a
-        # full window.
+        # then averaged over bins -- not from the whole-window call (600 ms @ 2 Hz
+        # vs 100 ms @ 12 Hz would put a constant offset on the time course).
+        # nanmean also drops the edge bins that cannot fit a full window.
         #
         # Raw power: the mean over B baseline bins and a single response bin
         # estimate the same expected power, so the null stays unbiased.
@@ -581,9 +422,6 @@ def run_sess_power(
         "beh": beh, "band": band, "fmin": fmin, "fmax": fmax,
         "lo_win": pre_win, "hi_win": post_win,
         "mt_bandwidth": bandwidth,
-        # Provenance: what actually produced these numbers. Lets a consumer (or
-        # a future cache check) tell a Morlet pickle from a multitaper one, and
-        # a notched run from an un-notched one, without guessing from the path.
         "fc_mode": fc_mode,
         "measure": "amplitude" if hilb else "power",   # pow_* hold amplitude under hilbert
         "cohens_d_samples": d_samp, "n_lo_samples": n_samp_lo, "n_hi_samples": n_samp_hi,
@@ -593,14 +431,12 @@ def run_sess_power(
         "items": items if hilb else None,
         "simulation_tag": simulation_tag,
         "notch_harmonics_up_to_hz": fc.NOTCH_HARMONICS_UP_TO_HZ,
-        "morlet_reps": fc.CWT_MORLET_REPS if morlet else None,
-        "cwt_fnum": fc.CWT_FNUM if morlet else None,
-        "buffer_ms": max(buf_ms, fc.REAL_DATA_BUFFER_MS) if prepost else 0.0,
-        # Latency axis (Morlet + prepost only; None otherwise).
+        "buffer_ms": fc.REAL_DATA_BUFFER_MS,
+        # Latency axis (gamma only; None otherwise).
         "cohens_d_bins": d_bins,          # (n_ch, n_bins)
-        "bin_centers_ms": bin_centers,    # ms into each window
-        "time_bin_ms": int(time_bin_ms) if binned else None,
-        "mt_window_ms": (mt_win if (binned and not morlet) else None),
+        "bin_centers_ms": bin_centers,    # ms into the post window
+        "time_bin_ms": time_bin_ms,
+        "mt_window_ms": mt_win if (time_bin_ms and not hilb) else None,
     }
     os.makedirs(out_dir, exist_ok=True)
     fc.save_pickle(out_path, out)
@@ -608,23 +444,19 @@ def run_sess_power(
 
 
 # ------------------------------- plot stage ----------------------------------
-def collect_electrode_table(save_root, beh, band, lobe_of, n_sessions=None,
-                            fc_mode="multitaper"):
+def collect_electrode_table(save_root, beh, band, lobe_of, n_sessions=None):
     """Walk the per-session pickles -> tidy per-(subject, electrode) table.
 
     Sessions of the same subject are averaged per electrode LABEL before
     anything else, so a
     subject with 4 sessions does not outweigh one with 1.
     """
-    d = power_dir(save_root, beh, band, fc_mode)
-    files = sorted(d.glob("*_power.pkl"))
-    if n_sessions is not None:
-        files = files[:n_sessions]
+    d = power_dir(save_root, beh, band)
+    files = sorted(d.glob("*_power.pkl"))[:n_sessions]
     if not files:
         raise SystemExit(
             f"no pickles in {d}\nrun the compute stage first: "
-            f"python build_roi_power.py --stage compute --beh {beh} --band {band} "
-            f"--fc-mode {fc_mode}")
+            f"python build_roi_power.py --stage compute --band {band}")
 
     rows = []
     for f in tqdm(files, desc="load sessions"):
@@ -656,57 +488,36 @@ def collect_electrode_table(save_root, beh, band, lobe_of, n_sessions=None,
 
 
 def subject_roi_table(elec_df, min_electrodes=1, db=10.0):
-    """Per-electrode measures -> per-(subject, ROI) means.
-
-    z_lo / z_hi are z-scored across ALL of that subject's ROI-assigned
-    electrodes (not within ROI), which is what removes the subject-level gain
-    offset while preserving between-ROI differences. cohens_d and change_dB need
-    no normalization -- the offset cancels in the window contrast.
-    """
-    parts = []
-    for _sub, g in elec_df.groupby("sub", sort=True):
-        g = g.copy()
-        g["change_dB"] = db * np.log10(g["hi"] / g["lo"])   # db=20 for amplitude (hilbert)
-        for src, dst in (("lo", "z_lo"), ("hi", "z_hi")):
-            g[dst] = fc.zscore_across(g[src].to_numpy(float))
-        parts.append(g)
-    per_elec = pd.concat(parts, ignore_index=True)
+    """Per-electrode measures -> per-(subject, ROI) means."""
+    per_elec = elec_df.assign(change_dB=db * np.log10(elec_df["hi"] / elec_df["lo"]))  # db=20 for amplitude (hilbert)
     return per_elec, fc.subject_roi_means(per_elec, list(MEASURES),
                                           min_electrodes=min_electrodes)
 
 
 def run_latency_stage(save_root, beh, band, args, lobe_of):
-    """Time course of the contrast, for EITHER estimator.
-
-    Gated on the pickles actually carrying per-bin data, not on fc_mode -- the
-    windowed multitaper produces a latency axis too (on the same bin centres),
-    which is the whole point of being able to compare the two.
-    """
-    if not getattr(args, "time_bin_ms", None):
+    """Time course of the contrast (gamma only). Long et al.: also on responsive
+    contacts only, the electrode set they compute latencies on."""
+    if fc.bands[band][0] < TIMING_MIN_HZ:
         return
-    for responsive_only in ([False, True] if args.responsive_only else [False]):
+    for responsive_only in ([False, True] if LONG else [False]):
         keep = None
         if responsive_only:
-            rdf = collect_responsiveness(save_root, beh, band, lobe_of,
-                                         args.n_sessions, fc_mode=args.fc_mode, t_unit=args.t_unit, combine=args.combine)
-            rdf = rdf[rdf["p"] < args.responsive_alpha]
+            rdf = collect_responsiveness(save_root, beh, band, lobe_of, args.n_sessions)
+            rdf = rdf[rdf["p"] < RESPONSIVE_ALPHA]
             keep = set(zip(rdf["sub"], rdf["label"]))
             print(f"[latency/responsive] restricting to {len(keep)} contacts "
-                  f"at p<{args.responsive_alpha:g}")
+                  f"at p<{RESPONSIVE_ALPHA:g}")
         _latency_one(save_root, beh, band, args, lobe_of, keep, responsive_only)
 
 
 def _latency_one(save_root, beh, band, args, lobe_of, keep, responsive_only):
     bin_df = collect_bin_table(save_root, beh, band, lobe_of,
-                               args.n_sessions, fc_mode=args.fc_mode,
-                               keep_keys=keep)
-    if bin_df is None or len(bin_df) == 0:
-        print("[latency] these pickles carry no per-bin data; skipping. "
-              "Recompute with --time-bin-ms to get a time course.")
+                               args.n_sessions, keep_keys=keep)
+    if len(bin_df) == 0:
+        print("[latency] these pickles carry no per-bin data; skipping.")
         return
     tbl = subject_roi_bin_table(bin_df, min_electrodes=args.min_electrodes)
-    stats = bin_stats(tbl, roi_order=fc.ROI_ORDER,
-                      n_perm=args.tfce_perm, seed=0)
+    stats = fc.bin_stats(tbl, "bin_ms", "d")
 
     # Electrodes actually contributing to each ROI, after the min-electrodes cut.
     cnt = (bin_df[bin_df["roi"].isin(set(tbl["roi"]))]
@@ -716,7 +527,7 @@ def _latency_one(save_root, beh, band, args, lobe_of, keep, responsive_only):
     print(f"\n[latency] electrodes per ROI ({lab}):")
     print(cnt.sort_values("n_elec", ascending=False).to_string(index=False))
 
-    tag = (f"{beh}_{band}_{args.fc_mode}_{args.time_bin_ms}ms"
+    tag = (f"{beh}_{band}_{fc.POWER_MODE}_{fc.TIME_BIN_MS}ms"
            + ("_responsive" if responsive_only else ""))
     os.makedirs(args.out_dir, exist_ok=True)
     cnt.to_csv(join(args.out_dir, f"power_timecourse_{tag}_counts.csv"),
@@ -725,7 +536,8 @@ def _latency_one(save_root, beh, band, args, lobe_of, keep, responsive_only):
                  index=False)
     tbl.to_csv(join(args.out_dir, f"power_timecourse_{tag}_per_subject.csv"),
                index=False)
-    path = plot_time_course(stats, args.out_dir, beh, band, tag)
+    path = fc.roi_curve_figure(stats, "bin_ms", join(args.out_dir, f"power_timecourse_{tag}"),
+                               "Time after word onset (ms)", "Cohen's d")
     sig = stats[stats["q"] < 0.05]
     print(f"[latency] {tbl['sub'].nunique()} subjects, "
           f"{stats['bin_ms'].nunique()} bins x {stats['roi'].nunique()} ROIs; "
@@ -734,59 +546,48 @@ def _latency_one(save_root, beh, band, args, lobe_of, keep, responsive_only):
         # Peak per ROI, not "earliest significant cell": the latter sorts by time
         # regardless of sign or size and so surfaces tiny suppressions (e.g.
         # L-frontal @ 75 ms, d=-0.02) as if they were response onsets.
-        pk = (sig.loc[sig.groupby("roi")["mean_d"].idxmax()]
-                 .sort_values("mean_d", ascending=False).head(4))
+        pk = (sig.loc[sig.groupby("roi")["mean"].idxmax()]
+                 .sort_values("mean", ascending=False).head(4))
         print("[latency] strongest ROIs (peak bin):")
         for _, r in pk.iterrows():
             print(f"          {r['roi']:<14} peak @ {r['bin_ms']:>4.0f} ms  "
-                  f"d={r['mean_d']:+.3f}  q={r['q']:.1e}")
+                  f"d={r['mean']:+.3f}  q={r['q']:.1e}")
     print(f"[latency] wrote {path}")
 
 
-def run_responsiveness_stage(save_root, beh, band, args, lobe_of):
-    """Long-style electrode-selection summary. Plot-stage only, no recompute."""
-    for fine in ([False, True] if args.fine_labels else [False]):
+def run_responsiveness_stage(save_root, beh, band, args, lobe_of, fine_top_n=15):
+    """Long-style electrode-selection summary. Plot-stage only, no recompute.
+    fine_labels (or longetal) adds a figure by raw label (top `fine_top_n`)."""
+    t_unit, combine = LONG.get("t_unit", "trial"), LONG.get("combine", "d_mean")
+    min_resp = LONG.get("min_responsive_per_region", 0)
+    for fine in ([False, True] if (args.fine_labels or LONG) else [False]):
         df = collect_responsiveness(save_root, beh, band, lobe_of, args.n_sessions,
-                                    fc_mode=args.fc_mode, by_fine_label=fine, t_unit=args.t_unit, combine=args.combine)
-        st = responsiveness_stats(df, alpha=args.responsive_alpha)
-        overall = 100 * (df["p"] < args.responsive_alpha).mean()
+                                    by_fine_label=fine)
+        st = responsiveness_stats(df, alpha=RESPONSIVE_ALPHA)
+        overall = 100 * (df["p"] < RESPONSIVE_ALPHA).mean()
         print(f"[responsive{'/fine' if fine else ''}] {len(df)} electrodes, "
-              f"{overall:.1f}% responsive (t per {args.t_unit}) at p<{args.responsive_alpha:g} "
+              f"{overall:.1f}% responsive (t per {t_unit}) at p<{RESPONSIVE_ALPHA:g} "
               f"(Long: 25.3%)")
-        tag = (f"{beh}_{band}_{args.fc_mode}" + ("_fine" if fine else "")
-               + (("_pertimepoint" if args.t_unit == "sample" else "_pertrial") if args.fc_mode == "hilbert" else "")
-               + ("_wordavg" if args.combine == "word_average" else ""))
+        tag = (f"{beh}_{band}_{fc.POWER_MODE}" + ("_fine" if fine else "")
+               + (("_pertimepoint" if t_unit == "sample" else "_pertrial") if LONG else "")
+               + ("_wordavg" if combine == "word_average" else ""))
         os.makedirs(args.out_dir, exist_ok=True)
-        if fine and args.combine == "word_average":
-            plot_long_peaks(df, args.out_dir, tag, args.responsive_alpha,   # per trial: every region with a responder
-                            args.min_responsive_per_region if args.t_unit == "sample" else 1)
+        if fine and combine == "word_average":
+            plot_long_peaks(df, args.out_dir, tag, RESPONSIVE_ALPHA,   # per trial: every region with a responder
+                            min_resp if t_unit == "sample" else 1)
         # CSV is ALWAYS unfiltered -- the cut below is display only.
         st.to_csv(join(args.out_dir, f"responsiveness_{tag}.csv"), index=False)
-        # Fine labels are ~40 groups, most with no response at all. Plot the
-        # top N by median |t| (stats is already sorted that way), after
-        # dropping labels too small for that median to be stable. The CSV keeps
-        # every label regardless.
-        st_plot = st
-        if fine:
-            big = st[st["n_elec"] >= _FINE_MIN_ELECTRODES]
-            tiny = st[st["n_elec"] < _FINE_MIN_ELECTRODES]
-            st_plot = big.head(args.fine_top_n)
-            if len(tiny):
-                print(f"[responsive/fine] excluded {len(tiny)} label(s) with "
-                      f"<{_FINE_MIN_ELECTRODES} electrodes: "
-                      f"{', '.join(tiny['grp'].head(8))}"
-                      f"{' ...' if len(tiny) > 8 else ''}")
-        st_plot = st_plot[st_plot["n_responsive"] >= args.min_responsive_per_region]
+        # Fine labels are ~40 groups, most with no response at all: plot the top
+        # N by median |t| among labels with enough electrodes for a stable median.
+        st_plot = st[st["n_elec"] >= _FINE_MIN_ELECTRODES].head(fine_top_n) if fine else st
+        st_plot = st_plot[st_plot["n_responsive"] >= min_resp]
         if st_plot.empty:
-            print(f"[responsive] no region has >= {args.min_responsive_per_region} "
+            print(f"[responsive] no region has >= {min_resp} "
                   f"responsive electrodes; figure skipped (see the CSV)")
             continue
         df_plot = df[df["grp"].isin(set(st_plot["grp"]))]
         path = plot_responsiveness(df_plot, st_plot, args.out_dir, beh, band, tag,
-                                   alpha=args.responsive_alpha)
-        if fine and len(st) > len(st_plot):
-            print(f"[responsive/fine] plotting top {len(st_plot)} of {len(st)} "
-                  f"labels by median |t|; full table in the CSV")
+                                   alpha=RESPONSIVE_ALPHA)
         print(st.head(6).to_string(index=False))
         print(f"[responsive] wrote {path}")
 
@@ -795,34 +596,22 @@ def run_plot_stage(save_root, beh, band, args):
     lobe_of = fc.load_burke_maps()
     run_responsiveness_stage(save_root, beh, band, args, lobe_of)
     run_latency_stage(save_root, beh, band, args, lobe_of)
-    elec_df = collect_electrode_table(save_root, beh, band, lobe_of,
-                                      args.n_sessions,
-                                      fc_mode=args.fc_mode)
-    per_elec, tbl = subject_roi_table(elec_df, db=20.0 if args.fc_mode == "hilbert" else 10.0,
+    elec_df = collect_electrode_table(save_root, beh, band, lobe_of, args.n_sessions)
+    per_elec, tbl = subject_roi_table(elec_df, db=20.0 if fc.POWER_MODE == "hilbert" else 10.0,
                                       min_electrodes=args.min_electrodes)
     print(f"[collect] {elec_df['sub'].nunique()} subjects, "
           f"{len(elec_df)} ROI-assigned electrodes")
 
-    # every measure is tested and written to the stats CSV, whether or not it
-    # got a panel in this figure
     stats = {m: fc.roi_stats(tbl, m) for m in MEASURES}
     c = fc.contrast(beh)
     fc.print_roi_stats(
         stats["cohens_d"],
         f"{c['hi_label']} vs {c['lo_label']} {band} power (Cohen's d, mean over "
         f"the ROI's electrodes), per ROI:")
-
-    labels = panel_labels(beh, band)
-    rng = np.random.default_rng(0)
-    fc.roi_figure(
-        [(labels[m],
-          lambda ax, m=m: fc.roi_panel(ax, tbl, m, rng, stats=stats[m],
-                                       style=args.style))
-         for m in args.measures],
-        args.out_dir, f"roi_power_{beh}_{band}")
-
-    fc.write_roi_csvs(args.out_dir, f"roi_power_{beh}_{band}", tbl, per_elec,
-                      stats)
+    stem = f"roi_power_{beh}_{{band}}"
+    fc.write_roi_csvs(args.out_dir, stem.format(band=band), tbl, per_elec, stats)
+    fc.band_contrast_figure(args.out_dir, stem, "cohens_d",
+                            f"power {c['hi_label']} vs {c['lo_label']} (Cohen's d)")
     return tbl
 
 
@@ -831,114 +620,33 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--stage", default="both", choices=("compute", "plot", "both"))
-    p.add_argument("--fc-mode", default=fc.FC_MODE,
-                   choices=list(fc.FC_MODES), dest="fc_mode",
-                   help="spectral estimator for the phase metrics. multitaper (default): one band-averaged estimate, no time axis. cwt_morlet: Morlet wavelets, time-resolved, enables latency analyses. Outputs land in a separate <band>__cwt_morlet directory so the two estimators never overwrite each other.")
     fc.add_common_args(p)
     p.add_argument("--out-dir", default=join("figures", "burke_roi_power"))
-    p.add_argument("--measures", nargs="+", default=list(DEFAULT_MEASURES),
-                   choices=list(MEASURES),
-                   help="panels to draw; all measures are tested and written to "
-                        f"the stats CSV regardless (default: {list(DEFAULT_MEASURES)})")
-    p.add_argument("--style", default="box", choices=("box", "ci"),
-                   help="box: median/IQR + whiskers + mean diamond (default). "
-                        "ci: mean + 95%% CI, clearer on small subsets")
-    p.add_argument("--time-bin-ms", type=int, default=fc.TIME_BIN_MS,
-                   dest="time_bin_ms",
-                   help="width (ms) of the latency bins the Morlet path averages "
-                        "within before the across-event contrast. Ignored under "
-                        "--fc-mode multitaper (no time axis). Rao uses 200; 50 is "
-                        "the default here because a 5-cycle Morlet at 70 Hz has "
-                        "sigma=11.4 ms, so 50 ms bins are ~4.4 sigma apart and "
-                        "effectively independent. Do not go below ~25 ms.")
-    p.add_argument("--mt-window-ms", type=int, default=fc.MT_WINDOW_MS,
-                   dest="mt_window_ms",
-                   help="sliding-window length (ms) for the WINDOWED multitaper "
-                        "latency axis, centred on the same bin centres as the "
-                        "Morlet path. 100 (default) matches Morlet's 12-bin axis "
-                        "while sharing only 50%% of the data between neighbours. "
-                        "The floor is ~100: at 50 ms the smoothing half-bandwidth "
-                        "is 12 Hz, so the estimate reaches 58 Hz and mains leaks "
-                        "in from the 58-62 notch. Note the "
-                        "effective temporal resolution is this window, NOT "
-                        "--time-bin-ms; the axis is only SAMPLED at that step.")
-    p.add_argument("--t-unit", default="trial", choices=("trial", "sample"), dest="t_unit",
-                   help="responsiveness t-test observations: trial means, or every "
-                        "envelope sample (hilbert only; Long et al. don't say which)")
-    p.add_argument("--combine", default=(fc.LONGETAL or {}).get("combine", "d_mean"),
-                   choices=("d_mean", "word_average"),
-                   help="repeated sessions: average per-session d (d_mean), or average each "
-                        "word's envelope over sessions first (word_average; hilbert only, Long)")
-    p.add_argument("--min-responsive-per-region", type=int,
-                   default=(fc.LONGETAL or {}).get("min_responsive_per_region", 0),
-                   dest="min_responsive_per_region",
-                   help="drop regions with fewer task-responsive electrodes from the "
-                        "responsiveness figure (Long et al.: 50; the CSV keeps all)")
-    p.add_argument("--responsive-alpha", type=float, default=1e-8,
-                   dest="responsive_alpha",
-                   help="p threshold for calling an electrode task-responsive. "
-                        "1e-8 matches Long et al., who retained 25.3%% of "
-                        "electrodes at that level.")
-    p.add_argument("--tfce-perm", type=int, default=0, dest="tfce_perm",
-                   help="permutations for the TFCE correction on the time "
-                        "course (0 = off, use BH instead; 1000 is typical). "
-                        "TFCE clusters along TIME within each ROI, never across "
-                        "ROIs, and builds its null by sign-flipping whole "
-                        "subjects -- so it makes no independence assumption "
-                        "about neighbouring bins, unlike BH. Writes q_tfce, "
-                        "which the figure then uses for its stars.")
-    p.add_argument("--responsive-only", action="store_true",
-                   dest="responsive_only",
-                   help="ALSO produce the time-course figure using only "
-                        "task-responsive contacts (p < --responsive-alpha), the "
-                        "electrode set Long et al. compute their latencies on. "
-                        "Writes a second figure tagged _responsive plus a "
-                        "per-ROI electrode-count CSV.")
     p.add_argument("--fine-labels", action="store_true", dest="fine_labels",
-                   help="ALSO group responsiveness by the raw reg_full label "
-                        "instead of the 12 Burke ROIs. Splits occipital into "
-                        "calcarine / cuneus / fusiform / lateral occipital / "
-                        "lingual -- the five regions Long reports separately and "
-                        "that this pipeline otherwise pools into one bar.")
-    p.add_argument("--fine-top-n", type=int, default=15, dest="fine_top_n",
-                   help="with --fine-labels, plot only the top N reg_full labels "
-                        "by median |t| (default 15). Display only -- the CSV "
-                        "always lists every label.")
+                   help="also plot responsiveness by raw anatomical label")
     p.add_argument("--min-electrodes", type=int, default=3,
-                   help="min electrodes a subject must have IN AN ROI for that "
-                        "(subject, ROI) cell to enter the group test "
-                        "(default: 3, matching build_roi_synchrony.py so the "
-                        "power and synchrony figures admit the same subjects)")
+                   help="min electrodes a subject must have in an ROI to enter the group test")
+    args = p.parse_args()
     args = p.parse_args()
 
-    # Morlet figures go to their own subfolder so the two estimators' figures
-    # never overwrite each other, mirroring the <band>__cwt_morlet split on the
-    # compute side. An explicit --out-dir is still honoured as the parent.
-    if args.fc_mode != "multitaper":
-        args.out_dir = join(args.out_dir, args.fc_mode)
+    if fc.POWER_MODE != "multitaper":   # longetal: hilbert figures in their own subfolder
+        args.out_dir = join(args.out_dir, fc.POWER_MODE)
     if args.n_sessions is not None and args.n_subjects is not None:
         raise ValueError("pass only one of --n-sessions / --n-subjects")
     return args
 
 
 # --------------------------- latency (time-bin) stage -------------------------
-# Only populated by the Morlet path: `cohens_d_bins` (n_ch, n_bins) is Cohen's d
-# computed independently inside each time bin, so it is d as a function of
-# latency. Multitaper pickles have None here and these functions no-op.
+# `cohens_d_bins` (n_ch, n_bins): Cohen's d within each time bin (gamma only).
 
-def collect_bin_table(save_root, beh, band, lobe_of, n_sessions=None,
-                      fc_mode="cwt_morlet", keep_keys=None):
+def collect_bin_table(save_root, beh, band, lobe_of, n_sessions=None, keep_keys=None):
     """Per-(subject, electrode, time-bin) Cohen's d -> tidy frame.
 
     Mirrors collect_electrode_table's aggregation: sessions of one subject are
     averaged per electrode LABEL first, so a 4-session subject does not outweigh
     a 1-session subject.
     """
-    d = power_dir(save_root, beh, band, fc_mode)
-    files = sorted(d.glob("*_power.pkl"))
-    if n_sessions is not None:
-        files = files[:n_sessions]
-
+    files = sorted(power_dir(save_root, beh, band).glob("*_power.pkl"))[:n_sessions]
     rows, centers = [], None
     for f in tqdm(files, desc="load bins"):
         try:
@@ -979,202 +687,6 @@ def subject_roi_bin_table(bin_df, min_electrodes=3):
                .agg(d=("d", "mean"), n_elec=("label", "nunique"))
                .reset_index())
     return g[g["n_elec"] >= min_electrodes].reset_index(drop=True)
-
-
-def bin_stats(tbl, roi_order=None, n_perm=0, seed=0):
-    """One-sample t vs 0 per (ROI, bin), BH-FDR over ALL roi x bin cells.
-
-    FDR is taken over the whole grid rather than per ROI, because the family
-    being tested is the whole time-by-region map.
-
-    NOTE: this is an interim correction. The principled test for a contiguous
-    time grid is TFCE (Rao's tfce.py, the machinery behind his Fig 4B), which
-    exploits the fact that neighbouring bins are not independent tests but a
-    cluster. BH here is conservative in the wrong way: it ignores that structure
-    and so will miss temporally extended-but-weak effects that TFCE would find.
-    """
-    from scipy.stats import ttest_1samp
-    rois = list(roi_order) if roi_order is not None else sorted(tbl["roi"].unique())
-    rows = []
-    for roi in rois:
-        sub = tbl[tbl["roi"] == roi]
-        for b in sorted(sub["bin_ms"].unique()):
-            v = sub.loc[sub["bin_ms"] == b, "d"].dropna().to_numpy(float)
-            if v.size >= fc.MIN_SUBJECTS_ROI and np.ptp(v) > 0:
-                t, p = ttest_1samp(v, 0.0)
-            else:
-                t = p = np.nan
-            rows.append({"roi": roi, "bin_ms": b, "n": v.size,
-                         "mean_d": float(np.nanmean(v)) if v.size else np.nan,
-                         "sem": float(np.nanstd(v, ddof=1) / np.sqrt(v.size))
-                                if v.size > 1 else np.nan,
-                         # t-based 95% CI half-width, via the same fc.mean_ci
-                         # the ROI box plots use -- so the two figures in this
-                         # script mean the same thing by a shaded interval.
-                         "ci95": (fc.mean_ci(v)[1] if v.size > 1 else np.nan),
-                         "t": float(t), "p": float(p)})
-    out = pd.DataFrame(rows)
-    m = out["p"].notna()
-    q = np.full(len(out), np.nan)
-    if m.any():                                    # Benjamini-Hochberg
-        pv = out.loc[m, "p"].to_numpy(float)
-        order = np.argsort(pv)
-        n = pv.size
-        adj = np.minimum.accumulate((pv[order] * n / np.arange(1, n + 1))[::-1])[::-1]
-        qv = np.empty(n); qv[order] = np.clip(adj, 0, 1)
-        q[np.where(m)[0]] = qv
-    out["q"] = q
-
-    if n_perm:
-        out = _add_tfce(out, tbl, rois, n_perm=n_perm, seed=seed)
-    return out
-
-
-def _add_tfce(out, tbl, rois, n_perm=1000, seed=0, min_subjects=10):
-    """Attach TFCE-corrected p-values (`q_tfce`) to the per-bin stats table.
-
-    Uses `mne.stats.permutation_cluster_1samp_test`. The `threshold=dict(...)`
-    form is what selects TFCE, and `adjacency=None` makes clustering 1-D along
-    TIME -- which is what we want, because our map is ROI x time and only time is
-    continuous. L-frontal and L-parietal are not neighbours in any metric sense,
-    and the row order is an arbitrary sort, so 2-D clustering would merge
-    unrelated regions (measured: a 1.41x inflation of TFCE when two ROI rows hold
-    identical clusters).
-
-    RUN PER ROI, FOR TWO REASONS.
-      1. MNE needs complete data and cannot omit NaN. Across the full ROI x time
-         map 54% of cells are missing and exactly ONE subject of 360 has every
-         ROI -- but WITHIN a region the data is complete (110-249 subjects), so
-         the per-ROI split costs no data at all.
-      2. A joint null would take the max statistic over cells whose n ranges
-         93-249. Low-n cells give noisier t, dominate the max, and inflate the
-         null for well-powered regions. Per-ROI nulls never compare across n.
-
-    THE CORRECTION IS THEREFORE TWO-LEVEL:
-      within a region -- TFCE + sign-flip permutation, family-wise across time;
-      across regions  -- Benjamini-Hochberg over every (ROI, bin) p.
-    MNE's p-values alone are corrected across TIME ONLY; without the second level
-    the 12 regions searched would go uncounted.
-
-    Why bother when BH-on-t is already there: that treats each cell as if it
-    stood alone, so a weak effect spread over consecutive bins fails at every
-    single bin and vanishes. TFCE scores a cell by the size of the contiguous run
-    it belongs to as well as its height, and its null comes from flipping whole
-    subjects -- carrying the real temporal autocorrelation into the null instead
-    of assuming it away.
-
-    TFCE is NOT automatically kinder. Height enters squared and extent only as a
-    square root, so a strong brief effect still outranks a weak sustained one; on
-    this dataset it is the STRICTER test (41 significant cells vs 61 for BH).
-    """
-    from mne.stats import permutation_cluster_1samp_test
-
-    rows = []
-    for roi in rois:
-        piv = (tbl[tbl["roi"] == roi]
-               .pivot_table(index="sub", columns="bin_ms", values="d")
-               .dropna())                       # complete cases within this ROI
-        if piv.shape[0] < min_subjects:
-            continue
-        _, _, p_roi, _ = permutation_cluster_1samp_test(
-            piv.to_numpy(float),
-            threshold=dict(start=0, step=0.05),   # dict form => TFCE
-            n_permutations=n_perm,
-            adjacency=None,                       # 1-D: cluster along time only
-            tail=0,                               # two-sided
-            seed=seed,
-            out_type="mask",
-            verbose=False,
-        )
-        rows += [(roi, b, float(pv)) for b, pv in zip(piv.columns, p_roi)]
-
-    out = out.copy()
-    if not rows:
-        out["q_tfce"] = np.nan
-        return out
-
-    p_df = pd.DataFrame(rows, columns=["roi", "bin_ms", "p_tfce"])
-    # Second level: BH across every (ROI, bin) so the 12 regions are accounted for.
-    from statsmodels.stats.multitest import multipletests
-    p_df["q_tfce"] = multipletests(p_df["p_tfce"].to_numpy(float),
-                                   method="fdr_bh")[1]
-    key = {(r, b): q for r, b, q in
-           zip(p_df["roi"], p_df["bin_ms"], p_df["q_tfce"])}
-    out["q_tfce"] = [key.get((r, b), np.nan)
-                     for r, b in zip(out["roi"], out["bin_ms"])]
-    return out
-
-
-def pretty_roi(name):
-    """Display form of an ROI or reg_full label: capitalise the region word.
-
-    Keeps a single-letter hemisphere prefix intact, so "L-occipital" becomes
-    "L-Occipital". Only the first letter is raised -- title-casing every word
-    would give "Lateral Occipital Cortex", which reads oddly for anatomy.
-    """
-    t = str(name)
-    if "-" in t and len(t.split("-", 1)[0]) == 1:
-        hemi, rest = t.split("-", 1)
-        return f"{hemi.upper()}-{rest[:1].upper()}{rest[1:]}"
-    return t[:1].upper() + t[1:]
-
-
-def plot_time_course(stats, out_dir, beh, band, tag, alpha=0.05):
-    """One small-multiple panel per ROI: mean d +/- SEM vs latency."""
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    rois = [r for r in fc.ROI_ORDER if r in set(stats["roi"])]
-    ncol = 4
-    nrow = int(np.ceil(len(rois) / ncol))
-    fig, axes = plt.subplots(nrow, ncol, figsize=(3.1 * ncol, 2.4 * nrow),
-                             sharex=True, sharey=True)
-    axes = np.atleast_1d(axes).ravel()
-    ylim = np.nanmax(np.abs(stats["mean_d"].to_numpy(float))) * 1.35 or 1.0
-
-    for ax, roi in zip(axes, rois):
-        s = stats[stats["roi"] == roi].sort_values("bin_ms")
-        x = s["bin_ms"].to_numpy(float)
-        y = s["mean_d"].to_numpy(float)
-        # 95% CI, not SEM: a +/-1 SEM band clears zero at roughly p=0.32, which
-        # reads as significant next to the stars. Matches --style ci on the box
-        # plots (fc.mean_ci).
-        e = s["ci95"].to_numpy(float)
-        ax.axhline(0, color="0.6", lw=0.8, zorder=1)
-        ax.fill_between(x, y - e, y + e, alpha=0.25, lw=0, zorder=2)
-        ax.plot(x, y, lw=1.6, zorder=3)
-        # Significance as stars (fc.stars: *** / ** / *), the same convention
-        # the rest of the project's figures use.
-        qcol = "q_tfce" if "q_tfce" in s.columns else "q"
-        q = s[qcol].to_numpy(float)
-        for xi, qi in zip(x, q):
-            lab = fc.stars(qi)
-            if lab:
-                ax.text(xi, ylim * 0.80, lab, ha="center", va="center",
-                        fontsize=9, color="k", zorder=4)
-        ax.set_title(f"{pretty_roi(roi)}  (n={int(np.nanmax(s['n']))})",
-                     fontsize=9)
-        ax.set_ylim(-ylim, ylim)
-    for ax in axes[len(rois):]:
-        ax.axis("off")
-    for ax in axes[-ncol:]:
-        ax.set_xlabel("Time after word onset (ms)")
-    for r in range(nrow):
-        axes[r * ncol].set_ylabel("Cohen's d")
-
-    #fig.suptitle(f"{fc.contrast(beh)['hi_label']} vs "
-    #             f"{fc.contrast(beh)['lo_label']} — {band} power over latency\n"
-    #             f"band: 95% CI across subjects   |   "
-    #             f"* q<0.05  ** q<0.01  *** q<0.001  (BH over all ROI x bin cells)",
-    #             fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
-    os.makedirs(out_dir, exist_ok=True)
-    path = join(out_dir, f"power_timecourse_{tag}.png")
-    fig.savefig(path, dpi=160)
-    plt.close(fig)
-    return path
-
 
 
 # --------------------------- responsiveness stage -----------------------------
@@ -1265,18 +777,16 @@ def word_averaged_rows(files, lobe_of, t_unit, by_fine_label):
 
 
 def collect_responsiveness(save_root, beh, band, lobe_of, n_sessions=None,
-                           fc_mode="multitaper", by_fine_label=False, t_unit="trial",
-                           combine="d_mean"):
+                           by_fine_label=False):
     """Per-(subject, electrode) t and p for the word contrast. t_unit "sample"
     (hilbert only) treats every envelope sample, not every trial, as an observation.
     """
+    t_unit, combine = LONG.get("t_unit", "trial"), LONG.get("combine", "d_mean")
     dk, nk = ("cohens_d_samples", "_samples") if t_unit == "sample" else ("cohens_d", "")
     from scipy.stats import t as tdist
 
-    d = power_dir(save_root, beh, band, fc_mode)
-    files = sorted(d.glob("*_power.pkl"))
-    if n_sessions is not None:
-        files = files[:n_sessions]
+    d = power_dir(save_root, beh, band)
+    files = sorted(d.glob("*_power.pkl"))[:n_sessions]
     rows = word_averaged_rows(files, lobe_of, t_unit, by_fine_label) if combine == "word_average" else []
     for f in (tqdm(files, desc="load responsiveness") if combine != "word_average" else []):
         try:
@@ -1441,7 +951,7 @@ def plot_responsiveness(df, stats, out_dir, beh, band, tag, alpha=1e-8):
     for med in bp["medians"]:
         med.set_color("0.15"); med.set_linewidth(1.4)
     axes[0].set_yticks(np.arange(1, len(order) + 1))
-    axes[0].set_yticklabels([pretty_roi(g) for g in order], fontsize=8)
+    axes[0].set_yticklabels([fc.pretty_roi(g) for g in order], fontsize=8)
     axes[0].set_xlabel("|t| per electrode")
     axes[0].axvline(0, color="0.7", lw=0.8)
     axes[0].invert_yaxis()
@@ -1460,7 +970,7 @@ def plot_responsiveness(df, stats, out_dir, beh, band, tag, alpha=1e-8):
                      va="center", fontsize=7)
     axes[1].set_xlim(0, xmax * 1.28)
 
-    axes[0].set_title(f"High gamma power, "
+    axes[0].set_title(f"{band} power, "
                       f"{fc.contrast(beh)['hi_label']} vs "
                       f"{fc.contrast(beh)['lo_label']}", fontsize=10)
 
@@ -1473,7 +983,7 @@ def plot_responsiveness(df, stats, out_dir, beh, band, tag, alpha=1e-8):
             seen.add(lobe)
             handles.append(Patch(facecolor=fc.LOBE_COLORS.get(lobe, "0.5"),
                                  edgecolor="0.25", alpha=0.85,
-                                 label=pretty_roi(lobe)))
+                                 label=fc.pretty_roi(lobe)))
     # tight_layout FIRST, so the axes are already shrunk into rect before the
     # legend is anchored against the reserved strip. Anchoring at x=1.0 (the
     # figure's right EDGE) put the legend outside the canvas, where savefig
@@ -1492,28 +1002,19 @@ def plot_responsiveness(df, stats, out_dir, beh, band, tag, alpha=1e-8):
 
 
 def main() -> None:
-    import helper
-
     args = parse_args()
     root_dir, save_root = fc.resolve_roots(args)
-    c = fc.contrast(args.beh)                   
-
-    if args.beh in fc.PREPOST_SPEC:
-        sp = fc.PREPOST_SPEC[args.beh]
-        win = f"two windows: lo={sp['pre_win']}  hi={sp['post_win']}"
-    else:
-        win = (f"one window {tuple(helper.beh_to_event_windows[args.beh])}, "
-               f"two event groups")
-    print(f"[setup] beh={args.beh}  band={args.band} {fc.bands[args.band]} Hz")
-    print(f"[setup] {c['lo_label']} (lo) vs {c['hi_label']} (hi) -- {win}")
+    c = fc.contrast(args.beh)
+    sp = fc.PREPOST_SPEC[args.beh]
+    print(f"[setup] beh={args.beh}  band={args.band} {fc.bands[args.band]} Hz  ({fc.POWER_MODE})")
+    print(f"[setup] {c['lo_label']} (lo) {sp['pre_win']} vs {c['hi_label']} (hi) {sp['post_win']}")
 
     if args.stage in ("compute", "both"):
         fc.run_compute_stage(
             run_sess_power, desc="ROI power", root_dir_=root_dir,
             n_sessions=args.n_sessions, n_subjects=args.n_subjects,
             workers=args.workers, save_root=save_root, beh=args.beh, band=args.band, root_dir=root_dir,
-            fc_mode=args.fc_mode, time_bin_ms=args.time_bin_ms,
-            mt_window_ms=args.mt_window_ms, simulation_tag=args.simulation_tag)
+            simulation_tag=args.simulation_tag)
 
     if args.stage in ("plot", "both"):
         run_plot_stage(save_root, args.beh, args.band, args)

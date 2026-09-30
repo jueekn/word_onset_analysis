@@ -89,15 +89,7 @@ BANDS: dict[str, tuple[float, float]] = {
 # Metrics permanently retired from the pipeline. `dpli` was never one of the
 # thesis measures (exploratory only); banning it here makes any reintroduction
 # a hard error at import time rather than silently flowing through.
-BANNED_METRICS: frozenset[str] = frozenset({"dpli"})
 COMPUTATION_METRICS: list[str] = list(get_default("computation_metrics"))
-if BANNED_METRICS.intersection(COMPUTATION_METRICS):
-    raise ValueError(
-        f"config.yaml computation_metrics lists permanently-retired metric(s) "
-        f"{sorted(BANNED_METRICS.intersection(COMPUTATION_METRICS))}; remove them.")
-
-
-MIRROR_BUFFER_MS: int = int(get_default("mirror_buffer_ms"))
 REAL_DATA_BUFFER_MS: float = float(get_default("real_data_buffer_ms"))
 # Long et al. 2020 replication settings (config `longetal_params:`), or None.
 LONGETAL: dict[str, Any] | None = get_default("longetal_params") if os.environ.get("WOA_LONGETAL") else None
@@ -113,31 +105,11 @@ NOTCH_HARMONICS_UP_TO_HZ: float | None = (
     None if _notch_harm_raw is None else float(_notch_harm_raw))
 # pair_distance_threshold_mm: scientific bipolar-pair distance cutoff (data_check).
 PAIR_DISTANCE_THRESHOLD_MM: float = float(get_default("pair_distance_threshold_mm"))
-GC_N_LAGS: int = int(get_default("gc_n_lags"))
 _mt_bw_raw = get_default("mt_bandwidth")
 MT_BANDWIDTH: float | None = None if _mt_bw_raw is None else float(_mt_bw_raw)
-# Morlet (cwt_morlet) FC mode. FC_MODE selects the estimator for the phase
-# metrics; the CWT_* values configure the wavelet bank and its edge buffer.
-# See config.yaml for the full rationale on each.
-FC_MODE: str = str(get_default("fc_mode"))
-CWT_FNUM: int = int(get_default("cwt_fnum"))
-CWT_MORLET_REPS: int = int(get_default("cwt_morlet_reps"))
-CWT_BUFFER_N_SIGMA: float = float(get_default("cwt_buffer_n_sigma"))
-# time_bin_ms: latency-axis bin width for the Morlet path (ignored by multitaper).
+# Power time course (gamma only): bin step and sliding multitaper window.
 TIME_BIN_MS: int = int(get_default("time_bin_ms"))
-# mt_window_ms: sliding-window length for the windowed multitaper latency axis.
 MT_WINDOW_MS: int = int(get_default("mt_window_ms"))
-
-
-# ---------------------------------------------------------------------------
-# Behavior (task-contrast) registry
-# ---------------------------------------------------------------------------
-# `behaviors_main` are the contrastive behaviors that drive group-level analyses
-# (en, rm, word_on, voc); `behaviors_noncontrast` the all-events robustness
-# variants (en_all, rm_all).
-BEHAVIORS_MAIN: tuple[str, ...] = tuple(get_default("behaviors_main"))
-BEHAVIORS_NONCONTRAST: tuple[str, ...] = tuple(get_default("behaviors_noncontrast"))
-BEHAVIORS_ALL: tuple[str, ...] = BEHAVIORS_MAIN + BEHAVIORS_NONCONTRAST
 
 
 SCRATCH_DIR: Path = get("scratch_dir")

@@ -40,104 +40,58 @@ OpenNeuro lists, so the cohort grows as the release is updated.
 ## How it runs
 
 ```bash
+snakemake --cores 8                               # full run (config.yaml `runs`: alpha + high gamma, PPC)
+snakemake --cores 4 --config smokescreen=true     # first 3 subjects, *.smokescreen outputs
+snakemake simulations --cores 4                   # validity checks -> figures/simulations/
+# add --config longetal=true for the Long et al. 2020 replication (power only) -> *.longetal
+```
+
+or by hand:
+
+```bash
 python prepare_sessions.py --n-subjects 3 --workers 4   # session list, data check, events
-python build_roi_power.py     --beh word_on --band high_gamma --workers 4
-python build_roi_synchrony.py --beh word_on --band high_gamma --workers 4
-python build_power_synchrony.py --beh word_on --band high_gamma
+python build_roi_power.py     --band high_gamma --workers 4
+python build_roi_synchrony.py --band high_gamma --workers 4
+python build_power_synchrony.py --band high_gamma
 ```
 
 `prepare_sessions.py` writes the session list and per-session artifacts under
-`config.yaml paths.scratch_dir` (default `~/scratch/word_onset_analysis/scratch`, outside
-the repo; smokescreen / longetal runs use sibling `scratch.*` folders): `sess_list_df*.json`,
-`electrode_information/pairs/`, `<beh>/events/`. `--subjects`, `--n-subjects`
-and `--n-sessions` restrict it; the whole cohort is ~1300 sessions.
+`config.yaml paths.scratch_dir` (default `~/scratch/word_onset_analysis/scratch`,
+outside the repo; smokescreen / longetal runs use sibling `scratch.*` folders).
+`--subjects` / `--n-subjects` restrict it. A session is included only if its
+recalls also match for the encoding and retrieval contrasts (kept so the cohort
+matches earlier runs; see `load_events.recall_matching_ok`).
 
-Every build script has two stages:
+Every build script has `--stage compute` (one pickle per session under
+`SCRATCH_DIR/word_on/…`, `--workers N` in parallel) and `--stage plot`
+(figures + CSVs); `--stage both` is the default. Compute is cached on the file
+existing, **not** on the settings that produced it — after changing anything
+upstream (band, notch, buffers, windows) delete the output directory.
 
-| stage | function | location |
-|---|---|---|
-| `--stage compute` | one pickle per session | `SCRATCH_DIR/<beh>/…` (`--workers N` runs N sessions at once in separate processes) |
-| `--stage plot` | aggregates pickles → figures + CSVs | `figures/…` |
-
-`--stage both` (the default) does both.
-
-Compute is cached: a session with an existing, complete pickle is skipped.
-The cache keys on the file existing and having the expected fields, **not** on
-the settings that produced it — so after changing anything upstream (band,
-notch, buffers, windows) you must **delete the output directory**.
+Simulations (`--simulation-tag`, config/simulation_config.yaml) keep each real
+session's montage and events and replace only the signal, so they exercise the
+whole real pipeline.
 
 ---
 
-## Figure recipes
+## Figures (word on − word off only)
 
-Defaults come from `config/config.yaml`.
+Each plot stage redraws one figure per analysis with a row per band already
+plotted into its directory (alpha, high gamma), paired t per ROI, BH-FDR.
 
-### 1. ROI power (+ responsiveness, + latency)
+| directory | figure | |
+|---|---|---|
+| `burke_roi_power/` | `roi_power_word_on.png` | Cohen's *d* of power per ROI |
+| | `responsiveness_word_on_<band>_multitaper.png` | per-electrode \|t\| and number of responsive electrodes (p < 1e-8); `--fine-labels` adds a figure by raw label (top 15) |
+| | `power_timecourse_word_on_high_gamma_multitaper_50ms.png` | *d* vs latency per ROI — **gamma only** |
+| `burke_roi_synchrony/` | `roi_synchrony_word_on_ppc.png` | on − off PPC per ROI, collapsed over distance |
+| | `roi_synchrony_distance_word_on_<band>_ppc.png` | the same per distance bin, per ROI |
+| `power_synchrony/` | `power_synchrony_word_on_ppc.png` | across-electrode r of power *d* vs synchrony change |
 
-```bash
-# compute once per (beh, band, fc-mode)
-python build_roi_power.py --stage compute --beh word_on --band high_gamma --fc-mode multitaper
-
-# figures
-python build_roi_power.py --stage plot --beh word_on --band high_gamma \
-    --fc-mode multitaper --fine-labels --responsive-only --tfce-perm 1024
-```
-
-Writes to `figures/burke_roi_power/` (Morlet runs go to a `cwt_morlet/`
-subfolder):
-
-| file | description |
-|---|---|
-| `roi_power_<beh>_<band>.png` | per-ROI Cohen's *d*, box plot over subjects |
-| `responsiveness_<…>.png` | per-electrode \|t\| distribution + count of responsive electrodes |
-| `responsiveness_<…>_fine.png` | same, split by fine `reg_full` label (top 15 by median \|t\|) |
-| `power_timecourse_<…>_50ms.png` | Cohen's *d* vs latency, one panel per ROI |
-| `power_timecourse_<…>_responsive.png` | same, restricted to task-responsive contacts |
-
-Flags that matter:
-
-- `--fc-mode {multitaper,cwt_morlet}` — multitaper is band-averaged;
-  Morlet is constant-Q and gives genuinely independent 50 ms bins. Outputs go to
-  separate directories, so both can coexist.
-- `--tfce-perm 1024` — TFCE via `mne.stats.permutation_cluster_1samp_test`,
-  clustering along time within each ROI, then FDR across ROIs. `0` (default)
-  uses Benjamini–Hochberg on the per-bin *t* instead.
-- `--responsive-only` — additionally emits the time course using only contacts
-  at *p* < `--responsive-alpha` (default 1e-8, matching Long et al.), plus a
-  per-ROI electrode-count CSV.
-- `--min-electrodes` (default 3) — minimum electrodes per (subject, ROI) cell.
-
-### 2. ROI phase synchrony
-
-```bash
-python build_roi_synchrony.py --stage compute --beh word_on --band high_gamma --metrics ppc
-python build_roi_synchrony.py --stage plot    --beh word_on --band high_gamma --metric ppc
-```
-
-→ `figures/burke_roi_synchrony/`. Pair-level connectivity is binned by
-seed–target distance and z-scored **within** each distance bin across the
-session's electrodes before being collapsed to one score per electrode
-(`fc.collapsed_synchrony`). Without that, an electrode's score partly reports
-where it sits rather than what it does, because connectivity falls off with
-distance and montages sample distances very unevenly.
-
-`--rmin/--rmax/--bin-w` control the distance bins; `--exclude-same-shank`
-drops pairs on the same lead. All pair centroids are in MNI152NLin6ASym (the
-one space the BIDS electrode tables carry), so any two are comparable.
-
-### 3. Power–synchrony correlation
-
-**Requires both of the above to have been computed first** — consumes
-their pickles.
-
-```bash
-python build_power_synchrony.py --beh word_on --band high_gamma --metric ppc
-```
-
-→ `figures/power_synchrony/`. Correlates each electrode's power effect against
-its synchrony score across electrodes within a session, averages *r* within
-subject, then tests across subjects — the structure Rao et al. (2025) use, but
-computed per ROI and with the distance-collapsed synchrony score.
+Synchrony is raw PPC by default (whole-brain changes show). `--zscore`
+z-scores each distance bin across the session's electrodes first, leaving only
+ROI-vs-ROI differences. `--rmin/--rmax/--bin-w` set the bins,
+`--exclude-same-shank` drops same-lead pairs; pair centroids are in MNI.
 
 ---
 
@@ -147,15 +101,13 @@ computed per ROI and with the distance-collapsed synchrony score.
 |---|---|---|
 | `resample_hz` | 500 | Nyquist 250 Hz |
 | `min_sample_rate_hz` | 499 | sessions below this are excluded upstream |
-| `bands.high_gamma` | 70–150 Hz | Long et al.'s band; geometric centre 102.5 Hz |
-| `bands.gamma` | 70–110 Hz | **filter** band for AEC/PAC — not the analysis band |
+| `bands.high_gamma` | 70–150 Hz | Long et al.'s band |
+| `bands.low` / `bands.gamma` | 3–8 / 70–110 Hz | PAC phase / amplitude bands |
 | `notch_harmonics_up_to_hz` | 150 | site-uniform: notches 100/120/150 for *every* subject |
 | `mt_bandwidth` | 2 | NW = 0.6 over a 600 ms window |
-| `mt_window_ms` | 100 | sliding multitaper window for the latency axis |
-| `time_bin_ms` | 50 | latency bin width |
-| `cwt_fnum` / `cwt_morlet_reps` | 6 / 5 | log-spaced Morlet bank |
-| `cwt_buffer_n_sigma` | 4.0 | 45.5 ms at 70 Hz |
-| `real_data_buffer_ms` | 50 | real adjacent EEG loaded around each window |
+| `time_bin_ms` / `mt_window_ms` | 50 / 100 | gamma time course: bin step / sliding window |
+| `real_data_buffer_ms` | 500 | real EEG around each window, cropped before the multitaper |
+| `computation_metrics` | coh, plv, ppc, ciplv, pli, wpli, pac | `build_roi_synchrony --metrics` |
 
 ---
 
@@ -163,33 +115,22 @@ computed per ROI and with the distance-collapsed synchrony score.
 
 ```
 prepare_sessions.py         session list, data check, events (run first)
-build_roi_power.py          power, responsiveness, latency  (entry point)
-build_roi_synchrony.py      phase connectivity              (entry point)
-build_power_synchrony.py    power-synchrony correlation     (entry point, consumes the other two)
-burke_roi_connectivity.py   per-seed connectivity vs distance
-plot_phase_conn_distance*.py  distance curves, whole-brain and per-ROI
-compare_distance_controls.py  which distance correction removes the most geometry
-roi_subregion_counts.py     ROI/subregion coverage tables
+build_roi_power.py          power, responsiveness, gamma time course
+build_roi_synchrony.py      phase connectivity, per ROI and vs distance
+build_power_synchrony.py    power-synchrony correlation (consumes the other two)
+plot_recovery.py            simulation recovery curves
+roi_subregion_counts.py     ROI/subregion coverage tables (standalone)
 
-fc_comparison_functions.py  FC estimators, aggregation, stats, plotting primitives, session dispatch
-helper.py                   BIDS EEG / electrode loading, notch, Morlet, regionalisation
-cml_data.py                 OpenNeuro listing / download / cache (identical to the COGS4290 copy)
+fc_comparison_functions.py  connectivity estimators, ROI stats, figures, session dispatch
+helper.py                   BIDS EEG / electrode loading, resample + notch, regionalisation
+simulate_eeg.py             synthetic EEG for the validity checks
+cml_data.py                 OpenNeuro listing / download / cache
 data_check.py               per-session validation -> sess_list_df_data_check.json
-load_events.py  match_events.py  per-behavior events (matched succ/unsucc for en/rm)
+load_events.py  match_events.py  word_on events (+ recall matching for the cohort rule)
 exclusion_log.py            event/session exclusion counts
-cstat.py                    circular statistics (PPC/PLV/ciPLV/PLI)
-wavelet.py                  Morlet bank definition (frequencies, widths)
-misc.py  matrix_operations.py  figure_io.py   small utilities
-project_paths.py            config.yaml -> paths and constants
-ptsa_patches.py             PTSA monkey-patch (numpy alias restore)
-simulate_eeg.py             synthetic EEG for validation
+misc.py  project_paths.py  ptsa_patches.py   pickles, config constants, PTSA numpy patch
 config/config.yaml          all tunable parameters
 ```
 
 `region_translator.csv` maps atlas labels → region; `region_to_burke_lobe.csv`
-maps region → one of the 12 main ROIs.
-
----
-
-
-
+maps region → one of the 12 ROIs.

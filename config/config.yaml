@@ -23,147 +23,38 @@ paths:
 # Spectral bands consumed by all FC compute functions. Tuples are loaded
 # as `tuple(v)` by project_paths.BANDS.
 bands:
-  theta:      [4, 9]
   alpha:      [8, 13]
+  # PAC phase (low) and amplitude (gamma) bands; gamma's 110 Hz upper edge lets
+  # MNE fit the band-pass stopband below the 250 Hz Nyquist.
   low:        [3, 8]
-  # gamma: single high-frequency band shared by the PAC amplitude band AND the
-  # AEC / AEC-c pre-envelope filter (see compute_pac / compute_aec). 70 Hz lower
-  # edge covers the high-gamma carrier; 110 Hz upper edge sits well below the
-  # 250 Hz Nyquist (500 Hz resample) so MNE can fit the filter stopband. A
-  # separate high-gamma band can be added later.
   gamma:      [70, 110]
-  narrow_3hz: [2.5, 3.5]
-  narrow_5hz: [4.5, 5.5]
-  narrow_7hz: [6.5, 7.5]
-  # 6-12 Hz phase band used by the phase-metric FC batch (build_phase_fc.py),
-  # matching the multitaper fmin/fmax in visualize_phase_connectivity.ipynb.
-  theta_6_12: [6.0, 12.0]
-  # high_gamma: the ANALYSIS band for the high-gamma arm. Distinct from `gamma`
-  # above, which stays [70,110] because it is a FILTER band (PAC amplitude + AEC
-  # pre-envelope) whose upper edge is set by MNE stopband fitting, not by what we
-  # want to look at. Do not merge the two.
-  #
-  # 70-150 is the field-standard high-gamma range, and the one Long et al. use on
-  # this same dataset, so the two are directly comparable. Its GEOMETRIC centre is
-  # sqrt(70*150) = 102.5 Hz -- i.e. centred at ~100 Hz on the log-frequency axis
-  # that Morlet wavelets actually tile, which is the sense in which "centred at
-  # 100 Hz" is meaningful for a wavelet decomposition.
-  #
-  # Nyquist: safe. Sessions below 499 Hz native are already excluded upstream
-  # (min_sample_rate_hz -> data_check `sub_500hz`), so every retained session has
-  # Nyquist >= 249.5 Hz and the resample to 500 Hz never upsamples.
-  #
-  # Line noise: 70-150 CONTAINS the 2nd/3rd line harmonics (US 120; Germany 100
-  # and 150). Runs in this band MUST set notch_harmonics_up_to_hz below, or the
-  # band fills with mains -- at Freiburg sites the 50 Hz 2nd harmonic sits at
-  # exactly 100 Hz, the band centre.
+  # high_gamma: the analysis band (70-150, as Long et al. on this dataset). It
+  # CONTAINS the 100/120/150 Hz line harmonics, so notch_harmonics_up_to_hz must
+  # stay set. Sessions below 499 Hz are excluded, so Nyquist >= 249.5 Hz.
   high_gamma: [70, 150]
 
-# Contrastive behaviors driving the group-level analyses, and the all-events
-# robustness variants. prepare_sessions requires every behaviors_main event
-# file for a session to be included.
-behaviors_main: [en, rm, word_on, voc]
-behaviors_noncontrast: [en_all, rm_all]
-
 # ─── Signal processing constants ──────────────────────────────────────────
-# mirror_buffer_ms: ms added to each side via helper.mirror_buffer before
-#   TFR; trimmed in compute_spectral_fc.
 # mt_bandwidth: passed to mne_connectivity.spectral_connectivity_epochs.
 #   null = MNE default (~8*sfreq/n_times). Code_issues #79 recommends 2.
-# gc_n_lags: number of VAR lags for granger causality.
 # real_data_buffer_ms: ms of REAL adjacent EEG loaded on each side of every
-#   analysis window (distinct from mirror_buffer_ms). The band-pass + Hilbert
-#   run on the buffered window; the buffer is removed before multitaper phase
-#   metrics and cropped off the analytic signal before AEC/AEC-c/PAC estimation
-#   (see fc_comparison_functions.compute_aec_buffered / compute_pac). 500 ms:
+#   analysis window. Resample + notch (and PAC's band-pass + Hilbert) run on the
+#   buffered window; the buffer is removed before the multitaper. 500 ms:
 #   the 4 Hz-wide Butterworth notches ring for a few hundred ms, and at 50 ms
 #   the in-band 100/120/150 Hz notches biased null power to d ~ -0.08
-#   (hg_null simulation; ~0 at >=500 ms). Also used by build_roi_power.
-#   Mutually exclusive with mirror_buffer_ms (both >0 raises NotImplementedError).
-mirror_buffer_ms: 1000
+#   (hg_null simulation; ~0 at >=500 ms). Also used by build_roi_power. The
+#   buffers of the two word_on windows overlap (pre ends -100, post starts 0),
+#   but each is cropped before the multitaper, so only filter ringing near the
+#   notch frequencies can cross between windows.
 real_data_buffer_ms: 500
 mt_bandwidth: 2
-gc_n_lags: 5
 
-# --- Morlet (cwt_morlet) FC mode ---------------------------------------------
-# fc_mode: spectral estimator for the PHASE metrics (coh/plv/ppc/ciplv/pli/wpli).
-#   'multitaper' (default) = one band-averaged estimate per pair, NO time axis.
-#   'cwt_morlet'           = Morlet wavelets, time-resolved -> latency effects.
-#   aec/aec_c/pac/gc/gc_tr ignore this and use their own internal computation.
-fc_mode: multitaper
-
-# cwt_fnum: number of LOG-SPACED Morlet centre frequencies across the band, via
-#   wavelet.Wavelet (Rao's module). Kept explicit rather than derived so the
-#   compute cost is visible. 6 spans 70-150 at roughly one wavelet per half
-#   bandwidth ([70, 81.5, 95, 110.6, 128.8, 150]); the old 1 Hz arange default
-#   would have been 81 wavelets for the same band at ~13x the cost.
-cwt_fnum: 6
-
-# cwt_morlet_reps: Morlet cycle count (PTSA `width`, wavelet.Wavelet
-#   `morlet_reps`). 5 throughout the project -- Rao's value, and the one the
-#   simulation generator uses.
-cwt_morlet_reps: 5
-
-# cwt_buffer_n_sigma: Morlet edge buffer expressed in Gaussian sigmas, where
-#   sigma = morlet_reps / (2*pi*f) (wavelet.Wavelet.get_morlet_width). 5 is the
-#   project's implied convention: 5 sigma at 4 Hz = 995 ms = mirror_buffer_ms.
-#   4.0 chosen: at 70 Hz it needs 45.5 ms/side, which the configured
-#   real_data_buffer_ms (50) already covers, leaving 9.1 ms of clean
-#   separation between the buffered word_on pre/post windows -- so the
-#   windows need no change. Leakage at 4 sigma is 3.4e-4 in amplitude,
-#   1.1e-7 in POWER; 5 sigma would cost 23 ms of window for 1e-11.
-#   Buffer is strongly frequency dependent -- 5 sigma is 995 ms at 4 Hz but only
-#   57 ms at 70 Hz -- which is why no single fixed constant works for all bands.
-cwt_buffer_n_sigma: 4.0
-
-# time_bin_ms: width (ms) of the fixed time bins the MORLET path averages within
-#   before the across-event statistic -- the latency axis. Multitaper has no time
-#   axis, so this is ignored under fc_mode: multitaper.
-#
-#   Rao uses 200 ms (helper.beh_to_epochs: 5 bins over his 1000 ms windows). 50
-#   is chosen here because high gamma affords far more temporal resolution than
-#   his 3-8 Hz band did: a 5-cycle Morlet at 70 Hz has sigma = 11.4 ms, so a
-#   50 ms bin is ~4.4 sigma wide and adjacent bins are effectively independent.
-#   (Rao's 200 ms bins at 3 Hz sit INSIDE a 265 ms sigma, so his adjacent bins
-#   are correlated -- his time axis is oversampled relative to what his wavelets
-#   resolve. At high gamma that constraint is far weaker.)
-#
-#   50 ms also separates the early latencies Long et al. report on this dataset
-#   (bitmap 40 ms, orthographic neighbourhood 80 ms, word frequency 120 ms),
-#   which 100 ms bins would merge.
-#
-#   Lower bound ~25 ms: that is ~2 sigma at 70 Hz, below which adjacent bins
-#   start to share wavelet support and are no longer independent.
-#   Divides the 600 ms word_on windows evenly (12 bins).
+# Power time course (gamma only; build_roi_power TIMING_MIN_HZ).
+# time_bin_ms: step between bin centres (12 bins over the 600 ms word_on window).
+# mt_window_ms: sliding multitaper window centred on each bin. Neighbouring
+#   windows overlap by half, so read the time course for PEAK LOCATION, not width.
+#   Floor ~100 ms: shorter windows smooth wide enough (NW held at 0.6) to reach
+#   the 58-62 Hz notch and let mains leak into the band.
 time_bin_ms: 50
-
-# mt_window_ms: length (ms) of the SLIDING multitaper window used when the
-#   multitaper path is asked for a latency axis. Windows are centred on the SAME
-#   bin centres as the Morlet path, so the step is time_bin_ms, not this.
-#
-#   100 ms, stepped 50, is the working default: it matches Morlet's 12-bin axis
-#   for direct bin-for-bin comparison while sharing only 50% of the data between
-#   neighbours.
-#
-#   The floor is set by LINE-NOISE LEAKAGE, not by MNE's NW>=0.5 (which the
-#   bandwidth scaling below handles). Multitaper smooths by a half-bandwidth
-#   W = bandwidth/2, and we hold NW = T*bandwidth/2 = 0.6 constant, so W = 0.6/T:
-#       T = 200 ms -> W =  3 Hz -> estimate reaches  67-153 Hz
-#       T = 100 ms -> W =  6 Hz -> reaches           64-156 Hz   <- still clear
-#       T =  50 ms -> W = 12 Hz -> reaches           58-162 Hz   <- STRADDLES the
-#         58-62 notch, so mains leaks into the band. This is the real reason not
-#         to go below ~100 ms.
-#
-#   Measured sharpness on a 100 ms burst (peak SNR / spill to neighbours):
-#       100 ms window: 41 / 9      200 ms window: 31 / 18
-#       Morlet 50 ms : 50 / 2
-#
-#   OVERLAP: at a 50 ms step neighbouring windows share half their data, so
-#   adjacent bins have correlated errors and one brief response appears as a RUN
-#   of bins. BH-FDR remains valid (it holds under positive dependence), but do
-#   not read the WIDTH of a multitaper time course as a duration -- compare PEAK
-#   LOCATION, which both estimators recover correctly. For an overlap-free check
-#   set --time-bin-ms 100 as well, giving 6 fully independent bins.
 mt_window_ms: 100
 
 # resample_hz: target rate (Hz) that helper.get_beh_eeg downsamples every loaded
@@ -208,17 +99,9 @@ notch_harmonics_up_to_hz: 150
 #   data_check's internal QC tolerances stay as constants in data_check.py.
 pair_distance_threshold_mm: 20
 
-# AEC / AEC-c operate on gamma-band-filtered EEG (Per code_issues #85, so the
-# Hipp-2012 Bedrosian condition holds — carrier well-separated from envelope).
-# Both AEC and the PAC amplitude band now read the single shared `bands.gamma`
-# above; compute_aec applies mne.filter.filter_data(data, sfreq, *bands.gamma)
-# before envelope_correlation. The previously-separate `aec_band` key is retired.
-
-# ─── Metric registry ──────────────────────────────────────────────────────
-# computation_metrics: full metric menu. NOTE: `dpli` is permanently retired
-# (never a thesis measure, exploratory only) and is rejected as a hard error by
-# project_paths — do not re-add it.
-computation_metrics: [coh, plv, ppc, ciplv, pli, wpli, aec, aec_c, pac, gc, gc_tr]
+# computation_metrics: synchrony metrics build_roi_synchrony can compute (MNE
+# multitaper phase metrics + PAC: phase of bands.low, amplitude of bands.gamma).
+computation_metrics: [coh, plv, ppc, ciplv, pli, wpli, pac]
 
 # ─── Snakefile ──────────────────────────────────────────────────────────────
 # smokescreen: true -> first N subjects; scratch, exclusion logs and figures go
@@ -227,8 +110,8 @@ smokescreen: false
 smokescreen_n_subjects: 3
 # One entry per analysis; each gets ROI power, ROI synchrony, power-synchrony.
 runs:
-  - {beh: word_on, band: alpha, fc_mode: multitaper, metric: ppc}
-  - {beh: word_on, band: high_gamma, fc_mode: multitaper, metric: ppc}
+  - {band: alpha, metric: ppc}
+  - {band: high_gamma, metric: ppc}
 # `snakemake simulations`: config/simulation_config.yaml tags run through the same
 # rules (EEG replaced, real montages/events kept); figures -> <figures>/simulations/<tag>.
 simulations: [hg_null, hg_power_frontal, hg_ppc_frontal]
@@ -251,11 +134,11 @@ longetal_params:
   envelope_hz: 100           # Hilbert amplitude at the native rate, then -> 100 Hz
   pre_win: [-750, 0]         # blank screen (ISI is 750-1000 ms)
   post_win: [0, 1600]        # word on screen
-  behaviors_main: [word_on]
+  t_unit: sample             # responsiveness t over every envelope sample (uncorrected, as Long)
   min_responsive_per_region: 50
   exclude_lobes: [limbic, hippocampus, subcortical]   # Long excluded limbic + sublobar electrodes
   exclude_regions: [posterior cingulate gyrus]       # limbic in Long's atlas (Burke: parietal)
   combine: word_average      # average each word over sessions, then test (Long); else d_mean
   runs:
-    - {beh: word_on, band: high_gamma, fc_mode: hilbert, metric: ppc}
+    - {band: high_gamma, metric: ppc}
   simulations: [hg_null, hg_power_frontal]

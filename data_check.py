@@ -32,7 +32,6 @@ NDArrayAny = npt.NDArray[Any]
 # scope, not scientific tunables), so they live here rather than config.yaml —
 # but are module-level + importable for other modules and tests.
 DATA_CHECK_EEG_WINDOW_MS: tuple[int, int] = (-1500, 1500)
-DATA_CHECK_PHASE_FREQ_HZ: float = 3.0
 COHORT_EXPERIMENTS: tuple[str, ...] = tuple(LONGETAL["experiments"]) if LONGETAL else ("FR1", "catFR1", "pyFR")
 
 
@@ -128,17 +127,8 @@ def check_eeg(
         return None, None, data_check
 
 
-def check_phase(eeg: Any) -> bool:
-    try:
-        phase = helper.get_phase(eeg, [DATA_CHECK_PHASE_FREQ_HZ])
-        helper.timebin_phase_timeseries(phase.data, float(phase.samplerate))
-        return True
-    except Exception:
-        return False
-
-
 def check_data(dfrow: pd.Series, root_dir: str) -> pd.Series:
-    data_check = pd.Series({'pairs': False, 'eeg': False, 'phase': False, 'regionalizations': False})
+    data_check = pd.Series({'pairs': False, 'eeg': False, 'regionalizations': False})
 
     pairs, data_check['long_distance_pairs_count'], data_check['pairs'] = check_pairs(dfrow)
     if not data_check['pairs']:
@@ -150,8 +140,6 @@ def check_data(dfrow: pd.Series, root_dir: str) -> pd.Series:
     if not data_check['eeg']:
         return data_check
     data_check['pairs_count'] = len(pairs)
-
-    data_check['phase'] = check_phase(eeg)
 
     try:
         regionalizations = helper.regionalize_electrodes_by_type(pairs)
@@ -194,7 +182,6 @@ def apply_inclusion_rules(
 
     _exclude(~sess_list_df['sr_present'], 'sr_missing')
     _exclude(sess_list_df['sr'] < min_sample_rate_hz, 'sub_500hz')
-    _exclude(sess_list_df['phase'].eq(False), 'data_quality')
     return sess_list_df
 
 
@@ -224,9 +211,8 @@ def build_sess_list_df_data_check(root_dir: str) -> pd.DataFrame:
     checks = {key: load_data_check(row, root_dir) for key, row in sess_list_df.iterrows()}
     checks_df = pd.DataFrame.from_dict({k: v for k, v in checks.items() if v is not None}, orient='index')
     checks_df.index = pd.MultiIndex.from_tuples(checks_df.index, names=['sub', 'exp', 'sess'])
-    for col in ('sr', 'phase'):
-        if col not in checks_df.columns:
-            checks_df[col] = np.nan
+    if 'sr' not in checks_df.columns:
+        checks_df['sr'] = np.nan
     sess_list_df = sess_list_df.join(checks_df)
 
     sess_list_df = apply_inclusion_rules(sess_list_df, MIN_SAMPLE_RATE_HZ)

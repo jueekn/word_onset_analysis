@@ -1,9 +1,8 @@
 """helper.py — core IO / signal-processing / FC-orchestration toolkit.
 
 The widest-reach module in the repo. Reads BIDS events + EEG (OpenNeuro via
-cml_data + bidsreader), applies notch-filter and mirror-buffer prep, builds
-bipolar pairs, runs Morlet phase or power filtering, time-bins, regionalizes
-electrode-level results, and orchestrates per-session FC pipelines.
+cml_data + bidsreader), resamples + notch-filters, builds bipolar pairs,
+time-bins, and regionalizes electrodes.
 
 This file is dominated by pandas method chains + ptsa + bidsreader +
 mne_connectivity + matplotlib pyplot calls — third-party stubs are weak
@@ -25,18 +24,13 @@ from pathlib import Path
 from os.path import join, exists as ex
 
 import pandas as pd
-import xarray as xr  # pyright: ignore[reportMissingTypeStubs]
 
 import ptsa_patches as _ptsa_patches  # noqa: F401 — applies monkey-patches on import; must precede ptsa.* imports below
 _ = _ptsa_patches
-from ptsa.data.filters import MorletWaveletFilter  # pyright: ignore[reportMissingTypeStubs]
 from ptsa.data.timeseries import TimeSeries  # pyright: ignore[reportMissingTypeStubs]
 
 
-from cstat import *  # noqa: F401,F403
-from misc import *  # noqa: F401,F403
-from misc import ftag  # explicit for type-checker visibility
-from matrix_operations import *  # noqa: F401,F403
+from misc import ftag
 
 NDArrayAny = npt.NDArray[Any]
 
@@ -51,45 +45,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     root_dir: str  # type: ignore[no-redef]
 
-from project_paths import BANDS as bands  # noqa: E402
 from project_paths import RESAMPLE_HZ, NOTCH_HARMONICS_UP_TO_HZ, LONGETAL  # noqa: E402
 
-# CFG_FLOW_VERIFY: helper.bands must equal project_paths.BANDS (config.yaml: bands)
-# Per-key pins: pre-migration helper.bands had {"alpha": (8,12), "theta": (4,9),
-# "low": (5,11), "gamma": (80,160)}. alpha was reconciled (8,12) -> (8,13) at
-# unification (canonical is fc_comparison_functions.bands which had (8,13);
-# no runtime consumer of helper.bands["alpha"] in production path).
-from project_paths import BANDS as _CFG_BANDS  # noqa: E402
-assert bands is _CFG_BANDS, "helper.bands drift from project_paths.BANDS"
-assert bands["alpha"] == (8.0, 13.0), f"alpha drift: {bands['alpha']}"  # CFG_FLOW_VERIFY
-assert bands["theta"] == (4.0, 9.0), f"theta drift: {bands['theta']}"   # CFG_FLOW_VERIFY
-assert bands["low"]   == (3.0, 8.0), f"low drift: {bands['low']}"      # CFG_FLOW_VERIFY
-assert bands["gamma"] == (70.0, 110.0), f"gamma drift: {bands['gamma']}"  # CFG_FLOW_VERIFY
-
-beh_to_event_windows = {'en': [250, 1250],
-                     'en_all': [250, 1250],
-                     'rm': [-1000, 0],
-                     'rm_all': [-1000, 0],
-                     'ri': [-1000, 0],
-                     'word_on': [-650, 600],
-                     'voc': [-1000, 1000]}
-
-beh_to_epochs = {'en': np.arange(250, 1250, 200),
-              'en_all': np.arange(250, 1250, 200),
-              'rm': np.arange(-1000, 0, 200),
-              'rm_all': np.arange(-1000, 0, 200),
-              'ri': np.arange(-1000, 0, 200),
-              'word_on': np.arange(-650, 600, 200),
-              'voc': np.arange(-1000, 1000, 200)}
-
-behavioral_names = {'en': 'Encoding',
-                    'rm': 'Retrieval',
-                    'rm_all': 'All Retrieval',
-                    'ri': 'Recall Accuracy',
-                    'word_on': 'Word on Screen',
-                    'voc': 'Vocalization'}
-
-# root_dir set in main analysis notebook
 
 
 def load_events(dfrow: pd.Series, beh: str) -> pd.DataFrame:
@@ -102,7 +59,7 @@ def load_events(dfrow: pd.Series, beh: str) -> pd.DataFrame:
         dfrow : pandas.Series
             Session label.
         beh : str
-            Behavioral contrast label ('en', 'en_all', 'rm', or 'ri').
+            Behavioral contrast label ('word_on').
         
     Returns:
         events : pandas.DataFrame
@@ -298,14 +255,9 @@ def get_eeg(
     if sr_expected is not None:
         assert np.isclose(float(sr_expected), sr, rtol=1e-9), f'sampling rate is wrong: events say {sr_expected}, recording is {sr}'
 
-    if simulation_tag not in ['standard', '', None]:
-        # replace experimentally recorded EEG with simulated EEG to validate analysis pipeline
+    if simulation_tag:   # keep the real montage/events, replace the signal (simulate_eeg)
         from simulate_eeg import replace_w_simulated_EEG
-        eeg = replace_w_simulated_EEG(eeg,
-                                      dfrow,
-                                      time_unit='millisecond',
-                                      condition_mask=mask,
-                                      simulation_tag=simulation_tag)
+        eeg = replace_w_simulated_EEG(eeg, dfrow, mask, simulation_tag)
     if BIDS_ACQUISITION == 'monopolar':   # common average reference, per sample, over the single contacts
         x = np.asarray(eeg.data, float).copy()
         x[:, single] -= x[:, single].mean(axis=1, keepdims=True)
@@ -316,88 +268,21 @@ def get_eeg(
 def get_beh_eeg(
     dfrow: pd.Series,
     events: pd.DataFrame,
-    save: bool = True,
-    simulation_tag: str | None = None,
-    mirror_buffer_ms: float = 0,
+    window: tuple[float, float],
     real_data_buffer_ms: float = 0,
-    window: tuple[float, float] | None = None,
+    simulation_tag: str | None = None,
 ) -> tuple[TimeSeries, Any]:
-
-    '''
-    Returns processed EEG signal to be analyzed for a particular behavioral contrast.
-
-    Parameters:
-        dfrow : pandas.Series
-            Session label.
-        events : pandas.DataFrame
-            Behavioral events.
-        save : bool
-            Whether to save out the loaded raw EEG signal (True) or not (False).
-        simulation_tag : str
-            Label of parameter set used to generate simulated EEG signal.
-        mirror_buffer_ms : float
-            Length (ms) of symmetric mirror buffer appended to each side of the
-            EEG before resampling/notching. 0 (default) skips mirroring. The
-            historical pipeline used 1000 for {rm, rm_all, ri, word_on, voc};
-            callers that want that behavior must pass it explicitly.
-        real_data_buffer_ms : float
-            Length (ms) of REAL adjacent EEG loaded on each side of the analysis
-            window (distinct from mirror_buffer_ms — real samples, not a mirror).
-            The widened window is resampled/notched as one piece; downstream
-            crops the buffer before multitaper and before AEC/AEC-c/PAC envelope
-            estimation. 0 (default) loads exactly the analysis window. Mutually
-            exclusive with mirror_buffer_ms (project_paths.REAL_DATA_BUFFER_MS).
-        window : tuple[float, float] | None
-            Optional (start, end) ms window overriding the per-behavior default
-            in beh_to_event_windows. Used by the word_on/voc separate pre/post
-            event-locked loads (each group loaded at its own window).
-
-    Returns:
-        eeg : ptsa.data.TimeSeries
-            EEG clip.
-    '''
-
-    if mirror_buffer_ms > 0 and real_data_buffer_ms > 0:
-        raise NotImplementedError(
-            "mirror_buffer_ms and real_data_buffer_ms are mutually exclusive "
-            f"(got mirror={mirror_buffer_ms}, real={real_data_buffer_ms}). The "
-            "mirror path is pre-resample while the real-data buffer is a window "
-            "extension; mixing them is unsupported."
-        )
-    if mirror_buffer_ms > 0:
-        raise NotImplementedError(
-            "Mirror buffering is disabled pending the fixed-epoch-length "
-            "windowing fix (code_issues #88). The legacy path mirrors BEFORE "
-            "resampling, which entangles the buffer with the post-resample "
-            "fixed-sample-count epoch selection. To reintroduce: (1) select the "
-            "fixed-N epoch on the resampled, un-buffered signal in "
-            "compute_session_fc; (2) mirror around the SELECTED epoch "
-            "(post-resample) via helper.mirror_buffer; (3) clip the buffer back "
-            "to exactly N samples after filtering. Do NOT restore the "
-            "mirror-before-resample order."
-        )
-
-    beh = events.attrs['beh']
-    # `window` overrides the default per-behavior window (used by the word_on/voc
-    # separate event-locked pre/post loads); otherwise the beh default applies.
-    start, end = window if window is not None else beh_to_event_windows[beh]
-    # Real-data buffer widens the loaded window; the buffer is cropped downstream
-    # (removed before multitaper; kept for AEC/AEC-c/PAC then cropped pre-estimate).
-    # Bounds stay integer ms (window dict + buffer are integer-valued).
-    start = int(round(start - real_data_buffer_ms))
-    end = int(round(end + real_data_buffer_ms))
-
+    """EEG clips over `window` (ms around each event), widened by
+    real_data_buffer_ms of REAL adjacent data on each side (cropped downstream),
+    then resampled to RESAMPLE_HZ and notch filtered. Returns (eeg, mask)."""
+    start = int(round(window[0] - real_data_buffer_ms))
+    end = int(round(window[1] + real_data_buffer_ms))
     eeg, mask = get_eeg(dfrow, events, start, end, simulation_tag=simulation_tag)
-    if save: np.save(join(root_dir, beh, 'eeg', f'{ftag(dfrow)}_raw_eeg.npy'), eeg.data)
-
     if RESAMPLE_HZ:   # None (longetal): keep the native rate
         eeg = eeg.resampled(RESAMPLE_HZ)
-    # NOTCH_HARMONICS_UP_TO_HZ is None by default -> fundamental only, i.e. every
-    # pre-existing low-frequency result is unchanged. Set it in config.yaml for
-    # high-gamma runs, where the line harmonics fall inside the analysis band.
-    eeg = notch_filter(eeg, dfrow['sub'],
-                       harmonics_up_to_hz=NOTCH_HARMONICS_UP_TO_HZ)
-
+    # harmonics up to NOTCH_HARMONICS_UP_TO_HZ (config) as well as the mains
+    # fundamental: high gamma contains the 100/120/150 Hz harmonics.
+    eeg = notch_filter(eeg, dfrow['sub'], harmonics_up_to_hz=NOTCH_HARMONICS_UP_TO_HZ)
     return eeg, mask
 
 def notch_filter(
@@ -431,7 +316,6 @@ def notch_filter(
             Notch-filtered EEG signal.
     '''
 
-    fundamental = 50. if 'FR' in sub else 60.
     filter_freqs = [48., 52.] if 'FR' in sub else [58., 62.]
 
     from ptsa.data.filters import ButterworthFilter
@@ -468,73 +352,6 @@ def notch_filter(
 
     return eeg
 
-def mirror_buffer(
-    eeg: TimeSeries,
-    buffer_length: int,
-    axis: int = -1,
-    quiet: bool = False,
-) -> TimeSeries:
-    '''Append a mirror buffer to both sides of an EEG signal.
-
-    For input (x_1, ..., x_n) the result is
-    (x_k, ..., x_1, x_1, ..., x_n, x_n, ..., x_{n-k+1})
-    where k = round(buffer_length_ms * sample_rate / 1000).
-
-    Time coords are extended (not mirrored) so the buffered series has a
-    monotonic, constant-step time axis — operations that rely on time
-    (resample, time-range select) see a regular sampling grid.
-
-    If the requested buffer exceeds the signal length, the buffer is
-    clipped to all available samples and a RuntimeWarning is emitted
-    (silence via `quiet=True`). See code_issues #68 for the methodology
-    issue around the physiological-behavior windows.
-
-    Parameters
-    ----------
-    eeg : ptsa.data.TimeSeries
-        EEG to buffer.
-    buffer_length : float
-        Buffer duration in milliseconds.
-    quiet : bool
-        Suppress the buffer-clipping warning.
-    '''
-    sr = float(eeg.samplerate)
-    n_samples = eeg.shape[-1]
-    tmpt_length = int(buffer_length * (1 / 1000) * sr)
-    if tmpt_length <= 0:
-        raise ValueError(
-            f"mirror_buffer: buffer_length={buffer_length}ms at sr={sr}Hz "
-            f"gives tmpt_length={tmpt_length} (<= 0); buffer must be positive."
-        )
-    if tmpt_length > n_samples:
-        if not quiet:
-            import warnings
-            warnings.warn(
-                f"mirror_buffer: requested buffer_length={buffer_length}ms at "
-                f"sr={sr}Hz ({tmpt_length} samples) exceeds signal length "
-                f"{n_samples}. Clipping buffer to {n_samples} samples. "
-                f"See code_issues #68.",
-                RuntimeWarning, stacklevel=2,
-            )
-        tmpt_length = n_samples
-
-    left_data = np.asarray(eeg[..., :tmpt_length].data)[..., ::-1]
-    right_data = np.asarray(eeg[..., -tmpt_length:].data)[..., ::-1]
-
-    time = np.asarray(eeg.time.data)
-    dt = float(time[1] - time[0]) if len(time) >= 2 else 1000.0 / sr
-    total_offset = tmpt_length * dt
-    left_time = time[:tmpt_length] - total_offset
-    right_time = time[-tmpt_length:] + total_offset
-
-    coords_left = {k: eeg.coords[k] for k in eeg.coords if k != 'time'}
-    coords_right = dict(coords_left)
-    coords_left['time'] = left_time
-    coords_right['time'] = right_time
-
-    left = TimeSeries(data=left_data, dims=eeg.dims, coords=coords_left)
-    right = TimeSeries(data=right_data, dims=eeg.dims, coords=coords_right)
-    return xr.concat([left, eeg, right], dim='time')
 
 def get_pairs(dfrow: pd.Series) -> pd.DataFrame | None:
     
@@ -775,9 +592,6 @@ def regionalize_electrodes_by_type(pairs: pd.DataFrame) -> NDArrayAny:
     return labels.where(~unmapped, np.nan).values
 
 
-def timebin_phase_timeseries(timeseries: NDArrayAny, sample_rate: float, bin_width_ms: int = 200) -> NDArrayAny:
-    return timebin_timeseries(timeseries, sample_rate, circ_mean, bin_width_ms=bin_width_ms)
-
 def timebin_power_timeseries(timeseries: NDArrayAny, sample_rate: float, bin_width_ms: int = 200) -> NDArrayAny:
     return timebin_timeseries(timeseries, sample_rate, np.mean, bin_width_ms=bin_width_ms)
 
@@ -820,70 +634,6 @@ def timebin_timeseries(
     timebinned_timeseries = np.moveaxis(timebinned_timeseries, 0, -1)
     return timebinned_timeseries
 
-def clip_buffer(timeseries: TimeSeries, buffer_length: int) -> TimeSeries:
-    
-    '''
-    Returns signal after clipping buffer.
-    
-    Parameters:
-        timeseries : xarray.DataArray, ptsa.data.TimeSeries
-            Time series (EEG, power, phase) with 'time' dimension.
-        buffer_length : float
-            Number of samples (NOT duration) to clip from both ends of the time series.
-        
-    Returns
-        xarray.DataArray, ptsa.data.TimeSeries
-            Time series with buffer clipped.
-    '''
-    
-    return timeseries.isel(time=np.arange(buffer_length, len(timeseries['time'])-buffer_length))
-
-def get_phase(eeg: TimeSeries, freqs: Sequence[float] | NDArrayAny) -> Any:
-    '''Spectral phase time series via Morlet wavelet convolution.
-
-    Parameters
-    ----------
-    eeg : ptsa.data.TimeSeries
-        EEG clip.
-    freqs : numpy.array
-        Wavelet frequencies at which to extract phase.
-    '''
-    wavelet_filter = MorletWaveletFilter(freqs=freqs, width=5, output='phase',
-                                         complete=True)
-    phase = wavelet_filter.filter(timeseries=eeg)
-    phase = phase.transpose('event', 'channel', 'frequency', 'time')
-    return phase
-
-def get_power(eeg: TimeSeries, freqs: Sequence[float] | NDArrayAny) -> Any:
-    
-    '''
-    Returns time series of spectral power values. Performs Morlet wavelet convolution, clips buffer, and z-scores power values.
-    
-    Parameters:
-        eeg : ptsa.data.TimeSeries
-            EEG clip.
-        freqs : numpy.array
-            Wavelet frequencies at which to extract phase values.
-            
-    Returns
-        power : ptsa.data.TimeSeries
-            Time series of power values.
-    '''
-    
-    wavelet_filter = MorletWaveletFilter(freqs=freqs, width=5, output='power', complete=True)
-    power = wavelet_filter.filter(timeseries=eeg)
-    power = power.transpose('event', 'channel', 'frequency', 'time')
-
-    
-    sr = float(eeg.samplerate)
-    buffer_length = int(sr/1000*1000)
-    power = clip_buffer(power, buffer_length)
-    
-    mean = power.mean('time').mean('event')
-    std = power.mean('time').std('event')
-    power = (power-mean)/std 
-    
-    return power
 
 def cohens_d(x: NDArrayAny, y: NDArrayAny) -> float:
     
@@ -902,23 +652,3 @@ def cohens_d(x: NDArrayAny, y: NDArrayAny) -> float:
     d = (np.mean(x, axis=0) - np.mean(y, axis=0))/s
     return d
 
-def welchs_t(x: NDArrayAny, y: NDArrayAny) -> float:
-    
-    '''
-    Returns Welch's t-statistic for two independent samples.
-    
-    Parameters:
-        x (numpy.array): First sample.
-        y (numpy.array): Second sample.
-        
-    Returns:
-        (float): Welch's t-statistic.
-    '''
-    
-    x = np.asarray(x, dtype=float)
-    y = np.asarray(y, dtype=float)
-    nx, ny = x.shape[0], y.shape[0]
-    var_x = np.var(x, axis=0, ddof=1)
-    var_y = np.var(y, axis=0, ddof=1)
-    # Welch's t (unequal variances); equals ttest_ind(equal_var=False).statistic
-    return (np.mean(x, axis=0) - np.mean(y, axis=0)) / np.sqrt(var_x / nx + var_y / ny)

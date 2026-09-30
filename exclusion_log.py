@@ -52,9 +52,9 @@ class ExclusionLog:
     """Accumulate event-exclusion counts for one (session, contrast).
 
     Usage (each call is one line at the call site):
-        log = ExclusionLog(dfrow, "voc")
-        log.input(all_rec_words)                      # input_count
-        log.excluded("voc_cleaning", before, after)   # voc_cleaning_excluded
+        log = ExclusionLog(dfrow, "word_on")
+        log.input(all_words)                                  # input_count
+        log.excluded("word_on_serialpos1", before, after)     # word_on_serialpos1_excluded
         log.final(kept)                               # final_count
         log.write()
     ``input``/``final``/``excluded`` accept either counts or sized objects.
@@ -120,82 +120,6 @@ def aggregate_exclusion_logs(
 SESSION_LONG_COLS = ["config", "contrast", "tag", "value"]
 
 
-def build_session_exclusions(
-    root_dir: "str | os.PathLike[str]",
-    contrasts: "list[str]" = ["en", "rm", "word_on", "voc"],
-    config: str = CONFIG_NAME,
-    out_dir: "str | os.PathLike[str]" = EXCLUSION_COUNTS_DIR,
-    fc_cond: str = "diff",
-    fc_band: str = "low",
-) -> pd.DataFrame:
-    """Session-attrition funnel per contrast, from on-disk session-list artifacts.
-
-    Reads ``sess_list_df_data_check.json`` (all candidate sessions + the
-    data-check ``include`` flag), ``config/excluded_sessions.csv`` (manual list),
-    and ``sess_list_df.json`` (per-contrast ``<beh>_events`` availability, which
-    also reflects runtime get_events failures — a session that errors writes no
-    event file). When per-session FC pickles exist under
-    ``<root_dir>/<beh>/fc_mats/<fc_cond>/<fc_band>/`` a final
-    ``required_beh_gating_excluded`` stage counts event-available sessions that
-    produced no FC output — dominated by the shared session list requiring ALL
-    of ``REQUIRED_EVENT_BEHS`` (a session with this contrast's events is still
-    dropped if it lacks another required contrast's events), and absorbing any
-    true downstream FC-compute runtime error. ``final_count`` is then the
-    sessions FC was actually computed on. Funnel stages share the long schema +
-    invariant of the event log: ``input_count − Σ(*_excluded) == final_count``.
-    Writes ``out_dir/session_exclusions.csv`` (columns config, contrast, tag,
-    value).
-    """
-    from misc import ftag
-    rd = str(root_dir)
-
-    dc = pd.read_json(join(rd, "sess_list_df_data_check.json"))
-    n_input = len(dc)
-    # Per-reason data_check breakdown (partitions the excluded set). Manual
-    # exclusions are applied at the data_check stage now (reason 'manual'), so
-    # they appear here rather than as a separate post-events stage. Falls back to
-    # a single lumped tag for older caches without the exclusion_reason column.
-    if "exclusion_reason" in dc.columns:
-        rc = dc["exclusion_reason"].fillna("").value_counts()
-        data_check_stages = [(f"{r}_excluded", int(rc.get(r, 0) or 0)) for r in
-                             ("sr_missing", "sub_500hz", "data_quality",
-                              "denylist", "unrecoverable", "manual",
-                              "data_check_other")]
-    else:
-        data_check_stages = [("data_check_excluded",
-                              int((~dc["include"].astype(bool)).sum()))]
-
-    # sess_list_df.json holds the data-check-passing rows, which already exclude
-    # manual sessions (manual is applied in data_check) — so no separate manual
-    # stage and no manual masking here.
-    final = pd.read_json(join(rd, "sess_list_df.json"))
-
-    rows: list[dict[str, Any]] = []
-    for beh in contrasts:
-        col = f"{beh}_events"
-        ev_avail = final[final[col].astype(bool)] if col in final else final.iloc[0:0]
-        avail = len(ev_avail)
-        n_events_excl = len(final) - avail
-        stages = [("input_count", n_input),
-                  *data_check_stages,
-                  ("events_unavailable_excluded", n_events_excl)]
-        # optional downstream FC-compute runtime stage (if FC pickles on disk)
-        fc_dir = join(rd, beh, "fc_mats", fc_cond, fc_band)
-        if os.path.isdir(fc_dir):
-            n_fc = sum(os.path.isfile(join(fc_dir, f"{ftag(r)}_fc_mats.pkl"))
-                       for _, r in ev_avail.iterrows())
-            stages.append(("required_beh_gating_excluded", avail - n_fc))
-            stages.append(("final_count", n_fc))
-        else:
-            stages.append(("final_count", avail))
-        for tag, value in stages:
-            rows.append({"config": config, "contrast": beh, "tag": tag, "value": value})
-    out = pd.DataFrame(rows, columns=SESSION_LONG_COLS)
-    os.makedirs(str(out_dir), exist_ok=True)
-    out.to_csv(join(str(out_dir), "session_exclusions.csv"), index=False)
-    return out
-
-
 def check_invariant(df: pd.DataFrame) -> list[tuple[Any, int, int, int]]:
     """Per (config, …, contrast): input_count − Σ(*_excluded) must equal
     final_count. Returns the offending (keys, input, total_excluded, final)
@@ -210,61 +134,6 @@ def check_invariant(df: pd.DataFrame) -> list[tuple[Any, int, int, int]]:
             if int(tags["input_count"]) - excl != int(tags["final_count"]):
                 bad.append((keys, int(tags["input_count"]), excl, int(tags["final_count"])))
     return bad
-
-
-def assert_invariant(df: pd.DataFrame, label: str = "") -> None:
-    """Raise ValueError if any group violates ``input − Σ(excluded) == final``.
-
-    Thin raising wrapper over :func:`check_invariant` for use in report
-    generation, where a balance failure should abort rather than print.
-    """
-    bad = check_invariant(df)
-    if bad:
-        lines = [f"{keys}: input={inp} - excluded={excl} != final={fin}"
-                 for keys, inp, excl, fin in bad]
-        tag = f" ({label})" if label else ""
-        raise ValueError(
-            f"exclusion-count invariant violated{tag}: {len(bad)} group(s) where "
-            f"input - sum(excluded) != final:\n  " + "\n  ".join(lines))
-
-
-def check_session_event_consistency(events: pd.DataFrame,
-                                    sessions: pd.DataFrame) -> None:
-    """Cross-check the event- and session-level tables, raising on mismatch.
-
-    The event log records one entry per (session, contrast) that produced an
-    event file, so the count of distinct sessions in the event log for a
-    contrast must equal that contrast's ``events_available`` in the session
-    funnel (``input − data_check − manual − events_unavailable``). A mismatch
-    means the two tables came from different states — e.g. a stale or partial
-    event log regenerated for only some sessions — and is raised rather than
-    reported silently.
-    """
-    sess_id = [c for c in ("subject", "experiment", "session") if c in events.columns]
-    bad: list[tuple[str, int, int]] = []
-    for beh in sessions["contrast"].unique():
-        funnel = dict(zip(sessions.loc[sessions["contrast"] == beh, "tag"],
-                          sessions.loc[sessions["contrast"] == beh, "value"]))
-        # events_available = input - every pre-FC exclusion (all *_excluded tags
-        # except the FC-compute gating stage). Robust to the data_check reason
-        # split, which replaces a single data_check_excluded with per-reason tags.
-        # events here must already be restricted to ANALYZED (post-manual)
-        # sessions — the caller drops manually-excluded sessions before this
-        # check — so the event-log count equals events_available exactly.
-        avail = int(funnel.get("input_count", 0)) - sum(
-            int(v) for t, v in funnel.items()
-            if t.endswith("_excluded") and t != "required_beh_gating_excluded")
-        n_ev = int(events.loc[events["contrast"] == beh, sess_id]
-                   .drop_duplicates().shape[0])
-        if n_ev != avail:
-            bad.append((str(beh), n_ev, avail))
-    if bad:
-        lines = [f"contrast '{b}': event-log sessions={n} != "
-                 f"funnel events_available={a}" for b, n, a in bad]
-        raise ValueError(
-            "event/session exclusion tables disagree (stale or partial event "
-            "log? re-run Stage 0 get_events for all sessions):\n  "
-            + "\n  ".join(lines))
 
 
 def _ordered_stages(df_contrast: pd.DataFrame) -> list[str]:
