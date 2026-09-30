@@ -131,6 +131,7 @@ def _word_locked_eeg(dfrow: pd.Series, beh: str, win: tuple[float, float],
     pre/post come from the same trials.
     """
     import fc_comparison_functions as fc
+    import helper
 
     ev = fc.load_events(dfrow, beh)
     if ev is None:
@@ -146,9 +147,20 @@ def _word_locked_eeg(dfrow: pd.Series, beh: str, win: tuple[float, float],
     # omitting this silently shortened every Morlet window by 2*buffer_ms.
     eeg, _ = fc.get_beh_eeg(dfrow, words, save=False, window=win,
                             real_data_buffer_ms=buffer_ms, simulation_tag=simulation_tag)
-    items = words["item_name"].to_numpy()[np.asarray(eeg.event, int)]   # word of each kept event
+    kept = np.asarray(eeg.event, int)
+    items = words["item_name"].to_numpy()[kept]   # word of each kept event
+    if (fc.LONGETAL or {}).get("baseline") != "full_isi":
+        return (np.asarray(eeg.data), np.asarray(eeg.time, float),
+                float(eeg.samplerate), items, None)
+    # blank screen before each word: previous word's offset -> onset (ms); 750 when
+    # there is no previous word in the list (first word follows the countdown)
+    bev = helper.bids_reader(dfrow, eeg=False).load_events()
+    bw = bev[bev["trial_type"] == "WORD"].sort_values("onset")
+    blank = ((bw["onset"] - (bw["onset"] + bw["duration"]).groupby(bw["list"]).shift(1)) * 1000).fillna(750.0)
+    blank = pd.Series(blank.to_numpy(), index=bw["sample"].astype(int).to_numpy())
+    blank_ms = blank.reindex(words["eegoffset"].astype(int).to_numpy()[kept]).fillna(750.0).to_numpy()
     return (np.asarray(eeg.data), np.asarray(eeg.time, float),
-            float(eeg.samplerate), items)
+            float(eeg.samplerate), items, blank_ms)
 
 
 def window_slice(data, t, win):
@@ -233,19 +245,32 @@ def band_power_morlet(seg, sf, fmin, fmax, fnum, morlet_reps, buf_samples,
     return p.mean(axis=(2, 3))                             # (E, C)
 
 
-def hilbert_envelope(seg, sf, fmin, fmax, buf_samples, env_hz):
-    """Long et al. 2020 high gamma: band-pass, Hilbert AMPLITUDE envelope at the
-    native rate, trim the buffer, downsample to `env_hz`. (E, C, T). Same filter
-    + Hilbert recipe as fc.compute_aec_buffered."""
+def hilbert_envelope(seg, sf, fmin, fmax, buf_samples, env_hz, n_bands=1):
+    """Long et al. 2020 high gamma: Hilbert AMPLITUDE envelope at the native rate,
+    trim the buffer, downsample to `env_hz`. (E, C, T). n_bands=1: one band-pass
+    (same recipe as fc.compute_aec_buffered). n_bands>1: mean amplitude over
+    log-spaced Gaussian bands, Hilbert done in the frequency domain (the
+    Mesgarani-lab filterbank convention)."""
     import mne
+    import scipy.fft as sfft
     from scipy.signal import hilbert
     from mne.filter import next_fast_len
-    x = mne.filter.filter_data(np.asarray(seg, float), sf, fmin, fmax, verbose=False)
-    n = x.shape[-1]
-    env = np.abs(hilbert(x, N=next_fast_len(n), axis=-1))[..., :n]
+    n = np.shape(seg)[-1]
+    if n_bands > 1:
+        N = next_fast_len(n)
+        f = sfft.fftfreq(N, 1 / sf)
+        X = sfft.fft(np.asarray(seg, np.float32), N, axis=-1)   # complex64 keeps memory down
+        edges = np.geomspace(fmin, fmax, n_bands + 1)
+        env = np.zeros(np.shape(seg), np.float32)
+        for lo, hi in zip(edges[:-1], edges[1:]):
+            g = 2 * np.exp(-0.5 * ((f - np.sqrt(lo * hi)) / ((hi - lo) / 2)) ** 2) * (f > 0)
+            env += np.abs(sfft.ifft(X * g.astype(np.float32), axis=-1)[..., :n]) / n_bands
+    else:
+        x = mne.filter.filter_data(np.asarray(seg, float), sf, fmin, fmax, verbose=False)
+        env = np.abs(hilbert(x, N=next_fast_len(n), axis=-1))[..., :n]
     if buf_samples:
         env = env[..., buf_samples:n - buf_samples]
-    return mne.filter.resample(env, down=sf / env_hz, verbose=False)
+    return mne.filter.resample(np.asarray(env, float), down=sf / env_hz, verbose=False)
 
 
 def band_power_windowed(seg, sf, fmin, fmax, bandwidth, bin_ms, window_ms):
@@ -364,7 +389,7 @@ def run_sess_power(
                                   simulation_tag=simulation_tag)
         if loaded is None:
             return f"{sid}: no events ({beh})"
-        data, t, sf, items = loaded
+        data, t, sf, items, blank_ms = loaded
         ev_mask = None
     else:
         # en / rm: one window, two event groups (mask True = the `hi` arm),
@@ -424,7 +449,8 @@ def run_sess_power(
     env_cache = {}
     def _env(seg):   # Hilbert envelope, computed once per segment
         if id(seg) not in env_cache:
-            env_cache[id(seg)] = hilbert_envelope(seg, sf, fmin, fmax, nbuf, env_hz)
+            env_cache[id(seg)] = hilbert_envelope(seg, sf, fmin, fmax, nbuf, env_hz,
+                                                  (fc.LONGETAL or {}).get("hg_bands", 1))
         return env_cache[id(seg)]
 
     def _power(seg, bin_ms=None):
@@ -433,7 +459,7 @@ def run_sess_power(
                                      fc.CWT_MORLET_REPS, nbuf, bin_ms=bin_ms)
         if hilb:
             e = _env(seg)
-            return helper.timebin_power_timeseries(e, env_hz, bin_width_ms=int(bin_ms)) if bin_ms else e.mean(-1)
+            return helper.timebin_power_timeseries(e, env_hz, bin_width_ms=int(bin_ms)) if bin_ms else np.nanmean(e, -1)
         if bin_ms:
             # Windowed multitaper: same bin centres as Morlet, but each estimate
             # spans mt_win ms, so its effective resolution is mt_win, not bin_ms.
@@ -457,6 +483,11 @@ def run_sess_power(
         if not hilb:   # Long's windows differ in length (750 vs 1600 ms); a mean amplitude doesn't need them equal
             lo_seg, hi_seg = fc.equalize_time_length(lo_seg, hi_seg)
         n_win = lo_seg.shape[-1] - 2 * nbuf
+        if hilb and (fc.LONGETAL or {}).get("baseline") == "full_isi":
+            # each trial's whole blank screen: blank the pre samples before the previous word's offset
+            e = _env(lo_seg)
+            t_env = pre_win[0] + np.arange(e.shape[-1]) * 1000.0 / env_hz
+            e[np.broadcast_to(t_env[None, None, :] < -blank_ms[:, None, None], e.shape)] = np.nan
         p_lo = _power(lo_seg)
         p_hi = _power(hi_seg)
     else:
@@ -534,6 +565,7 @@ def run_sess_power(
     if hilb:
         flat = lambda e: e.transpose(0, 2, 1).reshape(-1, e.shape[1])   # (E*T, C)
         e_lo, e_hi = flat(_env(lo_seg)), flat(_env(hi_seg))
+        e_lo = e_lo[np.isfinite(e_lo).all(1)]   # full_isi: drop blanked samples
         d_samp, n_samp_lo, n_samp_hi = helper.cohens_d(e_hi, e_lo), len(e_lo), len(e_hi)
 
     out: dict[str, Any] = {
@@ -722,9 +754,12 @@ def run_responsiveness_stage(save_root, beh, band, args, lobe_of):
               f"{overall:.1f}% responsive (t per {args.t_unit}) at p<{args.responsive_alpha:g} "
               f"(Long: 25.3%)")
         tag = (f"{beh}_{band}_{args.fc_mode}" + ("_fine" if fine else "")
-               + ("_samples" if args.t_unit == "sample" else "")
+               + (("_pertimepoint" if args.t_unit == "sample" else "_pertrial") if args.fc_mode == "hilbert" else "")
                + ("_wordavg" if args.combine == "word_average" else ""))
         os.makedirs(args.out_dir, exist_ok=True)
+        if fine and args.combine == "word_average":
+            plot_long_peaks(df, args.out_dir, tag, args.responsive_alpha,   # per trial: every region with a responder
+                            args.min_responsive_per_region if args.t_unit == "sample" else 1)
         # CSV is ALWAYS unfiltered -- the cut below is display only.
         st.to_csv(join(args.out_dir, f"responsiveness_{tag}.csv"), index=False)
         # Fine labels are ~40 groups, most with no response at all. Plot the
@@ -1193,30 +1228,39 @@ def word_averaged_rows(files, lobe_of, t_unit, by_fine_label):
             continue
         labels = [l for l in ps[0]["labels"] if all(l in set(q["labels"]) for q in ps)]
         col = lambda q: [list(q["labels"]).index(l) for l in labels]
-        acc = {}   # word -> [sum_lo, sum_hi, n]
+        acc = {}   # word -> [sum_lo, n_lo, sum_hi, n_hi], NaN-aware (full_isi blanks pre samples)
         for q in ps:
             c = col(q)
             for i, w in enumerate(q["items"]):
                 lo, hi = q["env_lo"][i][c], q["env_hi"][i][c]
-                s = acc.setdefault(str(w).upper(), [0.0, 0.0, 0])
-                s[0], s[1], s[2] = s[0] + lo, s[1] + hi, s[2] + 1
-        lo = np.stack([s[0] / s[2] for s in acc.values()])   # (W, C, T_lo)
-        hi = np.stack([s[1] / s[2] for s in acc.values()])
+                s = acc.setdefault(str(w).upper(), [0.0, 0, 0.0, 0])
+                s[0], s[1] = s[0] + np.nan_to_num(lo), s[1] + np.isfinite(lo)
+                s[2], s[3] = s[2] + hi, s[3] + 1
+        with np.errstate(invalid="ignore", divide="ignore"):
+            lo = np.stack([s[0] / s[1] for s in acc.values()])   # (W, C, T_lo), NaN where never observed
+        hi = np.stack([s[2] / s[3] for s in acc.values()])
         if t_unit == "sample":
             flat = lambda e: e.transpose(0, 2, 1).reshape(-1, e.shape[1])
             a, b = flat(hi), flat(lo)
+            b = b[np.isfinite(b).all(1)]
         else:
-            a, b = hi.mean(-1), lo.mean(-1)
+            a, b = hi.mean(-1), np.nanmean(lo, -1)
         d = helper.cohens_d(a, b)
+        # Long: average word response z-scored to the blank; latency = sample of its
+        # absolute max after onset, enhanced if that peak is positive
+        blank = lo.transpose(0, 2, 1).reshape(-1, lo.shape[1])
+        z = (hi.mean(0) - np.nanmean(blank, 0)[:, None]) / np.nanstd(blank, 0, ddof=1)[:, None]
+        k = np.abs(z).argmax(1)
+        lat, enh = k * 1000.0 / (fc.LONGETAL or {}).get("envelope_hz", 100), z[np.arange(len(k)), k] > 0
         reg = dict(zip(ps[0]["labels"], ps[0]["reg_full"]))
         roi = fc.roi_of_reg_full([reg[l] for l in labels], lobe_of)
-        for l, r, dd in zip(labels, roi, d):
+        for l, r, dd, lt, en in zip(labels, roi, d, lat, enh):
             if r is None or not np.isfinite(dd):
                 continue
             grp = _long_region(reg[l]) if by_fine_label else r
             if grp is None:
                 continue
-            rows.append((sub, str(l), str(grp), str(r), float(dd), float(len(b)), float(len(a))))
+            rows.append((sub, str(l), str(grp), str(r), float(dd), float(len(b)), float(len(a)), float(lt), float(en)))
     return rows
 
 
@@ -1264,16 +1308,17 @@ def collect_responsiveness(save_root, beh, band, lobe_of, n_sessions=None,
                 continue
             if not np.isfinite(dd):
                 continue
-            rows.append((sub, str(lab), str(grp), str(r), float(dd), nlo, nhi))
+            rows.append((sub, str(lab), str(grp), str(r), float(dd), nlo, nhi, np.nan, np.nan))
     if not rows:
         raise SystemExit(f"no usable pickles in {d}")
     df = pd.DataFrame(rows,
-                      columns=["sub", "label", "grp", "roi", "d", "n_lo", "n_hi"])
+                      columns=["sub", "label", "grp", "roi", "d", "n_lo", "n_hi", "latency", "peak_enh"])
     # one row per (subject, electrode): average d over that subject's sessions
     # (word_average rows are already one per electrode; the mean is a no-op).
     # `roi` rides along so a fine-label figure can still be coloured by lobe.
     df = (df.groupby(["sub", "label", "grp", "roi"], as_index=False)
-            .agg(d=("d", "mean"), n_lo=("n_lo", "mean"), n_hi=("n_hi", "mean")))
+            .agg(d=("d", "mean"), n_lo=("n_lo", "mean"), n_hi=("n_hi", "mean"),
+                 latency=("latency", "mean"), peak_enh=("peak_enh", "mean")))
     # d -> t -> two-sided p (pooled-SD d, independent-samples t)
     df["t"] = df["d"] * np.sqrt(df["n_lo"] * df["n_hi"] / (df["n_lo"] + df["n_hi"]))
     df["abs_t"] = df["t"].abs()
@@ -1309,6 +1354,54 @@ def responsiveness_stats(df, alpha=1e-8):
     # watch: a responsive subset inside a mostly-unresponsive population gives a
     # high mean and a low median.
     return out.sort_values("median_abs_t", ascending=False).reset_index()
+
+
+# Long et al. 2020 (paper text where given, else read off thesis Figs 2.6A/C): latency ms, % enhanced; (mean, sem)
+LONG_PEAKS = {   # sem None = eyeballed mean, no error bar drawn
+    "Middle Occipital Gyrus": ((243.3, 17.3), (92.9, 2.6)), "Cuneus": ((304.7, 26.6), (79, None)),
+    "Fusiform Gyrus": ((352.2, 21.0), (92.4, 2.2)), "Lingual Gyrus": ((433.5, 51.7), (94.2, 3.3)),
+    "Superior Parietal Lobule": ((535, None), (68, None)), "Inferior Temporal Gyrus": ((600, None), (61, None)),
+    "Precentral Gyrus": ((610, None), (74, None)), "Precuneus": ((620, None), (66, None)),
+    "Inferior Parietal Lobule": ((635, None), (53, None)), "Middle Temporal Gyrus": ((645, None), (61.5, None)),
+    "Inferior Frontal Gyrus": ((648, None), (53.5, None)), "Middle Frontal Gyrus": ((648, None), (52, None)),
+    "Postcentral Gyrus": ((662, None), (57, None)), "Superior Temporal Gyrus": ((665, None), (59, None)),
+    "Superior Frontal Gyrus": ((690, None), (35, None)), "Medial Frontal Gyrus": ((740, None), (53, None)),
+}
+
+
+def plot_long_peaks(df, out_dir, tag, alpha, min_resp):
+    """Long's Fig 2.6A/C: mean latency and % enhanced of the RESPONSIVE electrodes
+    per subregion (mean +- SEM over electrodes), Juee as bars, Long's as red
+    points. Regions with >= min_resp responsive electrodes."""
+    import matplotlib.pyplot as plt
+    r = df[df["p"] < alpha].dropna(subset=["latency"])
+    g = r.groupby("grp")
+    st = pd.DataFrame({"n": g.size(), "lat": g["latency"].mean(), "lat_sem": g["latency"].sem(),
+                       "enh": 100 * g["peak_enh"].mean()})
+    st["enh_sem"] = np.sqrt(st["enh"] * (100 - st["enh"]) / st["n"])
+    st = st[st["n"] >= min_resp]
+    if st.empty:
+        return
+    st["roi"] = g["roi"].agg(lambda v: v.mode().iat[0]).reindex(st.index)
+    st.to_csv(join(out_dir, f"long_peaks_{tag}.csv"))
+    fig, axes = plt.subplots(1, 2, figsize=(13, 0.35 * len(st) + 1.8))
+    for ax, (col, j, lab) in zip(axes, (("lat", 0, "latency (ms)"), ("enh", 1, "% enhanced (peak > 0)"))):
+        s = st.sort_values(col)
+        y = np.arange(len(s))
+        colors = [fc.LOBE_COLORS.get(str(x).split("-")[-1], "0.6") for x in s["roi"]]
+        ax.barh(y, s[col], xerr=s[col + "_sem"], color=colors, alpha=0.8, label="Juee")
+        ref = [LONG_PEAKS.get(gname, (None, None))[j] for gname in s.index]
+        yy = [i for i, v in zip(y, ref) if v]
+        ax.errorbar([v[0] for v in ref if v], yy, xerr=[v[1] or 0 for v in ref if v], fmt="D", color="crimson",
+                    ms=4, label="Long et al.")
+        ax.set_yticks(y, [f"{gname} ({n})" for gname, n in zip(s.index, s["n"])])
+        ax.set_xlabel(lab)
+    axes[0].legend(loc="lower right", frameon=False)
+    fig.suptitle("Responsive electrodes")
+    fig.tight_layout()
+    path = join(out_dir, f"long_peaks_{tag}.png")
+    fig.savefig(path, dpi=160); plt.close(fig)
+    print(f"[long peaks] wrote {path}")
 
 
 def plot_responsiveness(df, stats, out_dir, beh, band, tag, alpha=1e-8):

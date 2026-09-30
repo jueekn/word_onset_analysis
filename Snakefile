@@ -28,6 +28,7 @@ LAST = "power" if LONG else "power_synchrony"   # Long ran no synchrony
 DONE = f"{FIG}/.done"
 RUNS = {"_".join(r[k] for k in ("beh", "band", "fc_mode", "metric")): r for r in LCFG["runs"]}
 ARGS = "--beh {params.r[beh]} --band {params.r[band]} --fc-mode {params.r[fc_mode]} {params.sim} {params.stage}"
+CONTRAST_ONLY = not LONG   # juee figures: drop the word-on / word-off panels, keep the contrast
 SWEEP_TAGS = [t for tags in SWEEPS.values() for t in tags     # recovery sweeps: compute only
               if not (LONG and simulation_parameters[t].get("data_generating_process") != "hg_power")]
 RUN0 = next(iter(RUNS))                                        # recovery uses the first run
@@ -41,7 +42,14 @@ def rec_input(t): return f"{DONE}/{t}/{RUN0}." + ("power" if simulation_paramete
 
 
 rule all:
-    input: expand(f"{DONE}/real/{{run}}.{LAST}", run=RUNS)
+    input: expand(f"{DONE}/real/{{run}}.{LAST}", run=RUNS),
+           [] if LONG else f"{FIG}/band_contrasts/power_word_on.png"
+
+# juee: word on - word off only, alpha and high gamma in one figure per analysis
+rule band_contrasts:
+    input: expand(f"{DONE}/real/{{run}}.power_synchrony", run=RUNS)
+    output: f"{FIG}/band_contrasts/power_word_on.png"
+    shell: f"{PY} plot_band_contrasts.py --fig-dir {FIG}"
 
 rule simulations:
     input: expand(f"{DONE}/{{sim}}/{{run}}.{LAST}", sim=LCFG["simulations"], run=RUNS),
@@ -64,17 +72,17 @@ rule roi_power:
     output: touch(f"{DONE}/{{sim}}/{{run}}.power")
     threads: workflow.cores
     params: r=r, sim=sim, fig=fig, stage=stage
-    shell: f"{PY} build_roi_power.py {ARGS} --workers {{threads}} --out-dir {{params.fig}}/burke_roi_power"
+    shell: f"{PY} build_roi_power.py {ARGS} {'--measures cohens_d' if CONTRAST_ONLY else ''} --workers {{threads}} --out-dir {{params.fig}}/burke_roi_power"
 
-rule roi_synchrony:
-    input: rules.prepare_sessions.output
+rule roi_synchrony:   # after power: power -> synchrony -> power-synchrony
+    input: rules.prepare_sessions.output, f"{DONE}/{{sim}}/{{run}}.power"
     output: touch(f"{DONE}/{{sim}}/{{run}}.synchrony")
     threads: workflow.cores
     params: r=r, sim=sim, fig=fig, stage=stage
-    shell: f"{PY} build_roi_synchrony.py {ARGS} --metrics {{params.r[metric]}} --metric {{params.r[metric]}} --workers {{threads}} --out-dir {{params.fig}}/burke_roi_synchrony"
+    shell: f"{PY} build_roi_synchrony.py {ARGS} --metrics {{params.r[metric]}} --metric {{params.r[metric]}} {'--measures sync_diff' if CONTRAST_ONLY else ''} --workers {{threads}} --out-dir {{params.fig}}/burke_roi_synchrony"
 
 rule power_synchrony:
     input: f"{DONE}/{{sim}}/{{run}}.power", f"{DONE}/{{sim}}/{{run}}.synchrony"
     output: touch(f"{DONE}/{{sim}}/{{run}}.power_synchrony")
     params: r=r, sim=sim, fig=fig, stage=stage
-    shell: f"{PY} build_power_synchrony.py {ARGS} --metric {{params.r[metric]}} --out-dir {{params.fig}}/power_synchrony"
+    shell: f"{PY} build_power_synchrony.py {ARGS} --metric {{params.r[metric]}} {'--conds diff' if CONTRAST_ONLY else ''} --out-dir {{params.fig}}/power_synchrony"

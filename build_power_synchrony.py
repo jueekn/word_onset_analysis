@@ -202,6 +202,8 @@ def parse_args():
                    help="where the phase-FC pickles live (build_roi_synchrony.py); "
                         "defaults to --save-root")
     p.add_argument("--out-dir", default=join("figures", "power_synchrony"))
+    p.add_argument("--conds", nargs="+", default=None,
+                   help="conditions to draw (default all: lo, hi, diff); stats CSV keeps all")
     return p.parse_args()
 
 
@@ -247,7 +249,7 @@ def main():
     fc.roi_figure(
         [(f"r ({labels[cond]})",
           lambda ax, cond=cond: fc.roi_bar_panel(ax, stats[cond]))
-         for cond in conds],
+         for cond in (args.conds or conds)],
         args.out_dir, f"power_synchrony_{args.beh}_{args.band}_{args.metric}",
         height=4.0)
 

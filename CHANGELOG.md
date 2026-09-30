@@ -7,6 +7,78 @@ earlier than the last entry below is undocumented.
 
 ---
 
+## 2026-09-30 — longetal replication closed
+
+Final longetal settings (config `longetal_params`): FR1, English only, monopolar
++ CAR, Desikan-Killiany -> Long subregions, 8-band Hilbert high gamma at 100 Hz,
+blank -750-0 vs word 0-1600 ms, words averaged over sessions, uncorrected
+per-timepoint t at p<1e-8. Reproduces Long's 25.3% (ours 28.6%) and her
+per-region |t|, latencies and % enhanced outside the atlas-mismatched regions
+(cuneus, lingual, medial frontal). A per-trial / autocorrelation-corrected test
+gives ~3%. Open, not pursued: Talairach labels, per-band z-scoring.
+
+## 2026-09-29 — longetal figure names; Long latency / % enhanced figure
+
+- Hilbert responsiveness outputs now say which t-test they used:
+  `_pertimepoint` (Long's, uncorrected) / `_pertrial` (was `_samples` / none).
+  Juee file names unchanged.
+- word_averaged_rows also returns Long's latency (sample of the absolute max of
+  the average word response, z-scored to the blank) and its sign; new
+  `long_peaks_*.png/csv`: latency and % enhanced of responsive electrodes per
+  subregion, ours (mean ± SEM) vs Long's values (`LONG_PEAKS`: paper text for
+  occipital, read off thesis Figs 2.6A/C otherwise).
+- helper.bids_reader passes `device='ieeg'` (bidsreader only infers it for R*
+  subjects, so every pyFR TJ*/UP* session failed the data check).
+- run_streamed.sh: retry loop variable made local (it reset the batch index).
+
+## 2026-09-28 — Juee full run: alpha + high gamma, contrast figures, streamed data
+
+- config `runs`: alpha added next to high_gamma (word_on, multitaper, ppc).
+- Snakefile: synchrony now waits for power (power -> synchrony ->
+  power-synchrony). Juee figures drop the word-on / word-off panels
+  (`--measures cohens_d`, `--measures sync_diff`, new
+  build_power_synchrony `--conds diff`); longetal figures unchanged. New rule
+  `band_contrasts` -> plot_band_contrasts.py: one figure per analysis
+  (power, synchrony, power-synchrony), alpha row + high-gamma row, word on -
+  word off, paired t via fc.roi_stats (one-sample t on the within-subject
+  contrast, BH-FDR over ROIs) -> figures/band_contrasts/.
+- run_streamed.sh: bipolar FR1+catFR1+pyFR is ~680 GB (205 GB free), so per
+  batch of subjects: download -> prepare -> power, synchrony compute -> delete
+  the batch's bipolar EEG; then snakemake plots from the cache. Resumable
+  (logs/stream_done.txt); run under `caffeinate -is`.
+
+## 2026-09-28 — longetal: CAR everywhere, English only; t-unit diagnosis
+
+- longetal `depth_reference: car` (PI's reading) and new `english_only: true`
+  (data_check records `english` from the WORD stim_file; FR1 has 13 Spanish
+  sessions / 6 subjects). Full rerun: 304 sessions, 147 subjects, 13,080
+  electrodes; 28.6% responsive per sample, 2.6% per trial (~1 h awake; the
+  earlier 11 h was Mac sleep).
+- Diagnostic (scratchpad, read-only): envelope autocorrelation inflates the
+  per-sample t (variance inflation ~18 blank / 23 word); corrected per-sample
+  2.7% ≈ per trial 2.6%. Long's mean |t| (MOG 39.4, fusiform 10.7) matches our
+  uncorrected per-sample (40.8, 10.0), so her 25.3% is most likely uncorrected.
+  8 vs 1 band: same per trial, ~1.7x larger per-sample t (8 narrow-band
+  envelopes are ~3x more autocorrelated). Null simulation: 0.0% per trial,
+  3.2% per sample false positives at p<1e-8.
+
+## 2026-09-25 — longetal settings chosen from pilot; full recompute
+
+- Pilot (12 subjects, % responsive per sample vs CAR baseline 15.9%):
+  `hg_bands 8` 26.2%, `include_first_word` 19.7%, `include_incomplete_sessions`
+  16.8%, `baseline full_isi` 11.2%; bipolar depths 17.3% (earlier pilot).
+- longetal now: `depth_reference: bipolar`, `hg_bands: 8`,
+  `include_incomplete_sessions: true`, `include_first_word: true`,
+  `baseline: fixed`. All previous longetal results (full, smoke, simulations,
+  pilots) deleted and regenerated.
+- Full recompute (311 sessions, 149 subjects, 11,399 electrodes; ~11 h, run with
+  `CML_DATA_SOURCE=local`): 28.4% responsive per sample, 3.5% per trial (Long
+  25.3%). Occipital highest (MOG 77%, lingual 52%, fusiform 39%). Simulations:
+  hg_null 0.0%, recovery tracks identity.
+- Fixes: 8-band envelope cast to float64 before resampling; full_isi mask
+  broadcast over channels; helper.get_eeg sample-rate check uses a 1e-9
+  relative tolerance (R1006P_FR1_1 failed on float rounding only).
+
 ## 2026-09-25 — Scratch and downloads moved out of the repo
 
 - `paths.scratch_dir` → `~/scratch/word_onset_analysis/scratch` (sibling
@@ -14,6 +86,23 @@ earlier than the last entry below is undocumented.
   `~/scratch/word_onset_analysis/bids_data`, exported as `CML_BIDS_CACHE` by
   project_paths. Existing folders were moved, not recomputed. Figures stay in
   the repo.
+- longetal `atlases: [ind.region]`: Desikan–Killiany (surface) labels for every
+  contact, as Long did. Depths previously used stein → wb (volumetric), which
+  labels many depth contacts "Cerebral White Matter" (dropped); DK gives the
+  nearest cortical label.
+- longetal `depth_reference: car | bipolar`: `bipolar` pairs adjacent contacts
+  on each depth lead and keeps the common average for grids/strips only
+  (get_eeg builds contact differences; data_check drops a pair if either
+  contact is flat). Diagnostic on depth-only subjects: CAR suppresses depth
+  responses, within-lead bipolar recovers them. Juee (default) path verified
+  unchanged. Being piloted on 12 subjects before the full recompute.
+- longetal settings for choices Long's text leaves open (defaults = current
+  behaviour): `hg_bands` (1 = one 70–150 band-pass; 8 = mean amplitude over 8
+  log-spaced Gaussian bands, frequency-domain Hilbert, Mesgarani-lab style),
+  `baseline` (fixed pre_win; `full_isi` = each trial's whole blank from the
+  previous word's offset, pre samples outside it set to NaN and skipped),
+  `include_incomplete_sessions` (all sessions of subjects with ≥1 complete
+  one), `include_first_word` (keep serial position 1). Piloted one at a time.
 - Convention: "juee flags" = the default methods (bipolar, all experiments,
   multitaper, own windows/stats); their results are on hold and never
   overwritten. longetal results are wiped and regenerated on every method

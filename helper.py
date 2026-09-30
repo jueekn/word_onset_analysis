@@ -130,7 +130,7 @@ def bids_reader(dfrow: pd.Series, eeg: bool = True) -> Any:
     sub, exp, sess = dfrow['sub'], dfrow['exp'], int(dfrow['sess'])
     root = get_bids_root(exp, subject=sub, session=sess,
                          include_timeseries=eeg, acquisition=BIDS_ACQUISITION)
-    return CMLBIDSReader(root=root, subject=sub, task=exp, session=str(sess))
+    return CMLBIDSReader(root=root, subject=sub, task=exp, session=str(sess), device='ieeg')   # bidsreader only infers ieeg for R* subjects; pyFR is TJ*/UP*
 
 
 def prefetch_bids(dfrows: Sequence[pd.Series], eeg: bool = True) -> None:
@@ -138,6 +138,8 @@ def prefetch_bids(dfrows: Sequence[pd.Series], eeg: bool = True) -> None:
     so parallel workers find everything cached."""
     from cml_data import prefetch
 
+    if not len(dfrows):   # e.g. a subject batch where no session passed the data check
+        return
     for (exp, sub), rows in pd.DataFrame(list(dfrows)).groupby(['exp', 'sub']):
         prefetch(str(exp), [str(sub)], sorted(set(int(s) for s in rows['sess'])),
                  include_timeseries=eeg, acquisition=BIDS_ACQUISITION)
@@ -169,8 +171,22 @@ def load_pairs_table(reader: Any) -> pd.DataFrame:
     if BIDS_ACQUISITION == 'monopolar':   # contacts are the channels: give each the pair schema
         t = t[t['type'].isin(['ECOG', 'SEEG'])].reset_index(drop=True)   # no scalp/EKG channels
         cols = [c for c in ('x', 'y', 'z', 'stein.region', 'wb.region', 'ind.region') if c in t]
-        t = t.assign(ch1=t['name'], ch2=t['name'],
-                     **{f'{c}_{s}': t[c] for c in cols for s in ('ch1', 'ch2', 'mid')})
+        single = lambda d: d.assign(ch1=d['name'], ch2=d['name'],
+                                    **{f'{c}_{s}': d[c] for c in cols for s in ('ch1', 'ch2', 'mid')})
+        dep = t['description'].astype(str).str.lower().eq('depth')
+        if LONGETAL.get('depth_reference') == 'bipolar' and dep.any():   # depths: adjacent contacts on a lead
+            d = t[dep].assign(_n=pd.to_numeric(t['name'].str.extract(r'(\d+)$')[0], errors='coerce'))
+            d = d.sort_values(['group', '_n'])
+            nx = d.groupby('group').shift(-1)
+            ok = (nx['_n'] == d['_n'] + 1).to_numpy()
+            a, b = d[ok].reset_index(drop=True), nx[ok].reset_index(drop=True)
+            bip = a.assign(name=a['name'] + '-' + b['name'], ch1=a['name'], ch2=b['name'],
+                           **{f'{c}_ch1': a[c] for c in cols}, **{f'{c}_ch2': b[c] for c in cols},
+                           **{f'{c}_mid': (pd.to_numeric(a[c], errors='coerce') + pd.to_numeric(b[c], errors='coerce')) / 2
+                              for c in ('x', 'y', 'z')})
+            t = pd.concat([single(t[~dep]), bip.drop(columns='_n')], ignore_index=True)
+        else:
+            t = single(t)
     pairs = pd.DataFrame({
         'label': t['name'].astype(str),
         'contact_label_1': t['ch1'].astype(str),
@@ -182,7 +198,10 @@ def load_pairs_table(reader: Any) -> pd.DataFrame:
         pairs[f'mni.{ax}'] = pd.to_numeric(t[f'{ax}_mid'], errors='coerce')
     c1 = t[['x_ch1', 'y_ch1', 'z_ch1']].apply(pd.to_numeric, errors='coerce').to_numpy(float)
     c2 = t[['x_ch2', 'y_ch2', 'z_ch2']].apply(pd.to_numeric, errors='coerce').to_numpy(float)
-    pairs['distance'] = 0.0 if BIDS_ACQUISITION == 'monopolar' else np.linalg.norm(c1 - c2, axis=1)
+    dist = np.linalg.norm(c1 - c2, axis=1)
+    if BIDS_ACQUISITION == 'monopolar':   # single contacts 0; depth pairs missing coordinates kept (not NaN)
+        dist = np.where(pairs['contact_label_1'] == pairs['contact_label_2'], 0.0, np.nan_to_num(dist))
+    pairs['distance'] = dist
     for atlas in ('stein.region', 'wb.region', 'ind.region'):
         a = t.get(f'{atlas}_ch1', pd.Series(np.nan, index=t.index)).replace('n/a', np.nan)
         b = t.get(f'{atlas}_ch2', pd.Series(np.nan, index=t.index)).replace('n/a', np.nan)
@@ -233,11 +252,18 @@ def get_eeg(
     mask = mask[events.index.to_numpy()]
 
     raw = bids_reader(dfrow).load_raw(acquisition=BIDS_ACQUISITION)
-    labels = list(get_pairs(dfrow)['label'].astype(str))
-    missing = sorted(set(labels) - set(raw.ch_names))
+    pairs = get_pairs(dfrow)
+    labels = list(pairs['label'].astype(str))
+    chans = labels
+    if BIDS_ACQUISITION == 'monopolar':   # longetal: channels are contacts or contact differences
+        c1, c2 = list(pairs['contact_label_1'].astype(str)), list(pairs['contact_label_2'].astype(str))
+        chans = list(dict.fromkeys(c1 + c2))
+        i1, i2 = [chans.index(c) for c in c1], [chans.index(c) for c in c2]
+        single = np.array(i1) == np.array(i2)
+    missing = sorted(set(chans) - set(raw.ch_names))
     if missing:
         raise ValueError(f'{ftag(dfrow)}: pairs.json channels absent from the recording: {missing}')
-    raw.pick(labels)                                   # also orders the channels
+    raw.pick(chans)                                    # also orders the channels
     sr = float(raw.info['sfreq'])
     samples = events['eegoffset'].to_numpy(dtype=int)
     # Epoch each distinct onset once (MNE refuses repeated samples), then expand
@@ -262,13 +288,15 @@ def get_eeg(
     mask = mask[kept]
     # MNE reads volts; the pipeline has always worked in microvolts.
     data = epochs.get_data()[[row_of[inverse[i]] for i in kept]] * 1e6
+    if BIDS_ACQUISITION == 'monopolar':
+        data = np.where(single[None, :, None], data[:, i1], data[:, i1] - data[:, i2])
     eeg = TimeSeries.create(data, sr, dims=('event', 'channel', 'time'),
                             coords={'event': events.index.to_numpy()[kept],   # position in the input events
                                     'channel': labels,
                                     'time': epochs.times * 1000.0})
 
     if sr_expected is not None:
-        assert float(sr_expected) == sr, f'sampling rate is wrong: events say {sr_expected}, recording is {sr}'
+        assert np.isclose(float(sr_expected), sr, rtol=1e-9), f'sampling rate is wrong: events say {sr_expected}, recording is {sr}'
 
     if simulation_tag not in ['standard', '', None]:
         # replace experimentally recorded EEG with simulated EEG to validate analysis pipeline
@@ -278,8 +306,10 @@ def get_eeg(
                                       time_unit='millisecond',
                                       condition_mask=mask,
                                       simulation_tag=simulation_tag)
-    if BIDS_ACQUISITION == 'monopolar':   # common average reference, per sample, over the kept contacts
-        eeg = eeg - eeg.mean('channel')
+    if BIDS_ACQUISITION == 'monopolar':   # common average reference, per sample, over the single contacts
+        x = np.asarray(eeg.data, float).copy()
+        x[:, single] -= x[:, single].mean(axis=1, keepdims=True)
+        eeg = eeg.copy(data=x)
     
     return eeg, mask
 
@@ -694,6 +724,10 @@ def get_atlas_labels_by_type(pairs: pd.DataFrame) -> pd.DataFrame:
              else pd.Series(['NAN'] * len(pairs), index=pairs.index))
     labels_out = np.empty(len(pairs), dtype=object)
     source_out = np.empty(len(pairs), dtype=object)
+    if LONGETAL and LONGETAL.get('atlases'):   # Long et al.: Desikan-Killiany for every contact
+        labels_out[:], source_out[:] = _label_cascade(pairs, LONGETAL['atlases'])
+        return pd.DataFrame({'pair_label': pairs['label'].to_numpy(),
+                             'atlas_label': labels_out, 'atlas': source_out}, index=pairs.index)
     for mask, cascade in ((etype.isin(('D', 'UD')).to_numpy(), _VOLUMETRIC_ATLASES),
                           (etype.isin(('G', 'S')).to_numpy(), _SURFACE_ATLASES),
                           (~etype.isin(('D', 'UD', 'G', 'S')).to_numpy(), _ALL_ATLASES)):

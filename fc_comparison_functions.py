@@ -668,6 +668,8 @@ PREPOST_SPEC: dict[str, dict[str, Any]] = {
 if LONGETAL:   # Long et al.: blank screen vs word on screen
     PREPOST_SPEC["word_on"].update(pre_win=tuple(map(float, LONGETAL["pre_win"])),
                                    post_win=tuple(map(float, LONGETAL["post_win"])))
+    if LONGETAL.get("baseline") == "full_isi":   # longest blank; each trial masked to its own blank later
+        PREPOST_SPEC["word_on"]["pre_win"] = (-1000.0, 0.0)
 
 
 def compute_prepost_separate(

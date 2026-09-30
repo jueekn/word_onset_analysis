@@ -23,7 +23,7 @@ from os.path import join, exists as ex
 import pandas as pd
 
 from misc import get_dfrow, ftag
-from project_paths import SCRATCH_DIR as _SCRATCH_DIR
+from project_paths import SCRATCH_DIR as _SCRATCH_DIR, LONGETAL
 import helper
 from helper import get_sr
 from exclusion_log import ExclusionLog
@@ -183,7 +183,8 @@ def get_events(dfrow: pd.Series | list[Any] | NDArrayAny) -> None:
         elog = ExclusionLog(dfrow, beh)
         all_word = matcher.events.query('type == "WORD"')
         elog.input(all_word)
-        word_evs = all_word.query('serialpos > 1').copy()
+        # first word of each list follows the countdown, not a blank screen
+        word_evs = all_word.copy() if (LONGETAL or {}).get('include_first_word') else all_word.query('serialpos > 1').copy()
         elog.excluded('word_on_serialpos1', all_word, word_evs); elog.final(word_evs); elog.write()
         word_evs = fix_event_cols(word_evs)
 

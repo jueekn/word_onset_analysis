@@ -227,6 +227,7 @@ smokescreen: false
 smokescreen_n_subjects: 3
 # One entry per analysis; each gets ROI power, ROI synchrony, power-synchrony.
 runs:
+  - {beh: word_on, band: alpha, fc_mode: multitaper, metric: ppc}
   - {beh: word_on, band: high_gamma, fc_mode: multitaper, metric: ppc}
 # `snakemake simulations`: config/simulation_config.yaml tags run through the same
 # rules (EEG replaced, real montages/events kept); figures -> <figures>/simulations/<tag>.
@@ -238,7 +239,15 @@ simulations: [hg_null, hg_power_frontal, hg_ppc_frontal]
 longetal_params:
   experiments: [FR1]
   min_word_events: 300       # complete sessions only (25 lists x 12 words)
+  english_only: true         # English wordpool sessions only (FR1 has 13 Spanish sessions)
   acquisition: monopolar     # + common average reference over the kept contacts
+  depth_reference: car            # car | bipolar (depth leads: adjacent contacts; CAR over grids/strips only)
+  atlases: [ind.region]      # Desikan-Killiany (surface) labels for every contact, as in Long
+  # Unknown in Long's text; defaults = current choice, alternatives piloted:
+  hg_bands: 8                   # 1: one 70-150 band-pass | 8: mean amplitude over 8 log-spaced bands
+  baseline: fixed               # fixed: pre_win | full_isi: each trial's whole blank (prev word offset -> onset)
+  include_incomplete_sessions: true   # true: all sessions of subjects with >=1 complete session
+  include_first_word: true     # true: keep serial position 1 (follows the countdown)
   envelope_hz: 100           # Hilbert amplitude at the native rate, then -> 100 Hz
   pre_win: [-750, 0]         # blank screen (ISI is 750-1000 ms)
   post_win: [0, 1600]        # word on screen

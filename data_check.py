@@ -94,11 +94,16 @@ def check_eeg(
     try:
         reader = helper.bids_reader(dfrow)
         raw = reader.load_raw(acquisition=helper.BIDS_ACQUISITION)
-        missing = sorted(set(pairs['label']) - set(raw.ch_names))
+        mono = helper.BIDS_ACQUISITION == 'monopolar'   # longetal: recording channels are contacts
+        chans = (list(dict.fromkeys([*pairs['contact_label_1'], *pairs['contact_label_2']]))
+                 if mono else list(pairs['label']))
+        missing = sorted(set(chans) - set(raw.ch_names))
         data_check['eeg_pairs_match'] = not missing
         assert not missing, f'pairs absent from the recording: {missing}'
-        raw.pick(list(pairs['label']))
-        flat = _constant_channels(raw)
+        raw.pick(chans)
+        flat_set = set(np.asarray(chans)[_constant_channels(raw)])
+        flat = ((pairs['contact_label_1'].isin(flat_set) | pairs['contact_label_2'].isin(flat_set))
+                if mono else pairs['label'].isin(flat_set)).to_numpy()
         pairs = pairs[~flat].reset_index(drop=True)
         data_check['no_bad_channels_removed'] = int(flat.sum())
         assert len(pairs), 'every pair is flat'
@@ -106,6 +111,7 @@ def check_eeg(
 
         events = reader.load_events()
         data_check['n_word'] = int((events['trial_type'] == 'WORD').sum())
+        data_check['english'] = bool(events.loc[events['trial_type'] == 'WORD', 'stim_file'].astype(str).str.contains('_EN').any())   # wordpool_EN vs _SP
         word = events[events['trial_type'] == 'WORD'].iloc[:1]
         assert len(word), 'no WORD events'
         ev = pd.DataFrame({'mstime': (word['onset'] * 1000).round().astype(int).to_numpy(),
@@ -233,9 +239,16 @@ def build_sess_list_df_data_check(root_dir: str) -> pd.DataFrame:
 
     for key in DENYLIST:
         _deny(key, 'denylist')
-    if LONGETAL:   # Long et al.: complete sessions only
+    if LONGETAL:   # Long et al.: subjects need a complete session
         n_word = sess_list_df.get('n_word', pd.Series(0, index=sess_list_df.index)).fillna(0)
-        for key in sess_list_df.index[n_word < LONGETAL['min_word_events']]:
+        english = sess_list_df.get('english', pd.Series(True, index=sess_list_df.index)).fillna(False).astype(bool)
+        if LONGETAL.get('english_only', False):   # "complete task session in English"
+            for key in sess_list_df.index[~english]:
+                _deny(key, 'not_english')
+        complete = (n_word >= LONGETAL['min_word_events']) & (english | (not LONGETAL.get('english_only', False)))
+        has_complete = complete.groupby(sess_list_df['sub']).transform('any')
+        keep_rest = LONGETAL.get('include_incomplete_sessions', False)   # then keep their other sessions too
+        for key in sess_list_df.index[~complete & ~(keep_rest & has_complete)]:
             _deny(key, 'incomplete_session')
 
     # Per-session denylist of empirically-unrecoverable sessions (curated from
