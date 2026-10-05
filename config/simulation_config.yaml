@@ -12,6 +12,15 @@ hg_null:
   target_lobes: [frontal]
   pinknoise_amplitude: 10
   pinknoise_exponent: 1
+hg_null_line:          # hg_null + 60 Hz mains (tests notch ringing at the clip edges)
+  data_generating_process: hg_power
+  band: [70, 150]
+  hg_amplitude: 10
+  hg_gain: 1
+  target_lobes: [frontal]
+  pinknoise_amplitude: 10
+  pinknoise_exponent: 1
+  line_amplitude: 20
 hg_power_frontal:
   data_generating_process: hg_power
   band: [70, 150]
@@ -31,6 +40,33 @@ hg_ppc_frontal:
   oscillation_frequency: 110
   morlet_reps: 5
   wavelet_amplitude: 100
+  pinknoise_amplitude: 10
+  pinknoise_exponent: 1
+# Synchrony checks for ciPLV (alpha) and AEC-c (high gamma); see simulate_eeg.py.
+alpha_lag_frontal:     # 10 Hz, frontal pairs coupled after onset, half of them lagged pi/2
+  data_generating_process: osc_lag
+  target_lobes: [frontal]
+  global_ppc: 0.01
+  target_ppc0: 0.01
+  target_ppc1: 0.5
+  phase_lag: 1.5708
+  oscillation_frequency: 10
+  osc_amplitude: 20
+  pinknoise_amplitude: 10
+  pinknoise_exponent: 1
+hg_env_frontal:        # 70-110 Hz carriers, shared < 4 Hz envelope among frontal channels after onset
+  data_generating_process: hg_envelope
+  target_lobes: [frontal]
+  band: [70, 110]
+  env_hz: 4
+  env_depth: 0.5
+  hg_amplitude: 10
+  pinknoise_amplitude: 10
+  pinknoise_exponent: 1
+leak_frontal:          # zero-lag common source on frontal channels after onset
+  data_generating_process: leak
+  target_lobes: [frontal]
+  leak_gain: 1
   pinknoise_amplitude: 10
   pinknoise_exponent: 1
 

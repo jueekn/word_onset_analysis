@@ -58,9 +58,8 @@ python build_power_synchrony.py --band high_gamma
 `prepare_sessions.py` writes the session list and per-session artifacts under
 `config.yaml paths.scratch_dir` (default `~/scratch/word_onset_analysis/scratch`,
 outside the repo; smokescreen / longetal runs use sibling `scratch.*` folders).
-`--subjects` / `--n-subjects` restrict it. A session is included only if its
-recalls also match for the encoding and retrieval contrasts (kept so the cohort
-matches earlier runs; see `load_events.recall_matching_ok`).
+`--subjects` / `--n-subjects` restrict it. Sessions whose 100/120/150 Hz mains
+harmonics exceed 5x their neighbours are excluded (`max_line_harmonic_ratio`).
 
 Every build script has `--stage compute` (one pickle per session under
 `SCRATCH_DIR/word_on/…`, `--workers N` in parallel) and `--stage plot`
@@ -103,10 +102,10 @@ ROI-vs-ROI differences. `--rmin/--rmax/--bin-w` set the bins,
 | `min_sample_rate_hz` | 499 | sessions below this are excluded upstream |
 | `bands.high_gamma` | 70–150 Hz | Long et al.'s band |
 | `bands.low` / `bands.gamma` | 3–8 / 70–110 Hz | PAC phase / amplitude bands |
-| `notch_harmonics_up_to_hz` | 150 | site-uniform: notches 100/120/150 for *every* subject |
+| `notch_harmonics_up_to_hz` | null | mains fundamental only (as riley-thesis); data_check records harmonic peaks |
 | `mt_bandwidth` | 2 | NW = 0.6 over a 600 ms window |
 | `time_bin_ms` / `mt_window_ms` | 50 / 100 | gamma time course: bin step / sliding window |
-| `real_data_buffer_ms` | 500 | real EEG around each window, cropped before the multitaper |
+| `real_data_buffer_ms` | 50 | real EEG around each window (riley-thesis), cropped before estimation |
 | `computation_metrics` | coh, plv, ppc, ciplv, pli, wpli, pac | `build_roi_synchrony --metrics` |
 
 ---

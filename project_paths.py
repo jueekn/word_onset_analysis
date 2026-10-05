@@ -90,12 +90,16 @@ BANDS: dict[str, tuple[float, float]] = {
 # thesis measures (exploratory only); banning it here makes any reintroduction
 # a hard error at import time rather than silently flowing through.
 COMPUTATION_METRICS: list[str] = list(get_default("computation_metrics"))
+SUBTRACT_ERP: bool = bool(get_default("subtract_erp"))
+# synchrony metric of each band's run (config `runs`), for figure assembly
+RUN_METRIC: dict[str, str] = {r["band"]: r["metric"] for r in get_default("runs")}
 REAL_DATA_BUFFER_MS: float = float(get_default("real_data_buffer_ms"))
 # Long et al. 2020 replication settings (config `longetal_params:`), or None.
 LONGETAL: dict[str, Any] | None = get_default("longetal_params") if os.environ.get("WOA_LONGETAL") else None
 # None = keep the native rate (longetal: Hilbert at the native rate).
 RESAMPLE_HZ: float | None = None if LONGETAL else float(get_default("resample_hz"))
 MIN_SAMPLE_RATE_HZ: float = float(get_default("min_sample_rate_hz"))
+MAX_LINE_HARMONIC_RATIO: float = float(get_default("max_line_harmonic_ratio"))
 # notch_harmonics_up_to_hz: None = fundamental-only notch (historical default,
 # leaves every existing result bit-identical). A float switches on harmonic
 # notching up to that frequency — required for bands that reach the line

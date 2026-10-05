@@ -124,7 +124,13 @@ def load_pairs_table(reader: Any) -> pd.DataFrame:
     inter-contact distance in that space. Row order is the recording's channel
     order, which `get_eeg` relies on.
     """
-    t = reader.load_combined_channels(acquisition=BIDS_ACQUISITION)
+    if BIDS_ACQUISITION == 'bipolar':   # bidsreader keeps only wb/ind/stein labels by default
+        from bidsreader.src.helpers import combine_bipolar_electrodes
+        t = combine_bipolar_electrodes(reader.load_channels('bipolar'), reader.load_electrodes(),
+                                       region_cols=('stein.region', 'das.region', 'wb.region',
+                                                    'ind.region', 'region1'), space=reader.space)
+    else:
+        t = reader.load_combined_channels(acquisition=BIDS_ACQUISITION)
     if BIDS_ACQUISITION == 'monopolar':   # contacts are the channels: give each the pair schema
         t = t[t['type'].isin(['ECOG', 'SEEG'])].reset_index(drop=True)   # no scalp/EKG channels
         cols = [c for c in ('x', 'y', 'z', 'stein.region', 'wb.region', 'ind.region') if c in t]
@@ -151,17 +157,22 @@ def load_pairs_table(reader: Any) -> pd.DataFrame:
     })
     etype = t['description'].astype(str).str.lower().map(_BIDS_ELECTRODE_TYPE)
     pairs['type_1'] = pairs['type_2'] = etype.fillna('nan')
-    for ax in 'xyz':
-        pairs[f'mni.{ax}'] = pd.to_numeric(t[f'{ax}_mid'], errors='coerce')
+    for ax in 'xyz':   # MNI; pyFR tables are in Talairach space with separate mni.* columns
+        mid = f'mni.{ax}_mid' if f'mni.{ax}_mid' in t else f'{ax}_mid'
+        pairs[f'mni.{ax}'] = pd.to_numeric(t[mid], errors='coerce')
     c1 = t[['x_ch1', 'y_ch1', 'z_ch1']].apply(pd.to_numeric, errors='coerce').to_numpy(float)
     c2 = t[['x_ch2', 'y_ch2', 'z_ch2']].apply(pd.to_numeric, errors='coerce').to_numpy(float)
     dist = np.linalg.norm(c1 - c2, axis=1)
     if BIDS_ACQUISITION == 'monopolar':   # single contacts 0; depth pairs missing coordinates kept (not NaN)
         dist = np.where(pairs['contact_label_1'] == pairs['contact_label_2'], 0.0, np.nan_to_num(dist))
     pairs['distance'] = dist
-    for atlas in ('stein.region', 'wb.region', 'ind.region'):
-        a = t.get(f'{atlas}_ch1', pd.Series(np.nan, index=t.index)).replace('n/a', np.nan)
-        b = t.get(f'{atlas}_ch2', pd.Series(np.nan, index=t.index)).replace('n/a', np.nan)
+    # BIDS column -> pairs atlas column; pyFR's Talairach label (region1) is
+    # riley-thesis's mat.tal.region
+    for atlas, col in (('stein.region', 'stein.region'), ('das.region', 'das.region'),
+                       ('wb.region', 'wb.region'), ('ind.region', 'ind.region'),
+                       ('mat.tal.region', 'region1')):
+        a = t.get(f'{col}_ch1', pd.Series(np.nan, index=t.index)).replace('n/a', np.nan)
+        b = t.get(f'{col}_ch2', pd.Series(np.nan, index=t.index)).replace('n/a', np.nan)
         pairs[atlas] = a.fillna(b).fillna('nan').astype(str)
     x = pairs['mni.x']
     pairs['hemisphere'] = np.where(x < 0, 'L', np.where(x > 0, 'R', 'nan'))
@@ -505,13 +516,16 @@ _SENTINEL_TOKENS = frozenset({
     'nan', '[nan]', 'none', 'unknown', 'misc', 'n/a', '', ' ', 'left tc', '*',
 })
 
-# Atlas priority per electrode type. The BIDS electrode tables carry three
-# atlases: stein (MTL-specific, best when present), wb (whole-brain volumetric)
-# and ind (individual FreeSurfer surface). Depths get the volumetric cascade,
-# grids/strips the surface one.
-_VOLUMETRIC_ATLASES = ['stein.region', 'wb.region']
-_SURFACE_ATLASES = ['stein.region', 'ind.region']
-_ALL_ATLASES = ['stein.region', 'wb.region', 'ind.region']
+# Atlas priority per electrode type, riley-thesis's order restricted to what the
+# BIDS electrode tables carry: stein and das (expert MTL), wb (whole-brain
+# volumetric), ind (FreeSurfer surface), and pyFR's Talairach label
+# (mat.tal.region), last for every contact as in riley-thesis's pyFR cascade.
+# Depths get the volumetric cascade, grids/strips the surface one.
+_VOLUMETRIC_ATLASES = ['stein.region', 'das.region', 'wb.region', 'mat.tal.region']
+_SURFACE_ATLASES = ['stein.region', 'das.region', 'ind.region', 'mat.tal.region']
+_ALL_ATLASES = ['stein.region', 'das.region', 'wb.region', 'ind.region', 'mat.tal.region']
+# Talairach labels riley-thesis treats as unreliable (counted as missing)
+_TAL_UNRELIABLE = ('parahippocampal gyrus', 'uncus', 'lentiform nucleus', 'caudate', 'thalamus')
 
 
 def _label_cascade(
@@ -526,7 +540,10 @@ def _label_cascade(
     source = np.array(['no atlas'] * n, dtype=object)
     for atlas in reversed(atlases):          # highest priority wins: assign it last
         vals = pairs[atlas].astype(str).to_numpy()
-        ok = ~np.isin(np.char.lower(vals.astype(str)), list(_SENTINEL_TOKENS))
+        low = np.char.lower(vals.astype(str))
+        ok = ~np.isin(low, list(_SENTINEL_TOKENS))
+        if atlas == 'mat.tal.region':
+            ok &= ~np.array([any(u in v for u in _TAL_UNRELIABLE) for v in low], bool)
         labels[ok] = vals[ok]
         source[ok] = atlas
     return labels, source

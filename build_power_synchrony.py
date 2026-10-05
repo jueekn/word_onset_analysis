@@ -14,36 +14,17 @@ Rao's version (notebook cell 189, `compute_power_synchrony_correlations`):
     per subject:    mean r across that subject's sessions
     group:          one-sample t of the subject r's vs 0
 
-This script keeps that structure exactly -- correlate across ELECTRODES within a
-session, average r within subject, test across subjects -- and changes two things:
-
-  1. the correlation is computed within each of the 12 Burke ROIs, not over the
-     whole montage, so `r` is reported per ROI;
-  2. synchrony is collapsed across distance bins rather than averaged flat over
-     all partners (fc.collapsed_synchrony; see below).
-
-Why the distance collapse
--------------------------
-Rao averages each electrode's PPC over every partner. That is only fair when
-electrodes sample the same partner distances -- and they do not: a mesial depth
-and a lateral grid contact have very different distance distributions, and PPC
-falls off steeply with distance, so a flat mean partly reports geometry rather
-than physiology. Binning by distance and z-scoring each bin across the session's
-electrodes before averaging the bins makes the per-electrode score read "how much
-more (or less) synchronized than expected given the distances it happens to
-sample". The full argument for both moments of that z-score is in
-fc.collapsed_synchrony / fc.zscore_bins.
-
-Per-bin correlations are always reported (`*_per_bin.csv`): power vs each bin's
-z-scored column separately. If r is flat across distance the collapse choice does
-not matter; if it is not, that is the more informative result.
+This script keeps that structure exactly -- synchrony = mean change to ALL
+partners (fc.electrode_sync), correlate across ELECTRODES within a session,
+average r within subject, test across subjects -- but computes r within each of
+the 12 Burke ROIs rather than over the whole montage.
 
 Reading the SAVED diff matrix keeps Rao's order of operations (difference at
 the pair level, then aggregate over partners).
 
-CAVEAT: PPC is amplitude-independent but
+CAVEAT: phase metrics are amplitude-independent but
 not SNR-independent -- a cleaner signal gives a better-conditioned phase estimate
-and so a higher PPC. The contrast cancels the STATIC part of that, but not the
+and so higher phase locking. The contrast cancels the STATIC part of that, but not the
 dynamic part: an electrode whose power rises also gets a better phase estimate,
 so its PPC rises. Check a positive r against a surrogate that
 preserves the power change but destroys true connectivity.
@@ -55,7 +36,7 @@ Inputs (both must already exist):
 
 Usage:
     python build_power_synchrony.py
-    python build_power_synchrony.py --n-sessions 30 --metric ppc
+    python build_power_synchrony.py --band alpha --n-sessions 30
 """
 from __future__ import annotations
 
@@ -71,104 +52,32 @@ from tqdm.auto import tqdm
 import fc_comparison_functions as fc
 
 
-def collect(save_root, beh, band, metric, edges, args, lobe_of):
-    """Per (session, ROI, cond): r, per-bin r, and the ROI-mean bar values."""
+def collect(save_root, beh, band, metric, args, lobe_of):
+    """Per (session, ROI): r across the ROI's electrodes between power d and
+    synchrony change (mean over all partners)."""
     from scipy.stats import pearsonr
-
-    conds = {"diff": "cohens_d"}   # saved cond dir: power pickle key
-    pow_dir = Path(save_root) / beh / "power" / band
-    files = sorted(pow_dir.glob("*_power.pkl"))
-    if args.n_sessions is not None:
-        files = files[:args.n_sessions]
-    if not files:
-        raise SystemExit(
-            f"no power pickles in {pow_dir}\n"
-            f"run: python build_roi_power.py --stage compute "
-            f"--band {band}")
-
-    missing = [c for c in conds
-               if not (Path(save_root) / beh / "fc_mats" / c
-                       / band).is_dir()]
-    if missing:
-        raise SystemExit(
-            f"missing condition dir(s) {missing} under "
-            f"{save_root}/{beh}/fc_mats/*/{band}\n"
-            f"run: python build_roi_synchrony.py --stage compute "
-            f"--band {band}")
-
-    nb = len(edges) - 1
-    rows, binrows, bars = [], [], []
-
+    files = fc.session_files(Path(save_root) / beh / "power" / band, "_power.pkl", args.n_sessions)
+    rows = []
     for f in tqdm(files, desc="load sessions"):
-        try:
-            P = fc.load_pickle(str(f))
-        except Exception as e:
-            print(f"[skip] {f.name}: {e!r}")
+        P = fc.load_pickle(str(f))
+        fpath = Path(save_root) / beh / "fc_mats" / "diff" / band / f.name.replace("_power.pkl", "_fc_mats.pkl")
+        if not fpath.exists() or metric not in (M := fc.load_pickle(str(fpath))):
             continue
-        dfrow = fc.dfrow_from_sid(P["sid"])
-        sub, sess = str(dfrow["sub"]), int(dfrow["sess"])
-        fc_name = f.name.replace("_power.pkl", "_fc_mats.pkl")
-
-        try:
-            xyz, lead = fc.pair_xyz_lead(dfrow)
-        except Exception as e:
-            print(f"[skip] {f.name}: get_pairs failed ({e!r})")
+        sync = fc.electrode_sync(M[metric])
+        power = np.asarray(P["cohens_d"], float)
+        if len(sync) != len(power):
+            print(f"[skip] {f.name}: {len(sync)} FC vs {len(power)} power channels")
             continue
-        n_ch = xyz.shape[0]
-        if n_ch != len(P["labels"]):
-            print(f"[skip] {f.name}: {n_ch} pairs vs "
-                  f"{len(P['labels'])} power channels")
-            continue
-
-        iu, dist, keep = fc.pair_distance_mask(
-            xyz, lead, args.rmin, args.rmax, args.exclude_same_shank)
         roi = fc.roi_of_reg_full(P["reg_full"], lobe_of)
-
-        for cond, pow_key in conds.items():
-            fpath = (Path(save_root) / beh / "fc_mats" / cond
-                     / band / fc_name)
-            if not fpath.exists():
-                continue
-            try:
-                M = fc.load_pickle(str(fpath))[metric]
-            except Exception as e:
-                print(f"[skip] {fc_name} ({cond}): {e!r}")
-                continue
-
-            got = fc.collapsed_synchrony(M, iu, dist, keep, n_ch, edges)
-            if got is None:
-                continue
-            sync, Sc = got
-
-            power = np.asarray(P[pow_key], float)      # per-electrode power
-            # bars only: put both on the session's own SD scale (r is invariant)
-            zp, zs = fc.zscore_across(power), fc.zscore_across(sync)
-
-            for r_name in fc.ROI_ORDER:
-                m = (roi == r_name) & np.isfinite(power) & np.isfinite(sync)
-                if m.sum():
-                    bars.append({"sub": sub, "sess": sess, "roi": r_name,
-                                 "cond": cond, "n_elec": int(m.sum()),
-                                 "power_z": float(np.nanmean(zp[m])),
-                                 "sync_z": float(np.nanmean(zs[m]))})
-                if m.sum() >= fc.MIN_ELEC_CORR:
-                    rows.append({"sub": sub, "sess": sess, "roi": r_name,
-                                 "cond": cond, "n_elec": int(m.sum()),
-                                 "r": float(pearsonr(power[m], sync[m])[0])})
-                # per-bin r: power vs that bin's z-scored column
-                for bi in range(nb):
-                    mb = ((roi == r_name) & np.isfinite(power)
-                          & np.isfinite(Sc[:, bi]))
-                    if mb.sum() >= fc.MIN_ELEC_CORR:
-                        binrows.append({
-                            "sub": sub, "sess": sess, "roi": r_name,
-                            "cond": cond, "bin_lo": edges[bi],
-                            "bin_hi": edges[bi + 1], "n_elec": int(mb.sum()),
-                            "r": float(pearsonr(power[mb], Sc[mb, bi])[0])})
-
+        for r_name in fc.ROI_ORDER:
+            m = (roi == r_name) & np.isfinite(power) & np.isfinite(sync)
+            if m.sum() >= fc.MIN_ELEC_CORR:
+                rows.append({"sub": str(P["sid"][0]), "sess": int(P["sid"][2]), "roi": r_name,
+                             "cond": "diff", "n_elec": int(m.sum()),
+                             "r": float(pearsonr(power[m], sync[m])[0])})
     if not rows:
-        raise SystemExit("no (session, ROI) cell had enough electrodes")
-    return pd.DataFrame(rows), pd.DataFrame(binrows), pd.DataFrame(bars)
+        raise SystemExit(f"no (session, ROI) cell had enough electrodes ({save_root}/{beh}, {band})")
+    return pd.DataFrame(rows)
 
 
 def to_subject(df, keys):
@@ -180,29 +89,21 @@ def parse_args():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     fc.add_common_args(p, compute=False)
-    fc.add_distance_args(p)
+    p.add_argument("--metric", default=None, choices=fc.PHASE_METRICS,
+                   help="default: the band's metric in config runs")
     p.add_argument("--out-dir", default=join("figures", "power_synchrony"))
-    return p.parse_args()
+    args = p.parse_args()
+    args.metric = args.metric or fc.RUN_METRIC[args.band]
+    return args
 
 
 def main():
     args = parse_args()
 
     _, save_root = fc.resolve_roots(args)
-    edges = np.arange(args.rmin, args.rmax + 1e-9, args.bin_w)
-    lobe_of = fc.load_burke_maps()
-
-    print(f"[setup] {args.beh} {args.band} {args.metric}  "
-          f"bins {args.rmin}-{args.rmax} mm / {args.bin_w} mm  "
-          f"(each bin z-scored across electrodes)")
-
-    sess_r, bin_r, bars = collect(save_root, args.beh, args.band,
-                                  args.metric, edges, args, lobe_of)
-
-    sub_r = to_subject(sess_r, ["roi", "cond"])
-    sub_bin = to_subject(bin_r, ["roi", "cond", "bin_lo", "bin_hi"])
-    bar_sub = (bars.groupby(["sub", "roi", "cond"], as_index=False)
-                   [["power_z", "sync_z"]].mean())
+    print(f"[setup] {args.beh} {args.band} {args.metric}")
+    sub_r = to_subject(collect(save_root, args.beh, args.band, args.metric, args,
+                               fc.load_burke_maps()), ["roi", "cond"])
 
     # One-sample t of the subject r's vs 0, BH-FDR across the 12 ROIs.
     stats = {"diff": fc.roi_stats(sub_r, "r")}
@@ -214,15 +115,11 @@ def main():
     tag = f"{args.beh}_{args.band}_{args.metric}"
     sub_r.to_csv(join(args.out_dir, f"power_synchrony_{tag}_per_subject.csv"),
                  index=False)
-    sub_bin.to_csv(join(args.out_dir, f"power_synchrony_{tag}_per_bin.csv"),
-                   index=False)
-    bar_sub.to_csv(join(args.out_dir, f"power_synchrony_{tag}_bars.csv"),
-                   index=False)
     pd.concat([s.assign(cond=c) for c, s in stats.items()]).to_csv(
         join(args.out_dir, f"power_synchrony_{tag}_stats.csv"), index=False)
-    print(f"[saved] per-subject / per-bin / bars / stats CSVs in {args.out_dir}")
-    fc.band_contrast_figure(args.out_dir, f"power_synchrony_{args.beh}_{{band}}_{args.metric}",
-                            "r", f"power-sync r ({c['hi_label']} - {c['lo_label']})")
+    print(f"[saved] per-subject / stats CSVs in {args.out_dir}")
+    fc.band_contrast_figure(args.out_dir, f"power_synchrony_{args.beh}_{{band}}_{{metric}}", "r",
+                            f"r, power d vs. {{metric}} ({c['hi_label']} vs. {c['lo_label']})")
 
 
 if __name__ == "__main__":

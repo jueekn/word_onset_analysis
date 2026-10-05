@@ -11,6 +11,18 @@ parameterised in config/simulation_config.yaml:
             a wrapped normal: target-lobe pairs at target_ppc0 (pre) / target_ppc1
             (post), all other pairs at global_ppc; plus pink noise.
 
+Synchrony checks for the lag-insensitive metrics (each on top of pink noise):
+
+  osc_lag      sustained oscillation, phases coupled as hg_ppc, every other
+               target channel lagged by phase_lag -> ciPLV (alpha) should rise.
+  hg_envelope  independent band-limited carriers; on post events target
+               channels share a slow amplitude envelope -> AEC-c should rise.
+  leak         zero-lag common source on target channels, post events only
+               (volume conduction) -> ciPLV and AEC-c should stay at 0.
+
+Optional `line_amplitude` adds a 60 Hz mains sinusoid (random phase per event,
+shared by all channels), to test the notch filter on line noise.
+
 The random seed is a CRC of the real clip, so reruns reproduce the same signal.
 """
 from __future__ import annotations
@@ -110,10 +122,41 @@ def replace_w_simulated_EEG(eeg: TimeSeries, dfrow: pd.Series, condition_mask: N
                                                         float(eeg.samplerate), *p["band"], verbose=False)
         hg[:, target] *= np.where(t_ms >= 0, p["hg_gain"], 1.0)
         data += hg
+    elif p["data_generating_process"] == "osc_lag":
+        # sustained oscillation; per-event phases as hg_ppc, every other target
+        # channel shifted by phase_lag (ciPLV sees only the lagged pairs)
+        mask = np.asarray(condition_mask, bool)
+        lag = np.where(target, np.cumsum(target) % 2 * p["phase_lag"], 0.0)
+        for m, key in ((~mask, "target_ppc0"), (mask, "target_ppc1")):
+            if m.any():
+                cov = _phase_cov(target, p[key], p["global_ppc"])
+                ph = np.random.multivariate_normal(np.zeros(len(cov)), cov, size=int(m.sum())) + lag
+                data[m] += p["osc_amplitude"] * np.cos(2 * np.pi * p["oscillation_frequency"]
+                                                       * t_ms[None, None, :] / 1000.0 + ph[:, :, None])
+    elif p["data_generating_process"] == "hg_envelope":
+        # independent band-limited carriers; on post events the target channels
+        # share one slow (< env_hz) amplitude modulation, otherwise independent
+        import mne
+        sf = float(eeg.samplerate)
+        carrier = mne.filter.filter_data(np.random.standard_normal(eeg.shape), sf, *p["band"], verbose=False)
+        env = mne.filter.filter_data(np.random.standard_normal(eeg.shape), sf, None, p["env_hz"], verbose=False)
+        mask = np.asarray(condition_mask, bool)
+        env[np.ix_(mask, target)] = env[mask][:, :1]   # one channel's envelope, shared
+        env /= env.std(axis=-1, keepdims=True)
+        data += p["hg_amplitude"] * carrier * np.exp(p["env_depth"] * env)
+    elif p["data_generating_process"] == "leak":
+        # zero-lag common source added to target channels on post events only:
+        # volume conduction; ciPLV and AEC-c should not respond
+        mask = np.asarray(condition_mask, bool)
+        src = _pink((int(mask.sum()), 1, eeg.shape[-1]), p)
+        data[np.ix_(mask, target)] += p["leak_gain"] * src
     else:   # hg_ppc
         t_s = (t_ms - (t_ms[0] + t_ms[-1]) / 2) / 1000.0
         mask = np.asarray(condition_mask, bool)
         for m, key in ((~mask, "target_ppc0"), (mask, "target_ppc1")):
             if m.any():
                 data[m] += _bursts(int(m.sum()), _phase_cov(target, p[key], p["global_ppc"]), t_s, p)
+    if p.get("line_amplitude"):   # mains: one random phase per event, common to all channels
+        ph = np.random.uniform(0, 2 * np.pi, (eeg.shape[0], 1, 1))
+        data += p["line_amplitude"] * np.sin(2 * np.pi * 60.0 * t_ms[None, None, :] / 1000.0 + ph)
     return eeg.copy(data=data)

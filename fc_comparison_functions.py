@@ -22,6 +22,7 @@ from scipy.stats import ttest_1samp  # pyright: ignore[reportMissingTypeStubs]
 from scipy.stats import t as tdist  # pyright: ignore[reportMissingTypeStubs]
 from statsmodels.stats.multitest import multipletests  # pyright: ignore[reportMissingTypeStubs]
 
+import functools
 import os
 from os.path import join
 
@@ -31,7 +32,7 @@ import matplotlib.pyplot as plt
 
 from misc import *  # noqa: F401,F403
 from mne_connectivity import (  # pyright: ignore[reportMissingTypeStubs]
-    spectral_connectivity_epochs)
+    spectral_connectivity_epochs, envelope_correlation)
 # pactools is imported at function scope inside compute_pac (the only
 # caller). The high-level Comodulogram API was removed in favor of
 # pactools.bandpass_filter.multiple_band_pass + a direct Ozkurt MI
@@ -39,7 +40,7 @@ from mne_connectivity import (  # pyright: ignore[reportMissingTypeStubs]
 
 from project_paths import (
     SCRATCH_DIR as _SCRATCH_DIR,
-    MT_BANDWIDTH, COMPUTATION_METRICS,
+    MT_BANDWIDTH, COMPUTATION_METRICS, RUN_METRIC, SUBTRACT_ERP,
     REAL_DATA_BUFFER_MS,
     TIME_BIN_MS, MT_WINDOW_MS, LONGETAL,  # noqa: F401 (re-exported to the build scripts)
 )
@@ -57,9 +58,70 @@ NDArrayAny = npt.NDArray[Any]
 
 
 def load_pickle(path: str) -> Any:
-    """Convenience pickle.load wrapper. Shadows misc.load_pickle via star-import."""
+    """pickle.load. A session result's `reg_full` is refreshed from the session's
+    CURRENT pairs table, so atlas fixes apply without recomputing."""
     with open(path, "rb") as f:
-        return pickle.load(f)
+        d = pickle.load(f)
+    if isinstance(d, dict) and "sid" in d and "reg_full" in d:
+        new = session_regions(*map(str, d["sid"][:3]))
+        if new is not None and len(new) == len(d["reg_full"]):
+            d["reg_full"] = new
+    return d
+
+
+@functools.lru_cache(maxsize=None)
+def session_regions(sub: str, exp: str, sess: str) -> NDArrayAny | None:
+    """Region label per pair from the session's pairs table (None if absent).
+    Depth pairs with no volumetric atlas label get a neighbour label
+    (mni_neighbour_labels)."""
+    pairs = helper.get_pairs(pd.Series({"sub": sub, "exp": exp, "sess": int(sess)}))
+    if pairs is None:
+        return None
+    fine = np.array(helper.regionalize_electrodes_by_type(pairs), dtype=object)   # writable copy
+    todo = (pairs["type_1"].isin(["D", "UD"]).to_numpy()
+            & (helper.get_atlas_labels_by_type(pairs)["atlas"].astype(str) == "no atlas").to_numpy())
+    if todo.any():
+        fine[todo] = mni_neighbour_labels(sub, pairs.loc[todo, ["mni.x", "mni.y", "mni.z"]].to_numpy(float))
+    return fine
+
+
+MNI_LABEL_RADIUS_MM, MNI_LABEL_MIN_NEIGHBOURS = 5.0, 3
+
+
+@functools.lru_cache(maxsize=1)
+def _depth_label_reference() -> tuple[Any, NDArrayAny, NDArrayAny]:
+    """(KD-tree of MNI coords, region label, subject) for every depth pair with a
+    stein/das/wb label, over all sessions' pairs tables (one row per subject x pair)."""
+    from glob import glob
+    from scipy.spatial import cKDTree
+    rows = []
+    for f in glob(join(root_dir, "electrode_information", "pairs", "*_pairs.json")):
+        sub = os.path.basename(f).rsplit("_", 3)[0]
+        p = pd.read_json(f).fillna("nan")
+        ok = (p["type_1"].isin(["D", "UD"]).to_numpy()
+              & helper.get_atlas_labels_by_type(p)["atlas"].isin(["stein.region", "das.region", "wb.region"]).to_numpy())
+        fine = np.asarray(helper.regionalize_electrodes_by_type(p), dtype=object)
+        for i in np.flatnonzero(ok):
+            if isinstance(fine[i], str):
+                rows.append((sub, p["label"].iloc[i], fine[i], *p[["mni.x", "mni.y", "mni.z"]].iloc[i]))
+    d = pd.DataFrame(rows, columns=["sub", "label", "region", "x", "y", "z"]).drop_duplicates(["sub", "label"])
+    d = d[np.isfinite(d[["x", "y", "z"]].astype(float)).all(axis=1)]
+    return cKDTree(d[["x", "y", "z"]].to_numpy(float)), d["region"].to_numpy(object), d["sub"].to_numpy(object)
+
+
+def mni_neighbour_labels(sub: str, xyz: NDArrayAny) -> NDArrayAny:
+    """Region of each MNI point: majority label of expert/atlas-labelled depth pairs
+    of OTHER subjects within MNI_LABEL_RADIUS_MM (>= MNI_LABEL_MIN_NEIGHBOURS), else
+    NaN. Leave-one-subject-out on labelled pairs (2026-10-03): 89% 12-ROI / 79%
+    fine-region agreement, 70% of pairs covered."""
+    from collections import Counter
+    tree, region, subs = _depth_label_reference()
+    out = np.full(len(xyz), np.nan, dtype=object)
+    for i, nb in enumerate(tree.query_ball_point(np.nan_to_num(xyz, nan=1e6), MNI_LABEL_RADIUS_MM)):
+        labs = [region[j] for j in nb if subs[j] != sub]
+        if len(labs) >= MNI_LABEL_MIN_NEIGHBOURS:
+            out[i] = Counter(labs).most_common(1)[0][0]
+    return out
 
 
 def _assert_time_axis_covers(
@@ -117,26 +179,6 @@ def equalize_time_length(*arrays: NDArrayAny) -> tuple[NDArrayAny, ...]:
     return tuple(out)
 
 
-def assert_equal_time_length(*arrays: NDArrayAny, tol: int = 0) -> int:
-    """Assert all arrays share the same last-axis (time) length and return it.
-
-    `tol` is the maximum allowed spread (max-min) in samples: tol=1 permits the
-    #88 resample grid-phase off-by-one that equalize_time_length resolves, while
-    a larger spread signals a genuine windowing bug and raises. Call this to
-    validate pre/post epochs are equal-length (tol=0 after equalize_time_length,
-    tol=1 on the raw loaded epochs).
-    """
-    if not arrays:
-        raise ValueError("assert_equal_time_length requires at least one array")
-    lengths = [int(a.shape[-1]) for a in arrays]
-    spread = max(lengths) - min(lengths)
-    if spread > tol:
-        raise ValueError(
-            f"time-axis lengths differ by {spread} > tol {tol}: {lengths}"
-        )
-    return min(lengths)
-
-
 from project_paths import BANDS as bands
 
 
@@ -163,27 +205,48 @@ def symmetrize_dense(mat: NDArrayAny, diag_value: float = 1.0, eps: float = 1e-1
     return out
  
 
-def compute_metric_matrix(
-    data: NDArrayAny,
-    sfreq: float,
-    m: str,
-    fmin: float,
-    fmax: float,
-    buffer_left_samples: int = 0,
-    buffer_right_samples: int = 0,
-) -> NDArrayAny:
-    """Connectivity matrix for metric `m`: PAC (compute_pac, which keeps the
-    real-data buffer through band-pass + Hilbert and crops it from the analytic
-    signal) or an MNE multitaper phase metric (buffer sliced off first; it only
-    anchors the resample/notch edges)."""
+def band_analytic(x: NDArrayAny, sf: float, fmin: float, fmax: float) -> NDArrayAny:
+    """Band-pass + Hilbert over the whole (buffered) clip, so the filter edge sits
+    in the buffer (as riley-thesis compute_aec_buffered)."""
+    import mne
+    from scipy.signal import hilbert
+    from mne.filter import next_fast_len
+    filt = mne.filter.filter_data(np.asarray(x, float), sf, fmin, fmax, verbose=False)
+    n = filt.shape[-1]
+    return hilbert(filt, N=next_fast_len(n), axis=-1)[..., :n]
+
+
+def compute_aec_c(analytic: NDArrayAny) -> NDArrayAny:
+    """Orthogonalized AEC of a complex analytic signal (trials, ch, time):
+    mne_connectivity.envelope_correlation (pairwise, signed r, as riley-thesis),
+    mean over trials, symmetric, NaN diagonal. |r| > 1 comes from (near-)flat
+    epochs; as in riley-thesis the session is excluded (raises)."""
+    out = np.squeeze(np.asarray(envelope_correlation(
+        analytic, orthogonalize="pairwise", absolute=False, verbose=False).get_data(output="dense")))
+    if out.ndim == 3:
+        out = np.nanmean(out, axis=0)
+    out = symmetrize_dense(out, diag_value=np.nan)
+    if np.any(np.abs(out[np.isfinite(out)]) > 1) or np.isinf(out).any():
+        raise ValueError("AEC-c |r| > 1 (near-flat epochs); session excluded")
+    return out
+
+
+def window_fc(x: NDArrayAny, sf: float, t0: float, win: tuple[float, float], m: str,
+              fmin: float, fmax: float, nw_ms: float, n_buf: int,
+              analytic: NDArrayAny | None = None) -> NDArrayAny:
+    """Metric `m` over window `win` (ms) of `x`, whose first sample is at t0 ms.
+    aec_c: from the whole-clip `analytic`; pac: the window plus n_buf buffer
+    samples each side; phase metrics: MNE multitaper on the window, bandwidth
+    scaled so the time-bandwidth product equals that of an nw_ms window."""
+    i = int(round((win[0] - t0) * sf / 1000.0))
+    n = int(round((win[1] - win[0]) * sf / 1000.0))
+    if m == "aec_c":
+        return compute_aec_c(analytic[..., i:i + n])
     if m == "pac":
-        return compute_pac(
-            data, sfreq,
-            buffer_left_samples=buffer_left_samples,
-            buffer_right_samples=buffer_right_samples)
-    if buffer_left_samples or buffer_right_samples:
-        data = data[..., buffer_left_samples:data.shape[-1] - buffer_right_samples]
-    return compute_spectral_fc(data, sfreq, method=m, fmin=fmin, fmax=fmax, faverage=True)
+        return compute_pac(x[..., i - n_buf:i + n + n_buf], sf,
+                           buffer_left_samples=n_buf, buffer_right_samples=n_buf)
+    return compute_spectral_fc(x[..., i:i + n], sf, method=m, fmin=fmin, fmax=fmax,
+                               bandwidth=MT_BANDWIDTH * nw_ms / (win[1] - win[0]))
 
 FC_MODES = ("multitaper", "hilbert")   # hilbert: power only (longetal)
 POWER_MODE = "hilbert" if LONGETAL else "multitaper"
@@ -207,13 +270,14 @@ def compute_spectral_fc(
     fmin: float,
     fmax: float,
     faverage: bool = True,
+    bandwidth: float | None = None,
 ) -> NDArrayAny:
     """MNE multitaper phase connectivity (non-multivariate methods), symmetric
-    (n_ch, n_ch) with a NaN diagonal."""
+    (n_ch, n_ch) with a NaN diagonal. bandwidth defaults to config mt_bandwidth."""
     con = spectral_connectivity_epochs(
         data, method=method, mode="multitaper",
         sfreq=sfreq, fmin=fmin, fmax=fmax, faverage=faverage,
-        mt_adaptive=False, mt_bandwidth=MT_BANDWIDTH, n_jobs=1, verbose=False,
+        mt_adaptive=False, mt_bandwidth=bandwidth or MT_BANDWIDTH, n_jobs=1, verbose=False,
     )
     out = con.get_data(output="dense")
     if faverage:
@@ -231,6 +295,10 @@ PREPOST_SPEC: dict[str, dict[str, Any]] = {
     "word_on": {"pre_type": "PRE_WORD", "post_type": "WORD",
                 "pre_win": (-700.0, -100.0), "post_win": (0.0, 600.0)},
 }
+# 200 ms epochs of the word presentation, each minus the mean of the same-length
+# epochs of the word-off window (the time-resolved synchrony figure).
+EPOCHS: tuple[tuple[float, float], ...] = tuple((s, s + 200.0) for s in range(0, 1600, 200))
+EPOCH_BASELINE: tuple[tuple[float, float], ...] = tuple((s, s + 200.0) for s in range(-700, -100, 200))
 if LONGETAL:   # Long et al.: blank screen vs word on screen
     PREPOST_SPEC["word_on"].update(pre_win=tuple(map(float, LONGETAL["pre_win"])),
                                    post_win=tuple(map(float, LONGETAL["post_win"])))
@@ -247,10 +315,12 @@ def compute_prepost_separate(
 ) -> dict[str, dict[str, NDArrayAny]]:
     """Word off vs word on FC from SEPARATE event-locked pre/post loads. The
     pre-type events (events.attrs['mask'] == False) load at the pre window,
-    post-type (mask == True) at the post window, each widened by
-    real_data_buffer_ms. The buffer is removed before the phase metrics (pre/post
-    then equalized to one sample count) and kept through the band-pass + Hilbert
-    for PAC. Returns {metric: {baseline, succ, diff}}, diff = FC(post) - FC(pre).
+    post-type (mask == True) at the post window extended to the last EPOCHS end,
+    each widened by a real-data buffer (see below). With config subtract_erp, each
+    window's evoked response (across-trial mean, per channel and sample) is
+    subtracted first. Returns
+    {metric: {baseline, succ, diff, epochs}}: diff = FC(post) - FC(pre); epochs =
+    FC(each EPOCHS window) - mean FC(EPOCH_BASELINE windows), (8, ch, ch).
 
     `load_fn(dfrow, events, window, real_data_buffer_ms, simulation_tag)`
     defaults to get_beh_eeg.
@@ -291,36 +361,37 @@ def compute_prepost_separate(
             f"{pre_off.shape[0]} pre, content mismatch — malformed event file."
         )
 
-    post_eeg, _ = load_fn(dfrow, post_events, post_win, real_data_buffer_ms, simulation_tag)
+    post_load = (post_win[0], max(post_win[1], EPOCHS[-1][1]))
+    post_eeg, _ = load_fn(dfrow, post_events, post_load, real_data_buffer_ms, simulation_tag)
     pre_eeg, _ = load_fn(dfrow, pre_events, pre_win, real_data_buffer_ms, simulation_tag)
     # coverage guard: the loaded clip must span its analysis window (the buffer
     # extends beyond it, so a short axis means boundary clipping).
-    _assert_time_axis_covers(np.asarray(post_eeg.time), post_win[0], post_win[1], f"{beh} post")
+    _assert_time_axis_covers(np.asarray(post_eeg.time), post_load[0], post_load[1], f"{beh} post")
     _assert_time_axis_covers(np.asarray(pre_eeg.time), pre_win[0], pre_win[1], f"{beh} pre")
     sf = float(post_eeg.samplerate)
-    post = np.asarray(post_eeg.data); pre = np.asarray(pre_eeg.data)
-    nL = int(round(real_data_buffer_ms * sf / 1000.0))
+    post = np.asarray(post_eeg.data, float); pre = np.asarray(pre_eeg.data, float)
+    if SUBTRACT_ERP:   # subtract the evoked response (across-trial mean) per window
+        post -= post.mean(axis=0, keepdims=True)
+        pre -= pre.mean(axis=0, keepdims=True)
+    arms = {"post": (post, float(post_eeg.time[0])), "pre": (pre, float(pre_eeg.time[0]))}
+    n_buf = int(round(real_data_buffer_ms * sf / 1000.0))
+    nw_ms = post_win[1] - post_win[0]
 
     out_m: dict[str, dict[str, NDArrayAny]] = {}
     for m in metric_list:
-        if m == "pac":
-            # keep the buffer through band-pass + Hilbert; cropped off the analytic
-            C_post = compute_metric_matrix(post, sf, m, fmin, fmax,
-                                           buffer_left_samples=nL, buffer_right_samples=nL)
-            C_pre = compute_metric_matrix(pre, sf, m, fmin, fmax,
-                                          buffer_left_samples=nL, buffer_right_samples=nL)
-        else:
-            # drop the buffer, then equalize pre/post to one sample count so the
-            # multitaper frequency grid matches across the contrast.
-            post_i = post[..., nL:post.shape[-1] - nL] if nL else post
-            pre_i = pre[..., nL:pre.shape[-1] - nL] if nL else pre
-            pre_i, post_i = equalize_time_length(pre_i, post_i)
-            assert_equal_time_length(pre_i, post_i, tol=0)
-            C_post = compute_metric_matrix(post_i, sf, m, fmin, fmax)
-            C_pre = compute_metric_matrix(pre_i, sf, m, fmin, fmax)
-        C_post = apply_overlap_mask(C_post, overlap_mask)
-        C_pre = apply_overlap_mask(C_pre, overlap_mask)
+        # AEC-c on bands.gamma (70-110 Hz, as riley-thesis): the envelope must stay
+        # below the band's lower edge (Bedrosian), which a 70-150 band violates.
+        an = ({k: band_analytic(x, sf, *bands["gamma"]) for k, (x, _) in arms.items()}
+              if m == "aec_c" else {})
+        def fc_(arm: str, win: tuple[float, float]) -> NDArrayAny:
+            x, t0 = arms[arm]
+            return apply_overlap_mask(window_fc(x, sf, t0, win, m, fmin, fmax, nw_ms, n_buf,
+                                                an.get(arm)), overlap_mask)
+        C_post, C_pre = fc_("post", post_win), fc_("pre", pre_win)
         out_m[m] = {"baseline": C_pre, "succ": C_post, "diff": C_post - C_pre}
+        if m != "pac":
+            base = np.nanmean([fc_("pre", w) for w in EPOCH_BASELINE], axis=0)
+            out_m[m]["epochs"] = np.stack([fc_("post", w) - base for w in EPOCHS])
     return out_m
 
 
@@ -503,11 +574,14 @@ LOBE_COLORS: dict[str, str] = {
 }
 
 # Minimum subjects contributing an ROI before it is tested / drawn.
-MIN_SUBJECTS_ROI: int = 5
+# Minimum subjects per test; a subject
+# needs only 1 electrode in a region. Simulations (20 subjects) use 5 (resolve_roots).
+MIN_SUBJECTS_ROI: int = 30     # region-level tests (ROIs, subregions, bins)
+MIN_SUBJECTS_PAIR: int = 30    # region-pair connections (epoch network; riley-thesis uses 100,
+                               # which only 3 ROI pairs / 0 fine-region pairs reach here)
 # Minimum electrodes in a (session, ROI) cell before its correlation is taken,
 # and minimum electrodes in a distance bin before that bin can be standardized.
 MIN_ELEC_CORR: int = 5
-MIN_ELEC_BIN: int = 5
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -600,86 +674,12 @@ def electrode_bin_matrix(
         return np.where(cnt > 0, tot / np.maximum(cnt, 1), np.nan)
 
 
-def zscore_bins(S: NDArrayAny, min_elec: int = MIN_ELEC_BIN) -> NDArrayAny:
-    """Z-score each distance bin across that session's electrodes.
-
-    WITHIN a bin, ACROSS electrodes: each bin column is standardized against its
-    own electrodes, then (by the caller) the bins are averaged. This is not a
-    z-score of one electrode across its own bins, which would force every
-    electrode to 0 and delete the signal.
-
-    Both moments matter, and both correct the same artifact -- ragged distance
-    coverage. Centring removes the LEVEL difference (electrodes sample different
-    distances, and connectivity falls off with distance). Dividing by the SD
-    removes the SPREAD difference: across-electrode variability also shrinks with
-    distance, so after centring alone an electrode covered only by far bins
-    carries systematically smaller deviations and its score is compressed toward
-    zero for purely geometric reasons.
-
-    A bin is dropped when it has fewer than `min_elec` electrodes (its mean and
-    SD would be too noisy to standardize against) or a non-positive SD.
-    """
-    out = np.full_like(S, np.nan)
-    for b in range(S.shape[1]):
-        col = S[:, b]
-        ok = np.isfinite(col)
-        if ok.sum() < min_elec:
-            continue
-        sd = np.nanstd(col, ddof=1)
-        if not (np.isfinite(sd) and sd > 0):
-            continue
-        out[:, b] = np.where(ok, (col - np.nanmean(col)) / sd, np.nan)
-    return out
-
-
-def mean_over_bins(Sc: NDArrayAny) -> NDArrayAny:
-    """(n_ch,) mean of each electrode's usable z-scored bins.
-
-    Written as sum/count rather than nanmean so an electrode with no usable bin
-    yields nan quietly instead of an all-NaN-slice warning.
-    """
-    n_ok = np.isfinite(Sc).sum(axis=1)
-    return np.where(n_ok > 0, np.nansum(Sc, axis=1) / np.maximum(n_ok, 1),
-                    np.nan)
-
-
-def collapsed_synchrony(
-    M: Any, iu: tuple[NDArrayAny, NDArrayAny], dist: NDArrayAny,
-    keep: NDArrayAny, n_ch: int, edges: NDArrayAny, zscore: bool = True,
-) -> tuple[NDArrayAny, NDArrayAny] | None:
-    """Connectivity matrix -> (per-electrode collapsed synchrony, z-scored bins).
-    zscore=False skips the per-bin z-score (raw metric units, whole-brain shifts kept).
-
-        s[e, b]  = mean connectivity of electrode e to its partners in bin b
-        s'[e, b] = (s[e, b] - mean_e s[:, b]) / sd_e s[:, b]
-        S[e]     = mean over the bins e populates of s'[e, b]
-
-    S[e] reads "how much more (or less) synchronized is this electrode than
-    expected given the distances it happens to sample" -- a correction for
-    RAGGED BIN COVERAGE, not for the distance decay itself (if every electrode
-    populated every bin the centring would subtract the same constant from
-    everyone). Standardizing also gives every distance range equal influence,
-    without which the high-variance short-range bins decide the result.
-
-    Returns None when no eligible pair has a finite value.
-    """
-    vals = np.asarray(M, float)[iu]
-    sel = keep & np.isfinite(vals)
-    if not sel.any():
-        return None
-    S = electrode_bin_matrix(vals[sel], dist[sel], (iu[0][sel], iu[1][sel]),
-                             n_ch, edges)
-    Sc = zscore_bins(S) if zscore else S
-    return mean_over_bins(Sc), Sc
-
-
-def zscore_across(v: Any) -> NDArrayAny:
-    """z across electrodes; nan-vector when the SD is undefined or zero."""
-    v = np.asarray(v, float)
-    sd = np.nanstd(v, ddof=1)
-    if not (np.isfinite(sd) and sd > 0):
-        return np.full_like(v, np.nan)
-    return (v - np.nanmean(v)) / sd
+def electrode_sync(M: Any) -> NDArrayAny:
+    """Per-electrode synchrony: mean over all its partners (as Rao et al. 2025);
+    NaN entries (diagonal, contact-sharing pairs) are skipped."""
+    M = np.asarray(M, float)
+    n = np.isfinite(M).sum(axis=1)
+    return np.where(n > 0, np.nansum(M, axis=1) / np.maximum(n, 1), np.nan)
 
 
 # --- per-ROI statistics ------------------------------------------------------
@@ -694,7 +694,7 @@ def mean_ci(v: Any, conf: float = 0.95) -> tuple[float, float]:
 
 def roi_stats(
     tbl: pd.DataFrame, measure: str, roi_order: Sequence[str] = tuple(ROI_ORDER),
-    min_subjects: int = MIN_SUBJECTS_ROI,
+    min_subjects: int | None = None,
 ) -> pd.DataFrame:
     """Per-ROI n / mean / CI / median / IQR + one-sample t vs 0, BH-FDR over ROIs.
 
@@ -718,7 +718,7 @@ def roi_stats(
         t = p = np.nan
         # t is undefined at zero variance (every subject identical) -- rare, but
         # it would come back as a nan + RuntimeWarning rather than an error
-        if v.size >= min_subjects and np.std(v, ddof=1) > 0:
+        if v.size >= (min_subjects or MIN_SUBJECTS_ROI) and np.std(v, ddof=1) > 0:
             res = ttest_1samp(v, 0.0)
             t, p = float(res.statistic), float(res.pvalue)
             tested.append(roi)
@@ -868,7 +868,7 @@ def roi_figure(
     fig, axes = plt.subplots(n, 1, figsize=(11, height * n + 0.8))
     for ax, (ylabel, draw) in zip(np.atleast_1d(axes), panels):
         draw(ax)
-        ax.set_ylabel(ylabel, fontsize=9)
+        ax.set_ylabel(ylabel, fontsize=12)
     fig.tight_layout(rect=(0, 0.02, 1, 0.97))
 
     os.makedirs(out_dir, exist_ok=True)
@@ -879,21 +879,108 @@ def roi_figure(
     plt.close(fig)
 
 
-def band_contrast_figure(out_dir: str, stem: str, col: str, ylabel: str) -> None:
-    """hi - lo contrast, one row per band whose `<stem>_per_subject.csv` exists in
-    out_dir (stem has a `{band}` field), saved as stem without `_{band}`."""
-    panels = []
+METRIC_LABELS: dict[str, str] = {"coh": "Coherence", "plv": "PLV", "ppc": "PPC", "ciplv": "ciPLV",
+                                  "pli": "PLI", "wpli": "wPLI", "aec_c": "AEC-c", "pac": "PAC"}
+
+
+def band_label(band: str) -> str:
+    """'high_gamma' -> 'High Gamma (70–150 Hz)'."""
+    lo, hi = bands[band]
+    return f"{band.replace('_', ' ').title()} ({lo:g}–{hi:g} Hz)"
+
+
+def band_stems(out_dir: str, stem: str, suffix: str) -> list[tuple[str, str, str]]:
+    """[(band, its run metric, path)] for each band whose <stem><suffix> file exists
+    in out_dir; stem has a {band} and optionally a {metric} field (config runs)."""
+    out = []
     for band in bands:
-        f = join(out_dir, stem.format(band=band) + "_per_subject.csv")
-        if not os.path.exists(f):
-            continue
+        metric = RUN_METRIC.get(band, "")
+        f = join(out_dir, stem.format(band=band, metric=metric) + suffix)
+        if os.path.exists(f):
+            out.append((band, metric, f))
+    return out
+
+
+def band_contrast_figure(out_dir: str, stem: str, col: str, ylabel: str) -> None:
+    """hi - lo contrast, one row per band whose `<stem>_per_subject.csv` exists
+    (band_stems); `{metric}` in ylabel becomes that band's metric label. Saved as
+    stem without its `_{band}` / `_{metric}` fields."""
+    panels = []
+    for band, metric, f in band_stems(out_dir, stem, "_per_subject.csv"):
         tbl = pd.read_csv(f)
         if "cond" in tbl:   # power-synchrony keeps cond as a column
             tbl = tbl[tbl["cond"] == "diff"]
         st = roi_stats(tbl, col)
-        panels.append((f"{band}\n{ylabel}", lambda ax, tbl=tbl, st=st: roi_panel(
-            ax, tbl, col, np.random.default_rng(0), stats=st)))
-    roi_figure(panels, out_dir, stem.replace("_{band}", ""))
+        panels.append((f"{band_label(band)}\n{ylabel.format(metric=METRIC_LABELS.get(metric, metric))}",
+                       lambda ax, tbl=tbl, st=st: roi_panel(ax, tbl, col, np.random.default_rng(0), stats=st)))
+    if panels:   # none when no band's run metric has been plotted yet
+        roi_figure(panels, out_dir, stem.replace("_{band}", "").replace("_{metric}", ""))
+
+
+def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
+                         max_lw: float = 6.0) -> None:
+    """Rao et al. 2025 / Solomon et al. 2017 style network per EPOCHS window
+    (columns) for each band with `<stem>_hubs.csv` (rows; band_stems).
+
+    Hubs: regions whose mean on - off change over all their connections differs
+    from 0 across subjects (two-stage BKY FDR over regions x epochs, as Rao);
+    red node = positive hub, blue = negative, grey = not a hub. Edges: each hub's
+    `top_n` strongest connections in its own direction (ranked by mean change,
+    as Rao), from region pairs with >= MIN_SUBJECTS_PAIR subjects; red =
+    synchronized, blue = desynchronized, width proportional to |t| (Solomon)."""
+    from matplotlib.lines import Line2D
+    from nilearn import plotting
+    rows = band_stems(out_dir, stem, "_hubs.csv")
+    if not rows:
+        return
+    nE = len(EPOCHS)
+    fig, axes = plt.subplots(len(rows), nE, figsize=(2.7 * nE + 2.5, 3.2 * len(rows) + 0.6),
+                             squeeze=False)
+    for r, (band, metric, f) in enumerate(rows):
+        hubs = pd.read_csv(f)
+        pairs = pd.read_csv(f.replace("_hubs.csv", "_stats.csv")).dropna(subset=["t"])
+        pairs[["a", "b"]] = pairs["roi"].str.split("|", expand=True)
+        pairs = pairs[pairs["a"] != pairs["b"]]
+        cen = pd.read_csv(f.replace("_hubs.csv", "_centroids.csv"), index_col="roi")
+        rois = sorted(cen.index, key=lambda x: (ROI_ORDER.index(x) if x in ROI_ORDER else 99, x))
+        idx = {x: i for i, x in enumerate(rois)}
+        xyz = cen.loc[rois, ["x", "y", "z"]].to_numpy()
+        small = len(rois) > 12
+        tmax = float(np.nanmax(np.abs(pairs["t"]))) if len(pairs) else 1.0
+        for c, (w0, w1) in enumerate(EPOCHS):
+            h = hubs[(hubs["epoch_ms"] == w0) & (hubs["q"] < 0.05)].set_index("roi")["t"]
+            color = ["red" if h.get(x, 0) > 0 else "blue" if h.get(x, 0) < 0 else "0.75" for x in rois]
+            size = [(30 if small else 90) if x in h.index else (6 if small else 25) for x in rois]
+            disp = plotting.plot_connectome(np.zeros((len(rois), len(rois))), xyz, axes=axes[r, c],
+                                            display_mode="z", node_color=color, node_size=size,
+                                            colorbar=False, annotate=False)
+            pe = pairs[pairs["epoch_ms"] == w0]
+            for hub, ht in h.items():
+                mine = pe[(pe["a"] == hub) | (pe["b"] == hub)]
+                mine = mine[np.sign(mine["mean"]) == np.sign(ht)]
+                for _, e in mine.reindex(mine["mean"].abs().sort_values(ascending=False).index).head(top_n).iterrows():
+                    if e["a"] not in idx or e["b"] not in idx:
+                        continue
+                    A = np.zeros((len(rois), len(rois)))
+                    A[idx[e["a"]], idx[e["b"]]] = A[idx[e["b"]], idx[e["a"]]] = np.sign(e["mean"])
+                    disp.add_graph(A, xyz, node_size=0, edge_cmap="bwr", edge_vmin=-1, edge_vmax=1,
+                                   edge_kwargs={"linewidth": max_lw * abs(e["t"]) / tmax})
+            if r == 0:
+                axes[r, c].set_title(f"{w0:g}–{w1:g} ms", fontsize=15)
+        handles = [Line2D([], [], marker="o", ls="", color="red", ms=9, label="Positive hub"),
+                   Line2D([], [], marker="o", ls="", color="blue", ms=9, label="Negative hub"),
+                   Line2D([], [], color="red", lw=3, label="Synchronized"),
+                   Line2D([], [], color="blue", lw=3, label="Desynchronized")]
+        axes[r, -1].legend(handles=handles, loc="center left", bbox_to_anchor=(1.05, 0.5),
+                           frameon=False, fontsize=11, title_fontsize=12,
+                           title=ylabel.format(metric=METRIC_LABELS.get(metric, metric)).replace(" (", "\n("))
+        axes[r, 0].text(-0.08, 0.5, band_label(band), transform=axes[r, 0].transAxes,
+                        rotation=90, ha="right", va="center", fontsize=15)
+    path = join(out_dir, stem.replace("_{band}", "").replace("_{metric}", ""))
+    fig.savefig(f"{path}.png", dpi=300, bbox_inches="tight")
+    fig.savefig(f"{path}.pdf", bbox_inches="tight")
+    print(f"[saved] {path}.png / .pdf")
+    plt.close(fig)
 
 
 def pretty_roi(name: Any) -> str:
@@ -905,17 +992,19 @@ def pretty_roi(name: Any) -> str:
     return t[:1].upper() + t[1:]
 
 
-def bin_stats(tbl: pd.DataFrame, x: str, y: str) -> pd.DataFrame:
+def bin_stats(tbl: pd.DataFrame, x: str, y: str, min_subjects: int | None = None,
+              fdr: str = "fdr_bh") -> pd.DataFrame:
     """Per (ROI, x bin): one-sample t of the subject values `y` vs 0, BH-FDR over
     ALL roi x bin cells (the family is the whole map). Columns: roi, x, n, mean,
     sem, ci95 (t-based half-width, fc.mean_ci), t, p, q."""
     rows = []
-    for roi in ROI_ORDER:
+    present = set(tbl["roi"])   # ROIs in plotting order; anything else (ROI pairs) sorted
+    for roi in [r for r in ROI_ORDER if r in present] + sorted(present - set(ROI_ORDER)):
         sub = tbl[tbl["roi"] == roi]
         for b in sorted(sub[x].unique()):
             v = sub.loc[sub[x] == b, y].dropna().to_numpy(float)
             t = p = np.nan
-            if v.size >= MIN_SUBJECTS_ROI and np.ptp(v) > 0:
+            if v.size >= (min_subjects or MIN_SUBJECTS_ROI) and np.ptp(v) > 0:
                 t, p = ttest_1samp(v, 0.0)
             rows.append({"roi": roi, x: b, "n": v.size,
                          "mean": float(np.mean(v)) if v.size else np.nan,
@@ -926,7 +1015,7 @@ def bin_stats(tbl: pd.DataFrame, x: str, y: str) -> pd.DataFrame:
     m = out["p"].notna().to_numpy()
     out["q"] = np.nan
     if m.any():
-        out.loc[m, "q"] = multipletests(out.loc[m, "p"].to_numpy(float), method="fdr_bh")[1]
+        out.loc[m, "q"] = multipletests(out.loc[m, "p"].to_numpy(float), method=fdr)[1]
     return out
 
 
@@ -981,6 +1070,15 @@ def load_sess_list(
     elif n_sessions is not None:
         df = df.iloc[:n_sessions]
     return [row for _, row in df.iterrows()]
+
+
+def session_files(d: Any, suffix: str, n_sessions: int | None = None) -> list[Path]:
+    """Sorted per-session files `<ftag><suffix>` in d, for sessions INCLUDED in
+    root_dir's sess_list_df.json only, so stale files of excluded sessions are
+    never aggregated."""
+    inc = pd.read_json(join(root_dir, "sess_list_df.json")).query("include == True")
+    keep = {f"{r.sub}_{r.exp}_{r.sess}" for r in inc.itertuples()}
+    return [f for f in sorted(Path(d).glob(f"*{suffix}")) if f.name[:-len(suffix)] in keep][:n_sessions]
 
 
 def _sid_str(row: Any) -> str:
@@ -1097,7 +1195,8 @@ def add_common_args(p: Any, compute: bool = True) -> Any:
 
 def add_distance_args(p: Any) -> Any:
     """CLI flags for the pair-distance binning shared by the synchrony scripts."""
-    p.add_argument("--metric", default="ppc", choices=PHASE_METRICS)
+    p.add_argument("--metric", default=None, choices=PHASE_METRICS,
+                   help="default: the band's metric in config runs")
     p.add_argument("--rmin", type=float, default=10.0)
     p.add_argument("--rmax", type=float, default=110.0)
     p.add_argument("--bin-w", type=float, default=10.0, dest="bin_w")
@@ -1107,9 +1206,11 @@ def add_distance_args(p: Any) -> Any:
 
 def resolve_roots(args: Any) -> tuple[str, str]:
     """(root_dir, save_root) from --root-dir / --save-root; point helper at them."""
-    global root_dir
+    global root_dir, MIN_SUBJECTS_ROI, MIN_SUBJECTS_PAIR
     root_dir = args.root_dir or root_dir
     tag = getattr(args, "simulation_tag", None)   # simulated pickles never share the real cache
+    if tag:   # simulation runs use ~20 subjects
+        MIN_SUBJECTS_ROI = MIN_SUBJECTS_PAIR = 5
     save_root = getattr(args, "save_root", None) or (join(root_dir, "sim", tag) if tag else root_dir)
     helper.root_dir = root_dir
     print(f"[setup] root_dir  = {root_dir}")

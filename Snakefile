@@ -37,6 +37,7 @@ def r(w): return RUNS[w.run]
 def sim(w): return "" if w.sim == "real" else f"--simulation-tag {w.sim}"   # sims -> <scratch>/sim/<tag>
 def fig(w): return FIG if w.sim == "real" else f"{FIG}/simulations/{w.sim}"
 def stage(w): return "--stage compute" if w.sim in SWEEP_TAGS else ""
+def metrics(w): return r(w)["metric"] + ("" if w.sim == "real" else " ppc")   # recovery reads PPC (phase plant)
 def rec_input(t): return f"{DONE}/{t}/{RUN0}." + ("power" if simulation_parameters[t].get("data_generating_process") == "hg_power" else "synchrony")
 
 
@@ -70,8 +71,8 @@ rule roi_synchrony:   # after power: power -> synchrony -> power-synchrony
     input: rules.prepare_sessions.output, f"{DONE}/{{sim}}/{{run}}.power"
     output: touch(f"{DONE}/{{sim}}/{{run}}.synchrony")
     threads: workflow.cores
-    params: r=r, sim=sim, fig=fig, stage=stage
-    shell: f"{PY} build_roi_synchrony.py {ARGS} --metrics {{params.r[metric]}} --metric {{params.r[metric]}} --workers {{threads}} --out-dir {{params.fig}}/burke_roi_synchrony"
+    params: r=r, sim=sim, fig=fig, stage=stage, m=metrics
+    shell: f"{PY} build_roi_synchrony.py {ARGS} --metrics {{params.m}} --metric {{params.r[metric]}} --workers {{threads}} --out-dir {{params.fig}}/burke_roi_synchrony"
 
 rule power_synchrony:
     input: f"{DONE}/{{sim}}/{{run}}.power", f"{DONE}/{{sim}}/{{run}}.synchrony"

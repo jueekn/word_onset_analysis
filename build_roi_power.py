@@ -167,6 +167,20 @@ def band_power(seg, sf, fmin, fmax, bandwidth):
     return np.asarray(psds).mean(-1)                       # (E, C)
 
 
+FREQ_EDGES = np.geomspace(5, 100, 11)   # log-spaced bins of the power spectrum (band "spectrum")
+
+
+def band_power_bins(seg, sf, bandwidth, edges=FREQ_EDGES):
+    """(E, C, n_bins) multitaper power averaged within each [edges[k], edges[k+1])
+    bin, leaving out the notched mains frequencies (48-52, 58-62 Hz)."""
+    from mne.time_frequency import psd_array_multitaper
+    psds, f = psd_array_multitaper(seg, sf, fmin=edges[0], fmax=edges[-1], bandwidth=bandwidth,
+                                   adaptive=False, low_bias=False, normalization="full", verbose=False)
+    keep = (np.abs(f - 50) > 2) & (np.abs(f - 60) > 2)
+    return np.stack([np.asarray(psds)[..., (f >= a) & (f < b) & keep].mean(-1)
+                     for a, b in zip(edges[:-1], edges[1:])], axis=-1)
+
+
 def hilbert_envelope(seg, sf, fmin, fmax, buf_samples, env_hz, n_bands=1):
     """Long et al. 2020 high gamma: Hilbert AMPLITUDE envelope at the native rate,
     trim the buffer, downsample to `env_hz`. (E, C, T). n_bands=1: one band-pass
@@ -264,6 +278,7 @@ def run_sess_power(
             # stale and recompute rather than silently reporting them cached.
             if all(k in cached for k in ("pow_lo", "pow_hi", "cohens_d",
                                          "reg_full", "n_win_samples")) and (
+                    cached.get("buffer_ms") == fc.REAL_DATA_BUFFER_MS) and (
                     fc_mode != "hilbert" or cached.get("env_lo") is not None):
                 return f"{sid}: cached"
         except Exception:
@@ -342,6 +357,12 @@ def run_sess_power(
     p_lo[~np.isfinite(p_lo)] = np.nan
     p_hi[~np.isfinite(p_hi)] = np.nan
 
+    d_freq = None
+    if band == "spectrum":   # Cohen's d per log-spaced frequency bin, (n_ch, n_bins)
+        b_lo, b_hi = band_power_bins(lo_seg, sf, bandwidth), band_power_bins(hi_seg, sf, bandwidth)
+        d_freq = np.asarray(helper.cohens_d(b_hi.reshape(len(b_hi), -1),
+                                            b_lo.reshape(len(b_lo), -1))).reshape(n_ch, -1)
+
     # Per-bin contrast, (n_ch, n_bins). Same Cohen's d as the collapsed measure,
     # computed independently within each time bin -> d as a function of latency.
     d_bins = bin_centers = None
@@ -416,6 +437,7 @@ def run_sess_power(
         "pow_lo": np.nanmean(p_lo, axis=0),
         "pow_hi": np.nanmean(p_hi, axis=0),
         "cohens_d": d,
+        "cohens_d_freq": d_freq, "freq_edges": FREQ_EDGES if d_freq is not None else None,
         "n_events": int(data.shape[0]),
         "n_lo": int(p_lo.shape[0]), "n_hi": int(p_hi.shape[0]),
         "n_win_samples": int(n_win),
@@ -452,7 +474,7 @@ def collect_electrode_table(save_root, beh, band, lobe_of, n_sessions=None):
     subject with 4 sessions does not outweigh one with 1.
     """
     d = power_dir(save_root, beh, band)
-    files = sorted(d.glob("*_power.pkl"))[:n_sessions]
+    files = fc.session_files(d, "_power.pkl", n_sessions)
     if not files:
         raise SystemExit(
             f"no pickles in {d}\nrun the compute stage first: "
@@ -592,8 +614,92 @@ def run_responsiveness_stage(save_root, beh, band, args, lobe_of, fine_top_n=15)
         print(f"[responsive] wrote {path}")
 
 
+# Occipital subregions for the spectrum curves: {fine label: (panel, line)}.
+SPECTRUM_SUBREGIONS = {"L fusiform gyrus": ("Fusiform", "L"), "R fusiform gyrus": ("Fusiform", "R"),
+                       "L lateral occipital cortex": ("Lateral occipital", "L"),
+                       "R lateral occipital cortex": ("Lateral occipital", "R")}
+
+
+def run_spectrum_stage(save_root, beh, args, lobe_of):
+    """t of the per-electrode Cohen's d (word on vs off power) per log-spaced
+    frequency bin, across subjects: 12-ROI heatmap + occipital-subregion curves.
+    BH-FDR over all cells of each figure (fc.bin_stats)."""
+    import matplotlib.pyplot as plt
+    rows = []
+    for f in fc.session_files(power_dir(save_root, beh, "spectrum"), "_power.pkl", args.n_sessions):
+        p = fc.load_pickle(str(f))
+        if p.get("cohens_d_freq") is None:
+            continue
+        roi = fc.roi_of_reg_full(p["reg_full"], lobe_of)
+        for lab, r, fine, dd in zip(p["labels"], roi, p["reg_full"], p["cohens_d_freq"]):
+            sr = SPECTRUM_SUBREGIONS.get(fine)
+            rows += [(str(p["sid"][0]), str(lab), r, sr and f"{sr[0]}|{sr[1]}", k, float(v))
+                     for k, v in enumerate(dd)]
+    d = pd.DataFrame(rows, columns=["sub", "label", "roi", "sub_region", "bin", "d"])
+    centres = np.sqrt(FREQ_EDGES[:-1] * FREQ_EDGES[1:])
+    c = fc.contrast(beh)
+    tlab = f"t ({c['hi_label']} vs. {c['lo_label']})"
+
+    def stats(col, min_elec):   # sessions -> electrode, electrodes -> subject, t per cell
+        x = d.dropna(subset=[col]).groupby(["sub", "label", col, "bin"], as_index=False)["d"].mean()
+        g = x.groupby(["sub", col, "bin"]).agg(d=("d", "mean"), n=("label", "nunique")).reset_index()
+        g = g[g["n"] >= min_elec].rename(columns={col: "roi"})
+        g["freq_hz"] = centres[g["bin"]]
+        return fc.bin_stats(g, "freq_hz", "d")
+
+    os.makedirs(args.out_dir, exist_ok=True)
+    st = stats("roi", args.min_electrodes)
+    st.to_csv(join(args.out_dir, f"power_spectrum_{beh}_rois_stats.csv"), index=False)
+    T = st.pivot(index="roi", columns="freq_hz", values="t").reindex(fc.ROI_ORDER)
+    Q = st.pivot(index="roi", columns="freq_hz", values="q").reindex(fc.ROI_ORDER)
+    v = float(np.nanmax(np.abs(T.to_numpy()))) or 1.0
+    fig, ax = plt.subplots(figsize=(11, 6.5))
+    im = ax.imshow(T.to_numpy(), cmap="RdBu_r", vmin=-v, vmax=v, aspect="auto")
+    for (i, j), q in np.ndenumerate(Q.to_numpy()):
+        if fc.stars(q):
+            ax.text(j, i, fc.stars(q), ha="center", va="center", fontsize=12)
+    ax.set_xticks(range(len(T.columns)), [f"{x:.0f}" for x in T.columns], fontsize=13)
+    ax.set_yticks(range(len(T.index)), [fc.pretty_roi(x) for x in T.index], fontsize=13)
+    ax.set_xlabel("Frequency (Hz)", fontsize=14)
+    fig.colorbar(im, ax=ax).set_label(tlab, fontsize=14)
+    fig.tight_layout()
+    fig.savefig(join(args.out_dir, f"power_spectrum_{beh}_rois.png"), dpi=300)
+    fig.savefig(join(args.out_dir, f"power_spectrum_{beh}_rois.pdf"))
+    plt.close(fig)
+
+    st = stats("sub_region", args.min_electrodes)
+    st.to_csv(join(args.out_dir, f"power_spectrum_{beh}_occipital_stats.csv"), index=False)
+    panels = sorted({x.split("|")[0] for x in st.dropna(subset=["t"])["roi"]})   # subregions with a test
+    fig, axes = plt.subplots(1, len(panels), figsize=(6.5 * len(panels), 5), sharey=True, squeeze=False)
+    for ax, panel in zip(axes[0], panels):
+        for name, s in st[st["roi"].str.startswith(panel + "|")].groupby("roi"):
+            s = s.sort_values("freq_hz")
+            line, = ax.plot(s["freq_hz"], s["t"], marker="o", lw=2,
+                            label=f"{name.split('|')[1]} (n={int(s['n'].max())})")
+            for x, y, q in zip(s["freq_hz"], s["t"], s["q"]):
+                if fc.stars(q):
+                    ax.annotate(fc.stars(q), (x, y), textcoords="offset points", xytext=(0, 6),
+                                ha="center", fontsize=13, color=line.get_color())
+        ax.axhline(0, color="0.6", lw=0.8)
+        ax.set_xscale("log")
+        ax.set_xticks(centres, [f"{x:.0f}" for x in centres], fontsize=12)
+        ax.minorticks_off()
+        ax.tick_params(axis="y", labelsize=13)
+        ax.set_title(panel, fontsize=15)
+        ax.set_xlabel("Frequency (Hz)", fontsize=14)
+        ax.legend(fontsize=12, frameon=False)
+    axes[0, 0].set_ylabel(tlab, fontsize=14)
+    fig.tight_layout()
+    fig.savefig(join(args.out_dir, f"power_spectrum_{beh}_occipital.png"), dpi=300)
+    fig.savefig(join(args.out_dir, f"power_spectrum_{beh}_occipital.pdf"))
+    plt.close(fig)
+    print(f"[saved] power_spectrum_{beh}_rois / _occipital (.png/.pdf) in {args.out_dir}")
+
+
 def run_plot_stage(save_root, beh, band, args):
     lobe_of = fc.load_burke_maps()
+    if band == "spectrum":
+        return run_spectrum_stage(save_root, beh, args, lobe_of)
     run_responsiveness_stage(save_root, beh, band, args, lobe_of)
     run_latency_stage(save_root, beh, band, args, lobe_of)
     elec_df = collect_electrode_table(save_root, beh, band, lobe_of, args.n_sessions)
@@ -611,7 +717,7 @@ def run_plot_stage(save_root, beh, band, args):
     stem = f"roi_power_{beh}_{{band}}"
     fc.write_roi_csvs(args.out_dir, stem.format(band=band), tbl, per_elec, stats)
     fc.band_contrast_figure(args.out_dir, stem, "cohens_d",
-                            f"power {c['hi_label']} vs {c['lo_label']} (Cohen's d)")
+                            f"Power, Cohen's d ({c['hi_label']} vs. {c['lo_label']})")
     return tbl
 
 
@@ -624,7 +730,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out-dir", default=join("figures", "burke_roi_power"))
     p.add_argument("--fine-labels", action="store_true", dest="fine_labels",
                    help="also plot responsiveness by raw anatomical label")
-    p.add_argument("--min-electrodes", type=int, default=3,
+    p.add_argument("--min-electrodes", type=int, default=1,
                    help="min electrodes a subject must have in an ROI to enter the group test")
     args = p.parse_args()
     args = p.parse_args()
@@ -646,7 +752,7 @@ def collect_bin_table(save_root, beh, band, lobe_of, n_sessions=None, keep_keys=
     averaged per electrode LABEL first, so a 4-session subject does not outweigh
     a 1-session subject.
     """
-    files = sorted(power_dir(save_root, beh, band).glob("*_power.pkl"))[:n_sessions]
+    files = fc.session_files(power_dir(save_root, beh, band), "_power.pkl", n_sessions)
     rows, centers = [], None
     for f in tqdm(files, desc="load bins"):
         try:
@@ -786,7 +892,7 @@ def collect_responsiveness(save_root, beh, band, lobe_of, n_sessions=None,
     from scipy.stats import t as tdist
 
     d = power_dir(save_root, beh, band)
-    files = sorted(d.glob("*_power.pkl"))[:n_sessions]
+    files = fc.session_files(d, "_power.pkl", n_sessions)
     rows = word_averaged_rows(files, lobe_of, t_unit, by_fine_label) if combine == "word_average" else []
     for f in (tqdm(files, desc="load responsiveness") if combine != "word_average" else []):
         try:

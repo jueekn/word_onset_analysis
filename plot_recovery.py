@@ -31,13 +31,13 @@ def session_values(root, tag):
     sim_root = join(root, "sim", tag)
     out = []
     if p.get("data_generating_process") == "hg_power":
-        for f in sorted(power_dir(sim_root, BEH, BAND).glob("*_power.pkl")):
+        for f in fc.session_files(power_dir(sim_root, BEH, BAND), "_power.pkl"):
             d = fc.load_pickle(str(f))
             m = _target_lobe_mask(d["reg_full"], p["target_lobes"])
             db = (20 if d.get("measure") == "amplitude" else 10) * np.log10(d["pow_hi"] / d["pow_lo"])
             out.append((np.nanmean(db[m]), np.nanmean(db[~m])))
     else:
-        for f in sorted(cond_dir(sim_root, BEH, "diff", BAND).glob("*_fc_mats.pkl")):
+        for f in fc.session_files(cond_dir(sim_root, BEH, "diff", BAND), "_fc_mats.pkl"):
             d = fc.load_pickle(str(f))
             m = _target_lobe_mask(d["reg_full"], p["target_lobes"])
             M = np.asarray(d["ppc"], float)

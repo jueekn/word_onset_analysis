@@ -24,28 +24,29 @@ paths:
 # as `tuple(v)` by project_paths.BANDS.
 bands:
   alpha:      [8, 13]
-  # PAC phase (low) and amplitude (gamma) bands; gamma's 110 Hz upper edge lets
-  # MNE fit the band-pass stopband below the 250 Hz Nyquist.
+  # PAC phase (low) and PAC-amplitude / AEC-c (gamma) bands; gamma is 40 Hz wide
+  # so its envelope stays below the 70 Hz carrier (Bedrosian).
   low:        [3, 8]
   gamma:      [70, 110]
-  # high_gamma: the analysis band (70-150, as Long et al. on this dataset). It
-  # CONTAINS the 100/120/150 Hz line harmonics, so notch_harmonics_up_to_hz must
-  # stay set. Sessions below 499 Hz are excluded, so Nyquist >= 249.5 Hz.
+  # high_gamma: the analysis band (70-150, as Long et al. on this dataset); it
+  # contains the 100/120/150 Hz line harmonics (see notch_harmonics_up_to_hz).
+  # Sessions below 499 Hz are excluded, so Nyquist >= 249.5 Hz.
   high_gamma: [70, 150]
+  # spectrum: power only -- Cohen's d in 10 log-spaced bins (build_roi_power
+  # FREQ_EDGES) for the t-vs-frequency figures.
+  spectrum:   [5, 100]
 
 # ─── Signal processing constants ──────────────────────────────────────────
 # mt_bandwidth: passed to mne_connectivity.spectral_connectivity_epochs.
 #   null = MNE default (~8*sfreq/n_times). Code_issues #79 recommends 2.
 # real_data_buffer_ms: ms of REAL adjacent EEG loaded on each side of every
-#   analysis window. Resample + notch (and PAC's band-pass + Hilbert) run on the
-#   buffered window; the buffer is removed before the multitaper. 500 ms:
-#   the 4 Hz-wide Butterworth notches ring for a few hundred ms, and at 50 ms
-#   the in-band 100/120/150 Hz notches biased null power to d ~ -0.08
-#   (hg_null simulation; ~0 at >=500 ms). Also used by build_roi_power. The
-#   buffers of the two word_on windows overlap (pre ends -100, post starts 0),
-#   but each is cropped before the multitaper, so only filter ringing near the
-#   notch frequencies can cross between windows.
-real_data_buffer_ms: 500
+#   analysis window (riley-thesis value). Resample + notch (and the band-pass +
+#   Hilbert for AEC-c/PAC) run on the buffered clip; the buffer is removed before
+#   estimation. With 50 ms the word-off and word-on synchrony clips never share
+#   data (their windows are 100 ms apart). Note: our earlier hg_null simulation
+#   (with the 100/120/150 Hz harmonic notches) showed a small null power bias at
+#   50 ms (d ~ -0.08) that vanished at >= 500 ms.
+real_data_buffer_ms: 50
 mt_bandwidth: 2
 
 # Power time course (gamma only; build_roi_power TIMING_MIN_HZ).
@@ -68,30 +69,17 @@ resample_hz: 500
 #   BioSemi sessions while dropping genuinely sub-500 Hz recordings (most pyFR).
 min_sample_rate_hz: 499
 
-# notch_harmonics_up_to_hz: highest frequency (Hz) up to which INTEGER HARMONICS
-#   of the line frequency are notched by helper.notch_filter, in addition to the
-#   fundamental (50 Hz Germany / 60 Hz US) that is always removed. Each harmonic
-#   gets the same +/-2 Hz stopband as the fundamental -- the convention already
-#   assumed by wavelet.Wavelet.MakePlot, which plots 118-122 and 178-182.
-#
-#   null (default) = fundamental only = historical behaviour. Every existing
-#   low-frequency result stays bit-identical; nothing needs recomputing.
-#
-#   Set this for any run in a band that reaches the harmonics -- notably
-#   bands.high_gamma [70,150], which contains the US 2nd harmonic (120 Hz) and
-#   BOTH the German 2nd and 3rd (100, 150 Hz). Set it to the band's fmax (150
-#   for high_gamma) -- that notches exactly {100, 120, 150} and nothing outside
-#   the band; a larger value only adds pointless filter passes at 180/200 Hz.
-#   Harmonics whose stopband would reach Nyquist are skipped.
-#
-#   Notching is SITE-UNIFORM: helper.notch_filter removes the union of BOTH
-#   mains standards' harmonics for every subject, so all subjects share one
-#   effective passband (see the rationale in that function).
-#
-#   Leaving this null while analysing high gamma is a SILENT failure: the band
-#   fills with mains, and at Freiburg sites the contamination lands exactly at
-#   the 100 Hz band centre.
-notch_harmonics_up_to_hz: 150
+# notch_harmonics_up_to_hz: null = notch only the mains fundamental (50 Hz
+#   Freiburg / 60 Hz US), as riley-thesis. In bipolar data the harmonics inside
+#   high gamma (100/120/150 Hz) were measured at ~1.0x their neighbours (30 US
+#   subjects, 2026-10-01); data_check records line_100/120/150 for every session
+#   so any that do carry harmonics are visible. A number notches the harmonics up
+#   to it as well (site-uniform, helper.notch_filter).
+notch_harmonics_up_to_hz: null
+# max_line_harmonic_ratio: sessions whose 100/120/150 Hz mains-harmonic peak
+#   exceeds this multiple of the neighbouring power (data_check line_*) are
+#   excluded (2026-10-02: 16 of 716 sessions).
+max_line_harmonic_ratio: 5
 
 # pair_distance_threshold_mm: bipolar pairs whose inter-contact distance exceeds
 #   this (mm) are dropped in data_check.check_pairs (long-range pairs reflect
@@ -99,9 +87,16 @@ notch_harmonics_up_to_hz: 150
 #   data_check's internal QC tolerances stay as constants in data_check.py.
 pair_distance_threshold_mm: 20
 
-# computation_metrics: synchrony metrics build_roi_synchrony can compute (MNE
-# multitaper phase metrics + PAC: phase of bands.low, amplitude of bands.gamma).
-computation_metrics: [coh, plv, ppc, ciplv, pli, wpli, pac]
+# computation_metrics: synchrony metrics build_roi_synchrony can compute: MNE
+# multitaper phase metrics, orthogonalized AEC (aec_c: mne_connectivity
+# envelope_correlation on the bands.gamma Hilbert envelope -- 70-110 Hz keeps the
+# envelope below the carrier, Bedrosian; as riley-thesis) and PAC (phase of
+# bands.low, amplitude of bands.gamma). The evoked response is subtracted first.
+computation_metrics: [coh, plv, ppc, ciplv, pli, wpli, aec_c, pac]
+# subtract_erp: subtract each window's across-trial mean (the evoked response)
+#   before synchrony. Off pending a literature-based choice of how to handle
+#   the stimulus-locked component (PI, 2026-10-02).
+subtract_erp: false
 
 # ─── Snakefile ──────────────────────────────────────────────────────────────
 # smokescreen: true -> first N subjects; scratch, exclusion logs and figures go
@@ -109,9 +104,10 @@ computation_metrics: [coh, plv, ppc, ciplv, pli, wpli, pac]
 smokescreen: false
 smokescreen_n_subjects: 3
 # One entry per analysis; each gets ROI power, ROI synchrony, power-synchrony.
+# Synchrony: ciPLV (lag-insensitive phase) for alpha, AEC-c for high gamma.
 runs:
-  - {band: alpha, metric: ppc}
-  - {band: high_gamma, metric: ppc}
+  - {band: alpha, metric: ciplv}
+  - {band: high_gamma, metric: aec_c}
 # `snakemake simulations`: config/simulation_config.yaml tags run through the same
 # rules (EEG replaced, real montages/events kept); figures -> <figures>/simulations/<tag>.
 simulations: [hg_null, hg_power_frontal, hg_ppc_frontal]

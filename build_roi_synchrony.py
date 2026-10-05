@@ -19,18 +19,18 @@ separately, band collapsed to one value; only their difference is saved.
 
 Plot stage
 ----------
-Pairs are binned by seed-target distance; an electrode's score is the mean over
-the bins it populates of its mean connectivity to partners in that bin
-(fc.collapsed_synchrony), read from the SAVED hi - lo difference matrix
-(fc_mats/diff/): difference at the pair level, then aggregate over partners.
-Raw metric units by default, so whole-brain changes show; --zscore standardizes
-each bin across the session's electrodes (relative, ROI-vs-ROI only).
+An electrode's score is its mean hi - lo change over all its partners
+(fc.electrode_sync, as Rao et al. 2025; contact-sharing pairs excluded), read
+from the SAVED difference matrix (fc_mats/diff/): difference at the pair level,
+then aggregate over partners. Distance bins are used only in the distance
+figure.
 
 Per ROI, a one-sample t of the subject values vs 0 (= paired t), FDR across the
 12 ROIs (fc.roi_stats). The figure has one row per band already plotted into
 --out-dir (fc.band_contrast_figure). A second figure per band shows the same
-contrast per distance bin before the collapse (roi_synchrony_distance_*), FDR
-over all ROI x bin cells.
+contrast per seed-partner distance bin (roi_synchrony_distance_*), FDR over all
+ROI x bin cells; a third, per ROI pair and 200 ms epoch, is drawn on the brain
+(roi_synchrony_epochs_*).
 
 Usage:
     python build_roi_synchrony.py                        # compute + plot
@@ -65,8 +65,9 @@ def run_sess_phase_fc(
     dfrow: pd.Series, save_root: str, beh: str, band: str,
     metrics: Sequence[str], root_dir: str, simulation_tag: str | None = None,
 ) -> str:
-    """Compute FC for one session and write the hi - lo (diff) matrices.
-    Returns a short status string for the dispatcher's progress bar."""
+    """Compute FC for one session and add the hi - lo (diff) matrix and the
+    per-epoch changes (`<metric>_epochs`) of each metric to the session pickle
+    (metrics already in it are kept). Returns a short status string."""
     import helper
     import fc_comparison_functions as fc
 
@@ -74,12 +75,9 @@ def run_sess_phase_fc(
     helper.root_dir = root_dir
     sid = fc.ftag(dfrow)
     path = cond_dir(save_root, beh, "diff", band) / f"{sid}_fc_mats.pkl"
-    if path.exists():
-        try:
-            if all(m in fc.load_pickle(str(path)) for m in metrics):
-                return f"{sid}: cached"
-        except Exception:
-            pass
+    out: dict[str, Any] = fc.load_pickle(str(path)) if path.exists() else {}
+    if all(m in out for m in metrics) and out.get("subtract_erp") == fc.SUBTRACT_ERP:
+        return f"{sid}: cached"
 
     pairs = helper.get_pairs(dfrow)
     mat = fc.compute_session_fc(dfrow, beh, band, metrics,
@@ -87,9 +85,12 @@ def run_sess_phase_fc(
                                 simulation_tag=simulation_tag)
     if mat is None:
         return f"{sid}: no events ({beh})"
-    out: dict[str, Any] = {"sid": (dfrow["sub"], dfrow["exp"], int(dfrow["sess"])),
-                           "reg_full": helper.regionalize_electrodes_by_type(pairs)}
-    out.update({m: np.squeeze(mat[m]["diff"]) for m in metrics})
+    out.update({"subtract_erp": fc.SUBTRACT_ERP, "sid": (dfrow["sub"], dfrow["exp"], int(dfrow["sess"])),
+                "reg_full": helper.regionalize_electrodes_by_type(pairs)})
+    for m in metrics:
+        out[m] = np.squeeze(mat[m]["diff"])
+        if "epochs" in mat[m]:
+            out[f"{m}_epochs"] = mat[m]["epochs"]
     os.makedirs(path.parent, exist_ok=True)
     fc.save_pickle(str(path), out)
     return f"{sid}: wrote diff"
@@ -99,16 +100,16 @@ def run_sess_phase_fc(
 def collect_electrode_table(
     save_root: str, beh: str, band: str, metric: str, edges: np.ndarray,
     rmin: float, rmax: float, exclude_same_shank: bool,
-    n_sessions: int | None, lobe_of: dict[str, str], zscore: bool = False,
+    n_sessions: int | None, lobe_of: dict[str, str],
 ) -> pd.DataFrame:
-    """Per (subject, electrode): collapsed hi - lo synchrony (`sync_diff`), and
-    per (subject, electrode, distance bin) the uncollapsed value (`dist_mm` =
-    bin centre). Sessions of the same subject are averaged per electrode label,
-    so a subject with 4 sessions does not outweigh one with 1.
+    """Per (subject, electrode): hi - lo synchrony to all partners (`sync_diff`,
+    fc.electrode_sync), and -- for the distance figure only -- per distance bin
+    (`dist_mm` = bin centre; pairs within [rmin, rmax]). Sessions of the same
+    subject are averaged per electrode label.
     """
     import helper
     d = cond_dir(save_root, beh, "diff", band)
-    files = sorted(d.glob("*_fc_mats.pkl"))[:n_sessions]
+    files = fc.session_files(d, "_fc_mats.pkl", n_sessions)
     if not files:
         raise SystemExit(
             f"no FC pickles in {d}\nrun the compute stage first: "
@@ -136,11 +137,11 @@ def collect_electrode_table(
             xyz, lead, rmin, rmax, exclude_same_shank)
         if mat.get(metric) is None:
             continue
-        got = fc.collapsed_synchrony(mat[metric], iu, dist, keep, n_ch, edges, zscore)
-        if got is None:
-            continue
+        M = np.asarray(mat[metric], float)
+        sel = keep & np.isfinite(M[iu])
+        S = fc.electrode_bin_matrix(M[iu][sel], dist[sel], (iu[0][sel], iu[1][sel]), n_ch, edges)
         sub = str(dfrow["sub"])
-        for e, (v, vb) in enumerate(zip(*got)):
+        for e, (v, vb) in enumerate(zip(fc.electrode_sync(M), S)):
             if roi[e] is not None and np.isfinite(v):
                 rows.append((sub, labels[e], roi[e], float(v)))
                 bin_rows += [(sub, labels[e], roi[e], c, float(x))
@@ -155,13 +156,48 @@ def collect_electrode_table(
             bins.groupby([*keys, "dist_mm"], as_index=False)[["sync_diff"]].mean())
 
 
+def collect_epoch_table(
+    save_root: str, beh: str, band: str, metric: str,
+    n_sessions: int | None, lobe_of: dict[str, str], fine: bool = False,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Per (subject, region pair 'a|b', epoch start): mean per-epoch change over
+    all the pair's electrode pairs (sessions averaged per subject); and the region
+    centroids (mean MNI of their electrodes) with their lobe. Regions are the 12
+    ROIs, or with `fine` the anatomical labels (reg_full) within them."""
+    rows, xyz_rows = [], []
+    for f in fc.session_files(cond_dir(save_root, beh, "diff", band), "_fc_mats.pkl", n_sessions):
+        mat = fc.load_pickle(str(f))
+        E = mat.get(f"{metric}_epochs")
+        if E is None:
+            continue
+        xyz, _ = fc.pair_xyz_lead(fc.dfrow_from_sid(mat["sid"]))
+        roi = fc.roi_of_reg_full(mat["reg_full"], lobe_of)
+        lobe = [r and r.split("-", 1)[1] for r in roi]
+        if fine:
+            roi = [f if r is not None else None for f, r in zip(mat["reg_full"], roi)]
+        a, b = np.triu_indices(len(roi), 1)
+        ok = np.array([roi[i] is not None and roi[j] is not None for i, j in zip(a, b)], bool)
+        a, b = a[ok], b[ok]
+        d = pd.DataFrame(E[:, a, b].T, columns=[w[0] for w in fc.EPOCHS])
+        d["roi"] = ["|".join(sorted((roi[i], roi[j]))) for i, j in zip(a, b)]
+        d = d.groupby("roi").mean().stack().rename("sync_diff").reset_index()
+        rows.append(d.rename(columns={"level_1": "epoch_ms"}).assign(sub=str(mat["sid"][0])))
+        xyz_rows += [(r, lb, *c) for r, lb, c in zip(roi, lobe, xyz) if r is not None and np.isfinite(c).all()]
+    if not rows:
+        return pd.DataFrame(), pd.DataFrame()
+    tbl = pd.concat(rows).groupby(["sub", "roi", "epoch_ms"], as_index=False)["sync_diff"].mean()
+    cen = (pd.DataFrame(xyz_rows, columns=["roi", "lobe", "x", "y", "z"])
+             .groupby("roi").agg(lobe=("lobe", "first"), x=("x", "mean"), y=("y", "mean"), z=("z", "mean")))
+    return tbl, cen
+
+
 def run_plot_stage(
     save_root: str, beh: str, band: str, metric: str, edges: np.ndarray,
     args: argparse.Namespace,
 ) -> pd.DataFrame:
     elec_df, bin_df = collect_electrode_table(
         save_root, beh, band, metric, edges, args.rmin, args.rmax,
-        args.exclude_same_shank, args.n_sessions, fc.load_burke_maps(), args.zscore)
+        args.exclude_same_shank, args.n_sessions, fc.load_burke_maps())
     tbl = fc.subject_roi_means(elec_df, ["sync_diff"],
                                min_electrodes=args.min_electrodes)
     print(f"[collect] {elec_df['sub'].nunique()} subjects, "
@@ -170,11 +206,10 @@ def run_plot_stage(
     c = fc.contrast(beh)
     fc.print_roi_stats(
         stats["sync_diff"],
-        f"{c['hi_label']} - {c['lo_label']} collapsed {metric.upper()}, per ROI:")
-    stem = f"roi_synchrony_{beh}_{{band}}_{metric}"
-    fc.write_roi_csvs(args.out_dir, stem.format(band=band), tbl, elec_df, stats)
-    ylab = (f"{metric.upper()} {c['hi_label']} - {c['lo_label']}"
-            + (" (z within distance bin)" if args.zscore else ""))
+        f"{c['hi_label']} - {c['lo_label']} {metric.upper()} (mean over partners), per ROI:")
+    stem = f"roi_synchrony_{beh}_{{band}}_{{metric}}"
+    fc.write_roi_csvs(args.out_dir, stem.format(band=band, metric=metric), tbl, elec_df, stats)
+    ylab = f"{{metric}} ({c['hi_label']} vs. {c['lo_label']})"
     fc.band_contrast_figure(args.out_dir, stem, "sync_diff", ylab)
 
     # the same contrast before collapsing over distance: per subject and ROI, the
@@ -184,7 +219,29 @@ def run_plot_stage(
     dstats = fc.bin_stats(g[g["n_elec"] >= args.min_electrodes], "dist_mm", "sync_diff")
     dstem = join(args.out_dir, f"roi_synchrony_distance_{beh}_{band}_{metric}")
     dstats.to_csv(f"{dstem}_stats.csv", index=False)
-    print(f"[saved] {fc.roi_curve_figure(dstats, 'dist_mm', dstem, 'Seed-partner distance (mm)', ylab)}")
+    print(f"[saved] {fc.roi_curve_figure(dstats, 'dist_mm', dstem, 'Seed-partner distance (mm)', ylab.format(metric=fc.METRIC_LABELS.get(metric, metric)))}")
+
+    # time-resolved network: per region pair and 200 ms epoch, FDR over pairs x epochs;
+    # 12 ROIs, and the fine anatomical regions within them
+    for level, fine in (("", False), ("fine_", True)):
+        etbl, cen = collect_epoch_table(save_root, beh, band, metric, args.n_sessions,
+                                        fc.load_burke_maps(), fine)
+        if not len(etbl):
+            continue
+        estem = f"roi_synchrony_epochs_{level}{beh}_{{band}}_{{metric}}"
+        epath = join(args.out_dir, estem.format(band=band, metric=metric))
+        est = fc.bin_stats(etbl, "epoch_ms", "sync_diff", min_subjects=fc.MIN_SUBJECTS_PAIR)
+        est.to_csv(f"{epath}_stats.csv", index=False)
+        cen.to_csv(f"{epath}_centroids.csv")
+        # hubs (Rao): per subject, a region's mean change over all its connections
+        ab = etbl["roi"].str.split("|", expand=True)
+        long = pd.concat([etbl.assign(roi=ab[0]), etbl[ab[0] != ab[1]].assign(roi=ab[1])])
+        hub = fc.bin_stats(long.groupby(["sub", "roi", "epoch_ms"], as_index=False)["sync_diff"].mean(),
+                           "epoch_ms", "sync_diff", fdr="fdr_tsbky")
+        hub.to_csv(f"{epath}_hubs.csv", index=False)
+        print(f"[epochs {level or 'roi_'}] {int(hub['t'].notna().sum() / len(fc.EPOCHS))} regions tested, "
+              f"{int((hub['q'] < 0.05).sum())} hub x epoch cells at q < .05")
+        fc.epoch_network_figure(args.out_dir, estem, ylab)
     return tbl
 
 
@@ -195,18 +252,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--stage", default="both", choices=("compute", "plot", "both"))
     fc.add_common_args(p)
     fc.add_distance_args(p)
-    p.add_argument("--metrics", nargs="+", default=list(fc.PHASE_METRICS),
-                   choices=list(fc.PHASE_METRICS),
-                   help="metrics the compute stage stores (the plot stage draws "
-                        "the single --metric)")
-    p.add_argument("--min-electrodes", type=int, default=3,
+    p.add_argument("--metrics", nargs="+", default=None, choices=list(fc.PHASE_METRICS),
+                   help="metrics the compute stage stores (default: --metric)")
+    p.add_argument("--min-electrodes", type=int, default=1,
                    help="min electrodes for a subject to contribute an ROI")
     p.add_argument("--out-dir", default=join("figures", "burke_roi_synchrony"))
-    p.add_argument("--zscore", action="store_true",
-                   help="z-score each distance bin across the session's electrodes "
-                        "(ROI-vs-ROI only; default raw)")
     args = p.parse_args()
-
+    args.metric = args.metric or fc.RUN_METRIC[args.band]
+    args.metrics = args.metrics or [args.metric]
     if args.n_sessions is not None and args.n_subjects is not None:
         raise ValueError("pass only one of --n-sessions / --n-subjects")
     return args
@@ -220,8 +273,7 @@ def main() -> None:
     print(f"[setup] beh={args.beh}  band={args.band} {fc.bands[args.band]} Hz  "
           f"metric={args.metric}")
     print(f"[setup] {c['hi_label']} - {c['lo_label']}")
-    print(f"[setup] bins {args.rmin}-{args.rmax} mm / {args.bin_w} mm "
-          f"({'each bin z-scored across electrodes' if args.zscore else 'raw'})")
+    print(f"[setup] distance figure bins {args.rmin}-{args.rmax} mm / {args.bin_w} mm")
 
     if args.stage in ("compute", "both"):
         fc.run_compute_stage(

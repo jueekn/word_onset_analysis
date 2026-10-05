@@ -127,6 +127,16 @@ def check_eeg(
         return None, None, data_check
 
 
+def line_peaks(eeg: Any, freqs: tuple[int, ...] = (100, 120, 150)) -> dict[str, float]:
+    """Mains-harmonic power / neighbouring power in the raw (un-notched) check clip,
+    median over channels (1 = no peak). Reported only: harmonics are not notched."""
+    from scipy.signal import welch
+    f, P = welch(np.asarray(eeg.data)[0], float(eeg.samplerate), nperseg=512)
+    return {f"line_{f0}": float(np.median(P[:, np.abs(f - f0) <= 1].mean(1)
+                                          / P[:, (np.abs(f - f0) >= 3) & (np.abs(f - f0) <= 8)].mean(1)))
+            for f0 in freqs}
+
+
 def check_data(dfrow: pd.Series, root_dir: str) -> pd.Series:
     data_check = pd.Series({'pairs': False, 'eeg': False, 'regionalizations': False})
 
@@ -140,6 +150,8 @@ def check_data(dfrow: pd.Series, root_dir: str) -> pd.Series:
     if not data_check['eeg']:
         return data_check
     data_check['pairs_count'] = len(pairs)
+    for k, v in line_peaks(eeg).items():
+        data_check[k] = v
 
     try:
         regionalizations = helper.regionalize_electrodes_by_type(pairs)
@@ -165,9 +177,10 @@ def apply_inclusion_rules(
 
     A session is excluded (include=False) if its native sample rate is missing,
     below `min_sample_rate_hz` (499 keeps the ~499.7 Hz BioSemi sessions while
-    dropping genuinely sub-500 Hz recordings), or it is not phase-encoded.
-    Each excluded session is also stamped with a first-cause `exclusion_reason`
-    (`sr_missing` > `sub_500hz` > `data_quality`) for the exclusion report.
+    dropping genuinely sub-500 Hz recordings), or a mains harmonic in high gamma
+    exceeds MAX_LINE_HARMONIC_RATIO x its neighbours (line_*). Each excluded
+    session is also stamped with a first-cause `exclusion_reason`
+    (`sr_missing` > `sub_500hz` > `line_noise`).
     Session-specific denylists are applied separately by the caller.
     """
     sess_list_df['sr_present'] = ~pd.isna(sess_list_df['sr'])
@@ -182,6 +195,9 @@ def apply_inclusion_rules(
 
     _exclude(~sess_list_df['sr_present'], 'sr_missing')
     _exclude(sess_list_df['sr'] < min_sample_rate_hz, 'sub_500hz')
+    from project_paths import MAX_LINE_HARMONIC_RATIO
+    lines = sess_list_df.reindex(columns=['line_100', 'line_120', 'line_150'])
+    _exclude((lines > MAX_LINE_HARMONIC_RATIO).any(axis=1), 'line_noise')
     return sess_list_df
 
 

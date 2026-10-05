@@ -13,6 +13,7 @@ scikit-image
 mne
 mne-connectivity
 mne-bids
+nilearn<0.13   # connectome glass brains; 0.13+ needs packaging>=26, which snakemake forbids
 pactools
 snakemake
 ptsa @ git+https://github.com/pennmem/ptsa.git@2d5490a12ee450a176530368c64c169e730f12bf
