@@ -234,8 +234,11 @@ def run_plot_stage(
         est.to_csv(f"{epath}_stats.csv", index=False)
         cen.to_csv(f"{epath}_centroids.csv")
         # hubs (Rao): per subject, a region's mean change over all its connections
-        ab = etbl["roi"].str.split("|", expand=True)
-        long = pd.concat([etbl.assign(roi=ab[0]), etbl[ab[0] != ab[1]].assign(roi=ab[1])])
+        # that pass the region-pair floor
+        n_pair = etbl.groupby("roi")["sub"].nunique()
+        htbl = etbl[etbl["roi"].isin(n_pair.index[n_pair >= fc.MIN_SUBJECTS_PAIR])]
+        ab = htbl["roi"].str.split("|", expand=True)
+        long = pd.concat([htbl.assign(roi=ab[0]), htbl[ab[0] != ab[1]].assign(roi=ab[1])])
         hub = fc.bin_stats(long.groupby(["sub", "roi", "epoch_ms"], as_index=False)["sync_diff"].mean(),
                            "epoch_ms", "sync_diff", fdr="fdr_tsbky")
         hub.to_csv(f"{epath}_hubs.csv", index=False)

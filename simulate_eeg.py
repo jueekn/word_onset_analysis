@@ -141,7 +141,7 @@ def replace_w_simulated_EEG(eeg: TimeSeries, dfrow: pd.Series, condition_mask: N
         carrier = mne.filter.filter_data(np.random.standard_normal(eeg.shape), sf, *p["band"], verbose=False)
         env = mne.filter.filter_data(np.random.standard_normal(eeg.shape), sf, None, p["env_hz"], verbose=False)
         mask = np.asarray(condition_mask, bool)
-        env[np.ix_(mask, target)] = env[mask][:, :1]   # one channel's envelope, shared
+        env[np.ix_(mask, target)] = env[mask][:, target][:, :1]   # first target channel's envelope, shared
         env /= env.std(axis=-1, keepdims=True)
         data += p["hg_amplitude"] * carrier * np.exp(p["env_depth"] * env)
     elif p["data_generating_process"] == "leak":

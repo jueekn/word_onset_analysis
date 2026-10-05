@@ -577,8 +577,8 @@ LOBE_COLORS: dict[str, str] = {
 # Minimum subjects per test; a subject
 # needs only 1 electrode in a region. Simulations (20 subjects) use 5 (resolve_roots).
 MIN_SUBJECTS_ROI: int = 30     # region-level tests (ROIs, subregions, bins)
-MIN_SUBJECTS_PAIR: int = 30    # region-pair connections (epoch network; riley-thesis uses 100,
-                               # which only 3 ROI pairs / 0 fine-region pairs reach here)
+MIN_SUBJECTS_PAIR: int = 100   # region-pair connections (epoch network), as riley-thesis;
+                               # 60/78 ROI pairs, 89 fine-region pairs reach it
 # Minimum electrodes in a (session, ROI) cell before its correlation is taken,
 # and minimum electrodes in a distance bin before that bin can be standardized.
 MIN_ELEC_CORR: int = 5
