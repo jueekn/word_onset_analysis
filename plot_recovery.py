@@ -5,8 +5,11 @@ Reads the per-session pickles `snakemake simulations` writes for every
 the pipeline measured against the one planted. Target-lobe electrodes should sit
 on the identity line; all others at 0.
 
-  power      post/pre band power (or amplitude, hilbert) in dB, per electrode; planted 20*log10(gain)
-  synchrony  word on - word off PPC between pairs of electrodes; planted = post PPC (pre ~0)
+  power   high gamma post/pre band power (or amplitude, hilbert) in dB; planted 20*log10(gain)
+  ciPLV   alpha word on - word off ciPLV between electrode pairs; planted = post phase consistency
+  AEC-c   high-gamma word on - word off AEC-c; planted = depth of the shared envelope
+Synchrony plants are not on the metric's scale: those curves should rise
+monotonically for target pairs and stay at 0 for all other pairs.
 
     python plot_recovery.py [--root-dir DIR] [--out-dir DIR]
 """
@@ -22,25 +25,29 @@ from build_roi_power import power_dir
 from build_roi_synchrony import cond_dir
 from simulate_eeg import SWEEPS, _target_lobe_mask, simulation_parameters
 
-BEH, BAND = "word_on", "high_gamma"
+BEH = "word_on"
+# data-generating process -> (panel, band, metric; None = power)
+KIND = {"hg_power": ("power", "high_gamma", None), "osc_lag": ("ciPLV", "alpha", "ciplv"),
+        "hg_envelope": ("AEC-c", "high_gamma", "aec_c")}
 
 
 def session_values(root, tag):
     """[(target, other)] per session: mean measured effect on / off the plant."""
     p = simulation_parameters[tag]
+    _, band, metric = KIND[p["data_generating_process"]]
     sim_root = join(root, "sim", tag)
     out = []
-    if p.get("data_generating_process") == "hg_power":
-        for f in fc.session_files(power_dir(sim_root, BEH, BAND), "_power.pkl"):
+    if metric is None:
+        for f in fc.session_files(power_dir(sim_root, BEH, band), "_power.pkl"):
             d = fc.load_pickle(str(f))
             m = _target_lobe_mask(d["reg_full"], p["target_lobes"])
             db = (20 if d.get("measure") == "amplitude" else 10) * np.log10(d["pow_hi"] / d["pow_lo"])
             out.append((np.nanmean(db[m]), np.nanmean(db[~m])))
     else:
-        for f in fc.session_files(cond_dir(sim_root, BEH, "diff", BAND), "_fc_mats.pkl"):
+        for f in fc.session_files(cond_dir(sim_root, BEH, "diff", band), "_fc_mats.pkl"):
             d = fc.load_pickle(str(f))
             m = _target_lobe_mask(d["reg_full"], p["target_lobes"])
-            M = np.asarray(d["ppc"], float)
+            M = fc.symmetrize_dense(np.asarray(d[metric], float), diag_value=np.nan)
             tt, oo = np.outer(m, m), ~np.outer(m, m)
             np.fill_diagonal(tt, False); np.fill_diagonal(oo, False)
             out.append((np.nanmean(M[tt]), np.nanmean(M[oo])))
@@ -58,12 +65,11 @@ def main():
     ap.add_argument("--out-dir", default=join("figures", "simulations"))
     args = ap.parse_args()
 
-    kinds = {"power": ("Power change (dB)", []), "synchrony": ("PPC change", [])}
+    kinds = {"power": ("Power change (dB)", []), "ciPLV": ("ciPLV change", []), "AEC-c": ("AEC-c change", [])}
     for sweep, tags in SWEEPS.items():
-        kind = "power" if simulation_parameters[tags[0]].get("data_generating_process") == "hg_power" else "synchrony"
-        kinds[kind][1].append((sweep, tags))
+        kinds[KIND[simulation_parameters[tags[0]]["data_generating_process"]][0]][1].append((sweep, tags))
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4.5))
+    fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
     for ax, (kind, (ylab, sweeps)) in zip(axes, kinds.items()):
         lim = [np.inf, -np.inf]
         for sweep, tags in sweeps:
@@ -71,8 +77,8 @@ def main():
             v = [session_values(args.root_dir, t) for t in tags]
             if not any(len(s) for s in v):   # sweep not run (e.g. no synchrony under longetal)
                 continue
-            noise = sweep.split("_")[-1]
-            for col, lab, ls in ((0, f"target, {noise}", "-"), (1, f"other, {noise}", ":")):
+            noise = sweep.split("_")[-1] if sweep.endswith(("noisy", "clean")) else ""
+            for col, lab, ls in ((0, f"target {noise}", "-"), (1, f"other {noise}", ":")):
                 y = np.array([s[:, col].mean() if len(s) else np.nan for s in v])
                 e = np.array([s[:, col].std(ddof=1) / np.sqrt(len(s)) if len(s) > 1 else np.nan for s in v])
                 ax.errorbar(x, y, yerr=e, marker="o", ls=ls, capsize=3, label=lab)
@@ -80,10 +86,14 @@ def main():
         if not np.isfinite(lim[0]):   # nothing run for this kind
             ax.set_visible(False)
             continue
-        ax.plot(lim, lim, "k--", lw=1, label="identity")
-        ax.set(xlabel=f"planted {ylab.lower()}", ylabel=f"measured {ylab.lower()}", title=kind)
+        if kind == "power":
+            ax.plot(lim, lim, "k--", lw=1, label="identity")
+        ax.axhline(0, color="0.6", lw=0.8)
+        planted_lab = {"power": "planted power change (dB)", "ciPLV": "planted phase consistency (post)",
+                       "AEC-c": "planted shared-envelope depth"}[kind]
+        ax.set(xlabel=planted_lab, ylabel=f"measured {ylab}", title=kind)
         ax.legend(fontsize=8)
-    fig.suptitle(f"Recovery ({BEH}, {BAND}; mean ± SEM over sessions)")
+    fig.suptitle(f"Recovery ({BEH}; mean ± SEM over sessions)")
     fig.tight_layout()
     os.makedirs(args.out_dir, exist_ok=True)
     for ext in ("png", "pdf"):

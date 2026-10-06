@@ -518,16 +518,15 @@ def stars(q):
 
 
 # =============================================================================
-# ROI / distance analysis layer
+# ROI analysis layer
 # =============================================================================
-# Shared machinery for the three ROI-level build scripts:
+# Shared machinery for the ROI-level build scripts:
 #
 #   build_roi_power.py       local spectral power per Burke ROI
 #   build_roi_synchrony.py   phase FC (compute) + collapsed synchrony per ROI
-#   build_power_synchrony.py power-synchrony correlation per Burke ROI
 #
 # Everything those scripts have in common lives here -- the behavior registry,
-# the Burke ROI vocabulary, pair geometry, the distance-bin synchrony collapse,
+# the Burke ROI vocabulary, pair geometry,
 # the per-ROI test, the session dispatcher and the ROI figure --
 # so each script contains only what is unique to it and none of them has to
 # import a plotting script to get a constant.
@@ -579,9 +578,6 @@ LOBE_COLORS: dict[str, str] = {
 MIN_SUBJECTS_ROI: int = 30     # region-level tests (ROIs, subregions, bins)
 MIN_SUBJECTS_PAIR: int = 100   # region-pair connections (epoch network), as riley-thesis;
                                # 60/78 ROI pairs, 89 fine-region pairs reach it
-# Minimum electrodes in a (session, ROI) cell before its correlation is taken,
-# and minimum electrodes in a distance bin before that bin can be standardized.
-MIN_ELEC_CORR: int = 5
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -630,48 +626,9 @@ def pair_xyz_lead(dfrow: pd.Series) -> tuple[NDArrayAny, NDArrayAny]:
     return xyz, lead
 
 
-def pair_distance_mask(
-    xyz: NDArrayAny, lead: NDArrayAny, rmin: float, rmax: float,
-    exclude_same_shank: bool = False,
-) -> tuple[tuple[NDArrayAny, NDArrayAny], NDArrayAny, NDArrayAny]:
-    """(upper-triangle indices, pair distances, eligibility mask).
-
-    A pair is eligible when its distance is finite and inside [rmin, rmax], and
-    -- optionally -- when the two contacts are on different shanks.
-    """
-    n_ch = xyz.shape[0]
-    iu = np.triu_indices(n_ch, 1)
-    dist = np.linalg.norm(xyz[iu[0]] - xyz[iu[1]], axis=1)
-    keep = np.isfinite(dist) & (dist >= rmin) & (dist <= rmax)
-    if exclude_same_shank:
-        keep &= lead[iu[0]] != lead[iu[1]]
-    return iu, dist, keep
-
-
 def dfrow_from_sid(sid: Sequence[Any]) -> pd.Series:
     """Stored `sid` tuple -> the dfrow the loaders expect."""
     return pd.Series({"sub": str(sid[0]), "exp": str(sid[1]), "sess": int(sid[2])})
-
-
-# --- distance-bin synchrony collapse ----------------------------------------
-def electrode_bin_matrix(
-    vals: NDArrayAny, dist: NDArrayAny, iu: tuple[NDArrayAny, NDArrayAny],
-    n_ch: int, edges: NDArrayAny,
-) -> NDArrayAny:
-    """(n_ch, n_bins) mean connectivity per electrode per distance bin.
-
-    Every eligible pair credits BOTH endpoints.
-    """
-    nb = len(edges) - 1
-    tot = np.zeros((n_ch, nb))
-    cnt = np.zeros((n_ch, nb), int)
-    b = np.clip(np.digitize(dist, edges) - 1, 0, nb - 1)
-    for k in range(vals.size):
-        i, j, bb, v = iu[0][k], iu[1][k], b[k], vals[k]
-        tot[i, bb] += v; cnt[i, bb] += 1
-        tot[j, bb] += v; cnt[j, bb] += 1
-    with np.errstate(invalid="ignore"):
-        return np.where(cnt > 0, tot / np.maximum(cnt, 1), np.nan)
 
 
 def electrode_sync(M: Any) -> NDArrayAny:
@@ -908,8 +865,6 @@ def band_contrast_figure(out_dir: str, stem: str, col: str, ylabel: str) -> None
     panels = []
     for band, metric, f in band_stems(out_dir, stem, "_per_subject.csv"):
         tbl = pd.read_csv(f)
-        if "cond" in tbl:   # power-synchrony keeps cond as a column
-            tbl = tbl[tbl["cond"] == "diff"]
         st = roi_stats(tbl, col)
         panels.append((f"{band_label(band)}\n{ylabel.format(metric=METRIC_LABELS.get(metric, metric))}",
                        lambda ax, tbl=tbl, st=st: roi_panel(ax, tbl, col, np.random.default_rng(0), stats=st)))
@@ -925,9 +880,10 @@ def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
     Hubs: regions whose mean on - off change over all their connections differs
     from 0 across subjects (two-stage BKY FDR over regions x epochs, as Rao);
     red node = positive hub, blue = negative, grey = not a hub. Edges: each hub's
-    `top_n` strongest connections in its own direction (ranked by mean change,
-    as Rao), from region pairs with >= MIN_SUBJECTS_PAIR subjects; red =
+    `top_n` strongest connections of either sign (ranked by |mean change|, as
+    Rao), from region pairs with >= MIN_SUBJECTS_PAIR subjects; red =
     synchronized, blue = desynchronized, width proportional to |t| (Solomon)."""
+    from matplotlib import patheffects
     from matplotlib.lines import Line2D
     from nilearn import plotting
     rows = band_stems(out_dir, stem, "_hubs.csv")
@@ -953,11 +909,11 @@ def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
             size = [(30 if small else 90) if x in h.index else (6 if small else 25) for x in rois]
             disp = plotting.plot_connectome(np.zeros((len(rois), len(rois))), xyz, axes=axes[r, c],
                                             display_mode="z", node_color=color, node_size=size,
+                                            node_kwargs={"edgecolors": "black", "linewidths": 0.6},
                                             colorbar=False, annotate=False)
             pe = pairs[pairs["epoch_ms"] == w0]
             for hub, ht in h.items():
                 mine = pe[(pe["a"] == hub) | (pe["b"] == hub)]
-                mine = mine[np.sign(mine["mean"]) == np.sign(ht)]
                 for _, e in mine.reindex(mine["mean"].abs().sort_values(ascending=False).index).head(top_n).iterrows():
                     if e["a"] not in idx or e["b"] not in idx:
                         continue
@@ -965,6 +921,14 @@ def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
                     A[idx[e["a"]], idx[e["b"]]] = A[idx[e["b"]], idx[e["a"]]] = np.sign(e["mean"])
                     disp.add_graph(A, xyz, node_size=0, edge_cmap="bwr", edge_vmin=-1, edge_vmax=1,
                                    edge_kwargs={"linewidth": max_lw * abs(e["t"]) / tmax})
+            if not small:   # 12 ROIs: shorthand label on top of everything ('L-frontal' -> 'LFr')
+                gax = list(disp.axes.values())[0].ax
+                for x, (px, py, _) in zip(rois, xyz):
+                    hemi, lobe = x.split("-", 1)
+                    below = lobe == "occipital"   # occipital labels under the node, away from parietal
+                    gax.text(px, py + (-7 if below else 7), hemi + lobe[:2].title(), fontsize=9,
+                             fontweight="bold", ha="center", va="top" if below else "bottom", zorder=1000,
+                             path_effects=[patheffects.withStroke(linewidth=2.5, foreground="white")])
             if r == 0:
                 axes[r, c].set_title(f"{w0:g}–{w1:g} ms", fontsize=15)
         handles = [Line2D([], [], marker="o", ls="", color="red", ms=9, label="Positive hub"),
@@ -1190,17 +1154,6 @@ def add_common_args(p: Any, compute: bool = True) -> Any:
         p.add_argument("--workers", type=int, default=1,
                        help="sessions computed at once in separate processes "
                             "(1 = in this process); budget a few GB of RAM each")
-    return p
-
-
-def add_distance_args(p: Any) -> Any:
-    """CLI flags for the pair-distance binning shared by the synchrony scripts."""
-    p.add_argument("--metric", default=None, choices=PHASE_METRICS,
-                   help="default: the band's metric in config runs")
-    p.add_argument("--rmin", type=float, default=10.0)
-    p.add_argument("--rmax", type=float, default=110.0)
-    p.add_argument("--bin-w", type=float, default=10.0, dest="bin_w")
-    p.add_argument("--exclude-same-shank", action="store_true")
     return p
 
 

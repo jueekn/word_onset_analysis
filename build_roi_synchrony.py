@@ -22,15 +22,12 @@ Plot stage
 An electrode's score is its mean hi - lo change over all its partners
 (fc.electrode_sync, as Rao et al. 2025; contact-sharing pairs excluded), read
 from the SAVED difference matrix (fc_mats/diff/): difference at the pair level,
-then aggregate over partners. Distance bins are used only in the distance
-figure.
+then aggregate over partners.
 
 Per ROI, a one-sample t of the subject values vs 0 (= paired t), FDR across the
 12 ROIs (fc.roi_stats). The figure has one row per band already plotted into
---out-dir (fc.band_contrast_figure). A second figure per band shows the same
-contrast per seed-partner distance bin (roi_synchrony_distance_*), FDR over all
-ROI x bin cells; a third, per ROI pair and 200 ms epoch, is drawn on the brain
-(roi_synchrony_epochs_*).
+--out-dir (fc.band_contrast_figure). A second, per ROI pair and 200 ms epoch,
+is drawn on the brain (roi_synchrony_epochs_*).
 
 Usage:
     python build_roi_synchrony.py                        # compute + plot
@@ -98,14 +95,11 @@ def run_sess_phase_fc(
 
 # ------------------------------- plot stage ----------------------------------
 def collect_electrode_table(
-    save_root: str, beh: str, band: str, metric: str, edges: np.ndarray,
-    rmin: float, rmax: float, exclude_same_shank: bool,
+    save_root: str, beh: str, band: str, metric: str,
     n_sessions: int | None, lobe_of: dict[str, str],
 ) -> pd.DataFrame:
     """Per (subject, electrode): hi - lo synchrony to all partners (`sync_diff`,
-    fc.electrode_sync), and -- for the distance figure only -- per distance bin
-    (`dist_mm` = bin centre; pairs within [rmin, rmax]). Sessions of the same
-    subject are averaged per electrode label.
+    fc.electrode_sync). Sessions of the same subject are averaged per electrode label.
     """
     import helper
     d = cond_dir(save_root, beh, "diff", band)
@@ -116,8 +110,7 @@ def collect_electrode_table(
             f"python build_roi_synchrony.py --stage compute "
             f"--band {band}")
 
-    rows, bin_rows = [], []
-    centres = (edges[:-1] + edges[1:]) / 2
+    rows = []
     for f in tqdm(files, desc="load sessions"):
         try:
             mat = fc.load_pickle(str(f))
@@ -125,35 +118,21 @@ def collect_electrode_table(
             print(f"[skip] {f.name}: {e!r}")
             continue
         dfrow = fc.dfrow_from_sid(mat["sid"])
-        try:
-            xyz, lead = fc.pair_xyz_lead(dfrow)
-        except Exception as e:
-            print(f"[skip] {f.name}: get_pairs failed ({e!r})")
+        pairs = helper.get_pairs(dfrow)
+        if pairs is None or mat.get(metric) is None:
             continue
-        labels = helper.get_pairs(dfrow)["label"].astype(str).to_numpy()
-        n_ch = xyz.shape[0]
+        labels = pairs["label"].astype(str).to_numpy()
         roi = fc.roi_of_reg_full(mat["reg_full"], lobe_of)
-        iu, dist, keep = fc.pair_distance_mask(
-            xyz, lead, rmin, rmax, exclude_same_shank)
-        if mat.get(metric) is None:
-            continue
-        M = np.asarray(mat[metric], float)
-        sel = keep & np.isfinite(M[iu])
-        S = fc.electrode_bin_matrix(M[iu][sel], dist[sel], (iu[0][sel], iu[1][sel]), n_ch, edges)
         sub = str(dfrow["sub"])
-        for e, (v, vb) in enumerate(zip(fc.electrode_sync(M), S)):
+        for e, v in enumerate(fc.electrode_sync(np.asarray(mat[metric], float))):
             if roi[e] is not None and np.isfinite(v):
                 rows.append((sub, labels[e], roi[e], float(v)))
-                bin_rows += [(sub, labels[e], roi[e], c, float(x))
-                             for c, x in zip(centres, vb) if np.isfinite(x)]
 
     if not rows:
         raise SystemExit("no electrodes with a Burke ROI and finite synchrony")
     keys = ["sub", "label", "roi"]
     df = pd.DataFrame(rows, columns=[*keys, "sync_diff"])
-    bins = pd.DataFrame(bin_rows, columns=[*keys, "dist_mm", "sync_diff"])
-    return (df.groupby(keys, as_index=False)[["sync_diff"]].mean(),
-            bins.groupby([*keys, "dist_mm"], as_index=False)[["sync_diff"]].mean())
+    return df.groupby(keys, as_index=False)[["sync_diff"]].mean()
 
 
 def collect_epoch_table(
@@ -192,12 +171,10 @@ def collect_epoch_table(
 
 
 def run_plot_stage(
-    save_root: str, beh: str, band: str, metric: str, edges: np.ndarray,
-    args: argparse.Namespace,
+    save_root: str, beh: str, band: str, metric: str, args: argparse.Namespace,
 ) -> pd.DataFrame:
-    elec_df, bin_df = collect_electrode_table(
-        save_root, beh, band, metric, edges, args.rmin, args.rmax,
-        args.exclude_same_shank, args.n_sessions, fc.load_burke_maps())
+    elec_df = collect_electrode_table(save_root, beh, band, metric, args.n_sessions,
+                                      fc.load_burke_maps())
     tbl = fc.subject_roi_means(elec_df, ["sync_diff"],
                                min_electrodes=args.min_electrodes)
     print(f"[collect] {elec_df['sub'].nunique()} subjects, "
@@ -211,15 +188,6 @@ def run_plot_stage(
     fc.write_roi_csvs(args.out_dir, stem.format(band=band, metric=metric), tbl, elec_df, stats)
     ylab = f"{{metric}} ({c['hi_label']} vs. {c['lo_label']})"
     fc.band_contrast_figure(args.out_dir, stem, "sync_diff", ylab)
-
-    # the same contrast before collapsing over distance: per subject and ROI, the
-    # mean over its electrodes in each distance bin
-    g = (bin_df.groupby(["sub", "roi", "dist_mm"])
-               .agg(sync_diff=("sync_diff", "mean"), n_elec=("label", "nunique")).reset_index())
-    dstats = fc.bin_stats(g[g["n_elec"] >= args.min_electrodes], "dist_mm", "sync_diff")
-    dstem = join(args.out_dir, f"roi_synchrony_distance_{beh}_{band}_{metric}")
-    dstats.to_csv(f"{dstem}_stats.csv", index=False)
-    print(f"[saved] {fc.roi_curve_figure(dstats, 'dist_mm', dstem, 'Seed-partner distance (mm)', ylab.format(metric=fc.METRIC_LABELS.get(metric, metric)))}")
 
     # time-resolved network: per region pair and 200 ms epoch, FDR over pairs x epochs;
     # 12 ROIs, and the fine anatomical regions within them
@@ -254,7 +222,8 @@ def parse_args() -> argparse.Namespace:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--stage", default="both", choices=("compute", "plot", "both"))
     fc.add_common_args(p)
-    fc.add_distance_args(p)
+    p.add_argument("--metric", default=None, choices=fc.PHASE_METRICS,
+                   help="default: the band's metric in config runs")
     p.add_argument("--metrics", nargs="+", default=None, choices=list(fc.PHASE_METRICS),
                    help="metrics the compute stage stores (default: --metric)")
     p.add_argument("--min-electrodes", type=int, default=1,
@@ -272,11 +241,9 @@ def main() -> None:
     args = parse_args()
     root_dir, save_root = fc.resolve_roots(args)
     c = fc.contrast(args.beh)                    
-    edges = np.arange(args.rmin, args.rmax + 1e-9, args.bin_w)
     print(f"[setup] beh={args.beh}  band={args.band} {fc.bands[args.band]} Hz  "
           f"metric={args.metric}")
     print(f"[setup] {c['hi_label']} - {c['lo_label']}")
-    print(f"[setup] distance figure bins {args.rmin}-{args.rmax} mm / {args.bin_w} mm")
 
     if args.stage in ("compute", "both"):
         fc.run_compute_stage(
@@ -286,7 +253,7 @@ def main() -> None:
             metrics=tuple(args.metrics), root_dir=root_dir, simulation_tag=args.simulation_tag)
 
     if args.stage in ("plot", "both"):
-        run_plot_stage(save_root, args.beh, args.band, args.metric, edges, args)
+        run_plot_stage(save_root, args.beh, args.band, args.metric, args)
 
 
 if __name__ == "__main__":

@@ -103,14 +103,14 @@ subtract_erp: false
 #   to *.smokescreen so a smoke run never feeds the full run's cache.
 smokescreen: false
 smokescreen_n_subjects: 3
-# One entry per analysis; each gets ROI power, ROI synchrony, power-synchrony.
+# One entry per analysis; each gets ROI power and ROI synchrony.
 # Synchrony: ciPLV (lag-insensitive phase) for alpha, AEC-c for high gamma.
 runs:
   - {band: alpha, metric: ciplv}
   - {band: high_gamma, metric: aec_c}
 # `snakemake simulations`: config/simulation_config.yaml tags run through the same
 # rules (EEG replaced, real montages/events kept); figures -> <figures>/simulations/<tag>.
-simulations: [hg_null, hg_power_frontal, hg_ppc_frontal]
+simulations: [hg_null, hg_power_frontal, alpha_lag_frontal, hg_env_frontal, alpha_lag_epoch, hg_env_epoch, leak_frontal]
 
 # ─── Long et al. 2020 replication (snakemake --config longetal=true) ─────────
 # Everything else follows the defaults above. Outputs: scratch.longetal/,

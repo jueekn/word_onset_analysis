@@ -1,5 +1,11 @@
 # On hold / to do
 
+## Next recompute (after the current plots are reviewed)
+- Single-pass compute: load each session once, write power + synchrony together.
+- Notch the 120 Hz mains harmonic (`notch_harmonics_up_to_hz: 150`; inside the 70-150 Hz
+  power band). data_check then stops excluding on notched harmonics: the 16 sessions
+  excluded for 120 Hz come back; the 9 with non-mains 100 Hz peaks stay excluded.
+
 ## On hold
 - **Region labels for depth contacts (151 subjects).** The OpenNeuro BIDS release has no
   whole-brain volumetric label (`wb` / rhino `atlases.whole_brain` / `mni.region`) for the
@@ -19,8 +25,7 @@
   clips; 500 ms buffer for power; blank the bin. Alpha / high-gamma bands are unaffected.
 - **Alpha in 200 ms epochs**: one taper, ±3 Hz smoothing; PI caveat on timing at low
   frequencies. Option: Hilbert phase binned per epoch (Rao / Solomon).
-- **Frontal alpha power increase**: check theta (6–8 Hz) vs alpha, evoked contribution, and
-  fine-region breakdown.
+- **Frontal alpha power increase**: check evoked contribution and fine-region breakdown.
 - **Synchrony locality**: split each electrode's partners into within- vs between-ROI (after
   the no-ERP synchrony run).
 - **Synchrony simulations (running 2026-10-05)**: alpha_lag_frontal (ciPLV), hg_env_frontal

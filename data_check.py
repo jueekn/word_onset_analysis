@@ -195,8 +195,13 @@ def apply_inclusion_rules(
 
     _exclude(~sess_list_df['sr_present'], 'sr_missing')
     _exclude(sess_list_df['sr'] < min_sample_rate_hz, 'sub_500hz')
-    from project_paths import MAX_LINE_HARMONIC_RATIO
+    from project_paths import MAX_LINE_HARMONIC_RATIO, NOTCH_HARMONICS_UP_TO_HZ
     lines = sess_list_df.reindex(columns=['line_100', 'line_120', 'line_150'])
+    if NOTCH_HARMONICS_UP_TO_HZ:   # a notched mains harmonic is no reason to exclude
+        us = ~sess_list_df['sub'].astype(str).str.contains('FR')   # 60 Hz sites (helper.notch_filter)
+        for f0 in (100, 120, 150):
+            if f0 <= NOTCH_HARMONICS_UP_TO_HZ:
+                lines.loc[(us if f0 % 60 == 0 else ~us), f'line_{f0}'] = np.nan
     _exclude((lines > MAX_LINE_HARMONIC_RATIO).any(axis=1), 'line_noise')
     return sess_list_df
 

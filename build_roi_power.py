@@ -58,8 +58,8 @@ Per ROI, a one-sample t of the subject values vs 0 (= paired t), FDR across the
 --out-dir (fc.band_contrast_figure).
 
 Timing (power time course) is computed for gamma bands only (fmin >= TIMING_MIN_HZ):
-latency is not meaningful for slow oscillations. Long et al. settings (Hilbert,
-responsiveness, fine labels) come from config `longetal_params`, never from flags.
+latency is not meaningful for slow oscillations. Long et al. settings (Hilbert)
+come from config `longetal_params`, never from flags.
 
 Electrode -> ROI uses the canonical `regionalize_electrodes_by_type` label
 (volumetric cascade for depths, surface for grid/strip) mapped through
@@ -88,7 +88,6 @@ import fc_comparison_functions as fc
 
 MEASURES = ("cohens_d", "change_dB")
 TIMING_MIN_HZ = 30          # time course only for gamma (PI: latency meaningless at low freqs)
-RESPONSIVE_ALPHA = 1e-8     # Long et al.'s responsiveness threshold
 LONG = fc.LONGETAL or {}
 
 
@@ -517,24 +516,10 @@ def subject_roi_table(elec_df, min_electrodes=1, db=10.0):
 
 
 def run_latency_stage(save_root, beh, band, args, lobe_of):
-    """Time course of the contrast (gamma only). Long et al.: also on responsive
-    contacts only, the electrode set they compute latencies on."""
+    """Time course of the contrast (gamma only)."""
     if fc.bands[band][0] < TIMING_MIN_HZ:
         return
-    for responsive_only in ([False, True] if LONG else [False]):
-        keep = None
-        if responsive_only:
-            rdf = collect_responsiveness(save_root, beh, band, lobe_of, args.n_sessions)
-            rdf = rdf[rdf["p"] < RESPONSIVE_ALPHA]
-            keep = set(zip(rdf["sub"], rdf["label"]))
-            print(f"[latency/responsive] restricting to {len(keep)} contacts "
-                  f"at p<{RESPONSIVE_ALPHA:g}")
-        _latency_one(save_root, beh, band, args, lobe_of, keep, responsive_only)
-
-
-def _latency_one(save_root, beh, band, args, lobe_of, keep, responsive_only):
-    bin_df = collect_bin_table(save_root, beh, band, lobe_of,
-                               args.n_sessions, keep_keys=keep)
+    bin_df = collect_bin_table(save_root, beh, band, lobe_of, args.n_sessions)
     if len(bin_df) == 0:
         print("[latency] these pickles carry no per-bin data; skipping.")
         return
@@ -545,12 +530,10 @@ def _latency_one(save_root, beh, band, args, lobe_of, keep, responsive_only):
     cnt = (bin_df[bin_df["roi"].isin(set(tbl["roi"]))]
            .groupby("roi").agg(n_elec=("label", "nunique"),
                                n_sub=("sub", "nunique")).reset_index())
-    lab = "responsive only" if responsive_only else "all electrodes"
-    print(f"\n[latency] electrodes per ROI ({lab}):")
+    print("\n[latency] electrodes per ROI:")
     print(cnt.sort_values("n_elec", ascending=False).to_string(index=False))
 
-    tag = (f"{beh}_{band}_{fc.POWER_MODE}_{fc.TIME_BIN_MS}ms"
-           + ("_responsive" if responsive_only else ""))
+    tag = f"{beh}_{band}_{fc.POWER_MODE}_{fc.TIME_BIN_MS}ms"
     os.makedirs(args.out_dir, exist_ok=True)
     cnt.to_csv(join(args.out_dir, f"power_timecourse_{tag}_counts.csv"),
                index=False)
@@ -575,43 +558,6 @@ def _latency_one(save_root, beh, band, args, lobe_of, keep, responsive_only):
             print(f"          {r['roi']:<14} peak @ {r['bin_ms']:>4.0f} ms  "
                   f"d={r['mean']:+.3f}  q={r['q']:.1e}")
     print(f"[latency] wrote {path}")
-
-
-def run_responsiveness_stage(save_root, beh, band, args, lobe_of, fine_top_n=15):
-    """Long-style electrode-selection summary. Plot-stage only, no recompute.
-    fine_labels (or longetal) adds a figure by raw label (top `fine_top_n`)."""
-    t_unit, combine = LONG.get("t_unit", "trial"), LONG.get("combine", "d_mean")
-    min_resp = LONG.get("min_responsive_per_region", 0)
-    for fine in ([False, True] if (args.fine_labels or LONG) else [False]):
-        df = collect_responsiveness(save_root, beh, band, lobe_of, args.n_sessions,
-                                    by_fine_label=fine)
-        st = responsiveness_stats(df, alpha=RESPONSIVE_ALPHA)
-        overall = 100 * (df["p"] < RESPONSIVE_ALPHA).mean()
-        print(f"[responsive{'/fine' if fine else ''}] {len(df)} electrodes, "
-              f"{overall:.1f}% responsive (t per {t_unit}) at p<{RESPONSIVE_ALPHA:g} "
-              f"(Long: 25.3%)")
-        tag = (f"{beh}_{band}_{fc.POWER_MODE}" + ("_fine" if fine else "")
-               + (("_pertimepoint" if t_unit == "sample" else "_pertrial") if LONG else "")
-               + ("_wordavg" if combine == "word_average" else ""))
-        os.makedirs(args.out_dir, exist_ok=True)
-        if fine and combine == "word_average":
-            plot_long_peaks(df, args.out_dir, tag, RESPONSIVE_ALPHA,   # per trial: every region with a responder
-                            min_resp if t_unit == "sample" else 1)
-        # CSV is ALWAYS unfiltered -- the cut below is display only.
-        st.to_csv(join(args.out_dir, f"responsiveness_{tag}.csv"), index=False)
-        # Fine labels are ~40 groups, most with no response at all: plot the top
-        # N by median |t| among labels with enough electrodes for a stable median.
-        st_plot = st[st["n_elec"] >= _FINE_MIN_ELECTRODES].head(fine_top_n) if fine else st
-        st_plot = st_plot[st_plot["n_responsive"] >= min_resp]
-        if st_plot.empty:
-            print(f"[responsive] no region has >= {min_resp} "
-                  f"responsive electrodes; figure skipped (see the CSV)")
-            continue
-        df_plot = df[df["grp"].isin(set(st_plot["grp"]))]
-        path = plot_responsiveness(df_plot, st_plot, args.out_dir, beh, band, tag,
-                                   alpha=RESPONSIVE_ALPHA)
-        print(st.head(6).to_string(index=False))
-        print(f"[responsive] wrote {path}")
 
 
 # Occipital subregions for the spectrum curves: {fine label: (panel, line)}.
@@ -700,7 +646,6 @@ def run_plot_stage(save_root, beh, band, args):
     lobe_of = fc.load_burke_maps()
     if band == "spectrum":
         return run_spectrum_stage(save_root, beh, args, lobe_of)
-    run_responsiveness_stage(save_root, beh, band, args, lobe_of)
     run_latency_stage(save_root, beh, band, args, lobe_of)
     elec_df = collect_electrode_table(save_root, beh, band, lobe_of, args.n_sessions)
     per_elec, tbl = subject_roi_table(elec_df, db=20.0 if fc.POWER_MODE == "hilbert" else 10.0,
@@ -728,8 +673,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--stage", default="both", choices=("compute", "plot", "both"))
     fc.add_common_args(p)
     p.add_argument("--out-dir", default=join("figures", "burke_roi_power"))
-    p.add_argument("--fine-labels", action="store_true", dest="fine_labels",
-                   help="also plot responsiveness by raw anatomical label")
     p.add_argument("--min-electrodes", type=int, default=1,
                    help="min electrodes a subject must have in an ROI to enter the group test")
     args = p.parse_args()
@@ -745,7 +688,7 @@ def parse_args() -> argparse.Namespace:
 # --------------------------- latency (time-bin) stage -------------------------
 # `cohens_d_bins` (n_ch, n_bins): Cohen's d within each time bin (gamma only).
 
-def collect_bin_table(save_root, beh, band, lobe_of, n_sessions=None, keep_keys=None):
+def collect_bin_table(save_root, beh, band, lobe_of, n_sessions=None):
     """Per-(subject, electrode, time-bin) Cohen's d -> tidy frame.
 
     Mirrors collect_electrode_table's aggregation: sessions of one subject are
@@ -769,12 +712,6 @@ def collect_bin_table(save_root, beh, band, lobe_of, n_sessions=None, keep_keys=
         for lab, r, drow in zip(p["labels"], roi, db):
             if r is None:
                 continue
-            # keep_keys restricts to a (subject, electrode) whitelist -- used to
-            # rerun the time course on TASK-RESPONSIVE contacts only, which is
-            # how Long et al. compute their latencies (they keep the 25% of
-            # electrodes clearing p<1e-8 and discard the rest).
-            if keep_keys is not None and (sub, str(lab)) not in keep_keys:
-                continue
             for k, val in enumerate(drow):
                 if np.isfinite(val):
                     rows.append((sub, str(lab), r, float(centers[k]), float(val)))
@@ -793,318 +730,6 @@ def subject_roi_bin_table(bin_df, min_electrodes=3):
                .agg(d=("d", "mean"), n_elec=("label", "nunique"))
                .reset_index())
     return g[g["n_elec"] >= min_electrodes].reset_index(drop=True)
-
-
-# --------------------------- responsiveness stage -----------------------------
-# Long et al.'s electrode-selection analysis, recoverable from the stored
-# per-electrode fields with no recompute: t = d * sqrt(n_lo*n_hi/(n_lo+n_hi)).
-#
-# Their criterion is a t-test of HG during word presentation vs blank screen,
-# |t|, p < 1e-8, which retained 2775/10949 electrodes (25.3%). Ours contrasts
-# Word On against Word Off rather than a blank screen, but it asks the same
-# question of each electrode: does this contact respond to the word at all.
-#
-# This is the analysis that explains a flat ROI mean. If occipital has ~70%
-# responsive contacts and frontal ~5%, the frontal ROI average is diluted more
-# than an order of magnitude by contacts that never respond -- so "flat" is a
-# statement about the POPULATION, not about whether frontal cortex responds.
-
-# Label values meaning "no anatomical assignment" rather than a region. Dropped
-# BEFORE grouping: they are not a brain area, and unlabelled contacts are
-# numerous enough to outrank real regions on any count.
-_UNLABELLED = {"nan", "none", "", "unknown", "n/a", "na", "white matter",
-               "unlabeled", "unlabelled"}
-
-# Minimum electrodes for a reg_full label to be RANKED/PLOTTED in the fine-label
-# figure. Not a CLI flag: it is a floor for the ranking statistic to mean
-# anything, not an analysis choice. Mean |t| over <10 contacts is dominated by
-# whichever one happens to be extreme. The CSV is unaffected -- every label,
-# however small, is still written out.
-_FINE_MIN_ELECTRODES = 10
-
-
-def _long_region(fine_label):
-    """'L lateral occipital cortex' -> Long et al.'s subregion (hemispheres pooled)."""
-    if not hasattr(_long_region, "map"):
-        _long_region.map = pd.read_csv(join(os.path.dirname(os.path.abspath(__file__)),
-                                            "long_regions.csv")).set_index("region")["long_region"]
-    return _long_region.map.get(str(fine_label).split(" ", 1)[-1])
-
-
-def word_averaged_rows(files, lobe_of, t_unit, by_fine_label):
-    """Long et al.: average each word's envelope over a subject's sessions, then
-    one d per electrode across words (trial) or across all envelope samples
-    (sample). Electrodes = labels present in every session of the subject."""
-    import helper
-    by_sub = {}   # files grouped by subject; one subject's envelopes in memory at a time
-    for f in files:
-        by_sub.setdefault(Path(f).name.split("_")[0], []).append(f)
-    rows = []
-    for sub, fs in tqdm(by_sub.items(), desc="word-average"):
-        ps = [p for p in (fc.load_pickle(str(f)) for f in fs) if p.get("env_lo") is not None]
-        if not ps:
-            continue
-        labels = [l for l in ps[0]["labels"] if all(l in set(q["labels"]) for q in ps)]
-        col = lambda q: [list(q["labels"]).index(l) for l in labels]
-        acc = {}   # word -> [sum_lo, n_lo, sum_hi, n_hi], NaN-aware (full_isi blanks pre samples)
-        for q in ps:
-            c = col(q)
-            for i, w in enumerate(q["items"]):
-                lo, hi = q["env_lo"][i][c], q["env_hi"][i][c]
-                s = acc.setdefault(str(w).upper(), [0.0, 0, 0.0, 0])
-                s[0], s[1] = s[0] + np.nan_to_num(lo), s[1] + np.isfinite(lo)
-                s[2], s[3] = s[2] + hi, s[3] + 1
-        with np.errstate(invalid="ignore", divide="ignore"):
-            lo = np.stack([s[0] / s[1] for s in acc.values()])   # (W, C, T_lo), NaN where never observed
-        hi = np.stack([s[2] / s[3] for s in acc.values()])
-        if t_unit == "sample":
-            flat = lambda e: e.transpose(0, 2, 1).reshape(-1, e.shape[1])
-            a, b = flat(hi), flat(lo)
-            b = b[np.isfinite(b).all(1)]
-        else:
-            a, b = hi.mean(-1), np.nanmean(lo, -1)
-        d = helper.cohens_d(a, b)
-        # Long: average word response z-scored to the blank; latency = sample of its
-        # absolute max after onset, enhanced if that peak is positive
-        blank = lo.transpose(0, 2, 1).reshape(-1, lo.shape[1])
-        z = (hi.mean(0) - np.nanmean(blank, 0)[:, None]) / np.nanstd(blank, 0, ddof=1)[:, None]
-        k = np.abs(z).argmax(1)
-        lat, enh = k * 1000.0 / (fc.LONGETAL or {}).get("envelope_hz", 100), z[np.arange(len(k)), k] > 0
-        reg = dict(zip(ps[0]["labels"], ps[0]["reg_full"]))
-        roi = fc.roi_of_reg_full([reg[l] for l in labels], lobe_of)
-        for l, r, dd, lt, en in zip(labels, roi, d, lat, enh):
-            if r is None or not np.isfinite(dd):
-                continue
-            grp = _long_region(reg[l]) if by_fine_label else r
-            if grp is None:
-                continue
-            rows.append((sub, str(l), str(grp), str(r), float(dd), float(len(b)), float(len(a)), float(lt), float(en)))
-    return rows
-
-
-def collect_responsiveness(save_root, beh, band, lobe_of, n_sessions=None,
-                           by_fine_label=False):
-    """Per-(subject, electrode) t and p for the word contrast. t_unit "sample"
-    (hilbert only) treats every envelope sample, not every trial, as an observation.
-    """
-    t_unit, combine = LONG.get("t_unit", "trial"), LONG.get("combine", "d_mean")
-    dk, nk = ("cohens_d_samples", "_samples") if t_unit == "sample" else ("cohens_d", "")
-    from scipy.stats import t as tdist
-
-    d = power_dir(save_root, beh, band)
-    files = fc.session_files(d, "_power.pkl", n_sessions)
-    rows = word_averaged_rows(files, lobe_of, t_unit, by_fine_label) if combine == "word_average" else []
-    for f in (tqdm(files, desc="load responsiveness") if combine != "word_average" else []):
-        try:
-            p = fc.load_pickle(str(f))
-        except Exception:
-            continue
-        if p.get(dk) is None or "n_lo" not in p:
-            continue
-        sub = str(p["sid"][0])
-        roi = fc.roi_of_reg_full(p["reg_full"], lobe_of)
-        fine = np.asarray(p["reg_full"], dtype=object)
-        nlo, nhi = float(p["n_lo" + nk]), float(p["n_hi" + nk])
-        for lab, r, fl, dd in zip(p["labels"], roi, fine, p[dk]):
-            # Check the RAW value BEFORE str(). reg_full is np.nan for contacts
-            # with no anatomical label (white matter, outside brain, unmapped),
-            # and str(np.nan) == "nan" - which silently became its own group and
-            # topped the chart, because unlabelled contacts are common.
-            raw = fl if by_fine_label else r
-            if raw is None or (fc.LONGETAL and r is None):   # longetal: excluded lobes stay out of fine labels too
-                continue
-            if isinstance(raw, float) and not np.isfinite(raw):
-                continue
-            grp = str(raw).strip()
-            if fc.LONGETAL and by_fine_label:   # Long et al.'s subregions, hemispheres pooled
-                grp = _long_region(grp)
-                if grp is None:
-                    continue
-            if grp.lower() in _UNLABELLED:
-                continue
-            if not np.isfinite(dd):
-                continue
-            rows.append((sub, str(lab), str(grp), str(r), float(dd), nlo, nhi, np.nan, np.nan))
-    if not rows:
-        raise SystemExit(f"no usable pickles in {d}")
-    df = pd.DataFrame(rows,
-                      columns=["sub", "label", "grp", "roi", "d", "n_lo", "n_hi", "latency", "peak_enh"])
-    # one row per (subject, electrode): average d over that subject's sessions
-    # (word_average rows are already one per electrode; the mean is a no-op).
-    # `roi` rides along so a fine-label figure can still be coloured by lobe.
-    df = (df.groupby(["sub", "label", "grp", "roi"], as_index=False)
-            .agg(d=("d", "mean"), n_lo=("n_lo", "mean"), n_hi=("n_hi", "mean"),
-                 latency=("latency", "mean"), peak_enh=("peak_enh", "mean")))
-    # d -> t -> two-sided p (pooled-SD d, independent-samples t)
-    df["t"] = df["d"] * np.sqrt(df["n_lo"] * df["n_hi"] / (df["n_lo"] + df["n_hi"]))
-    df["abs_t"] = df["t"].abs()
-    df["p"] = 2 * tdist.sf(df["abs_t"], df["n_lo"] + df["n_hi"] - 2)
-    return df
-
-
-def responsiveness_stats(df, alpha=1e-8):
-    """Per group: n electrodes, % responsive, mean |t|, % of responders enhanced."""
-    df = df.assign(responsive=df["p"] < alpha, enhanced=df["t"] > 0)
-    g = df.groupby("grp")
-    out = pd.DataFrame({
-        "n_elec": g.size(),
-        "n_responsive": g["responsive"].sum(),
-        "pct_responsive": 100 * g["responsive"].mean(),
-        "mean_abs_t": g["abs_t"].mean(),
-        "median_abs_t": g["abs_t"].median(),
-    })
-    resp = df[df["responsive"]]
-    out["pct_enhanced_of_responders"] = (
-        100 * resp.groupby("grp")["enhanced"].mean()).reindex(out.index)
-    out["roi"] = g["roi"].agg(lambda v: v.mode().iat[0] if len(v) else "")
-    # Sorted by MEDIAN |t| -- the statistic the box plot actually draws, so the
-    # panel reads top-to-bottom in the order it is sorted. It is also robust:
-    # unlike the mean (Long's "average magnitude t-value") a couple of extreme
-    # contacts cannot carry a label, which is how a 5-contact caudate nucleus
-    # ranked above lingual. _FINE_MIN_ELECTRODES is still applied, since a
-    # median over a handful of contacts is unstable even though it is not
-    # outlier-driven.
-    #
-    # mean_abs_t stays in the CSV for comparison with Long, who ranks on it.
-    # The two disagree for genuinely bimodal regions -- fusiform is the case to
-    # watch: a responsive subset inside a mostly-unresponsive population gives a
-    # high mean and a low median.
-    return out.sort_values("median_abs_t", ascending=False).reset_index()
-
-
-# Long et al. 2020 (paper text where given, else read off thesis Figs 2.6A/C): latency ms, % enhanced; (mean, sem)
-LONG_PEAKS = {   # sem None = eyeballed mean, no error bar drawn
-    "Middle Occipital Gyrus": ((243.3, 17.3), (92.9, 2.6)), "Cuneus": ((304.7, 26.6), (79, None)),
-    "Fusiform Gyrus": ((352.2, 21.0), (92.4, 2.2)), "Lingual Gyrus": ((433.5, 51.7), (94.2, 3.3)),
-    "Superior Parietal Lobule": ((535, None), (68, None)), "Inferior Temporal Gyrus": ((600, None), (61, None)),
-    "Precentral Gyrus": ((610, None), (74, None)), "Precuneus": ((620, None), (66, None)),
-    "Inferior Parietal Lobule": ((635, None), (53, None)), "Middle Temporal Gyrus": ((645, None), (61.5, None)),
-    "Inferior Frontal Gyrus": ((648, None), (53.5, None)), "Middle Frontal Gyrus": ((648, None), (52, None)),
-    "Postcentral Gyrus": ((662, None), (57, None)), "Superior Temporal Gyrus": ((665, None), (59, None)),
-    "Superior Frontal Gyrus": ((690, None), (35, None)), "Medial Frontal Gyrus": ((740, None), (53, None)),
-}
-
-
-def plot_long_peaks(df, out_dir, tag, alpha, min_resp):
-    """Long's Fig 2.6A/C: mean latency and % enhanced of the RESPONSIVE electrodes
-    per subregion (mean +- SEM over electrodes), Juee as bars, Long's as red
-    points. Regions with >= min_resp responsive electrodes."""
-    import matplotlib.pyplot as plt
-    r = df[df["p"] < alpha].dropna(subset=["latency"])
-    g = r.groupby("grp")
-    st = pd.DataFrame({"n": g.size(), "lat": g["latency"].mean(), "lat_sem": g["latency"].sem(),
-                       "enh": 100 * g["peak_enh"].mean()})
-    st["enh_sem"] = np.sqrt(st["enh"] * (100 - st["enh"]) / st["n"])
-    st = st[st["n"] >= min_resp]
-    if st.empty:
-        return
-    st["roi"] = g["roi"].agg(lambda v: v.mode().iat[0]).reindex(st.index)
-    st.to_csv(join(out_dir, f"long_peaks_{tag}.csv"))
-    fig, axes = plt.subplots(1, 2, figsize=(13, 0.35 * len(st) + 1.8))
-    for ax, (col, j, lab) in zip(axes, (("lat", 0, "latency (ms)"), ("enh", 1, "% enhanced (peak > 0)"))):
-        s = st.sort_values(col)
-        y = np.arange(len(s))
-        colors = [fc.LOBE_COLORS.get(str(x).split("-")[-1], "0.6") for x in s["roi"]]
-        ax.barh(y, s[col], xerr=s[col + "_sem"], color=colors, alpha=0.8, label="Juee")
-        ref = [LONG_PEAKS.get(gname, (None, None))[j] for gname in s.index]
-        yy = [i for i, v in zip(y, ref) if v]
-        ax.errorbar([v[0] for v in ref if v], yy, xerr=[v[1] or 0 for v in ref if v], fmt="D", color="crimson",
-                    ms=4, label="Long et al.")
-        ax.set_yticks(y, [f"{gname} ({n})" for gname, n in zip(s.index, s["n"])])
-        ax.set_xlabel(lab)
-    axes[0].legend(loc="lower right", frameon=False)
-    fig.suptitle("Responsive electrodes")
-    fig.tight_layout()
-    path = join(out_dir, f"long_peaks_{tag}.png")
-    fig.savefig(path, dpi=160); plt.close(fig)
-    print(f"[long peaks] wrote {path}")
-
-
-def plot_responsiveness(df, stats, out_dir, beh, band, tag, alpha=1e-8):
-    """Two panels, one row per group, sharing the y order.
-
-    LEFT  -- box plot of the per-electrode |t| in each group. One observation per
-             (subject, electrode): that contact's Cohen's d for Word On vs Word
-             Off across events, converted to t. Box = IQR, line = median,
-             whiskers = 1.5 IQR, outliers hidden. It shows the SPREAD of response
-             strength across contacts, which is the point -- a region can have a
-             low median and still contain very strong individual electrodes.
-    RIGHT -- how many of those contacts clear the responsiveness threshold.
-
-    Coloured by Burke lobe via fc.LOBE_COLORS (Okabe-Ito, colourblind-safe), the
-    palette the ROI figures already use. Colour is redundant with the y labels,
-    never the sole carrier of identity.
-    """
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-
-    order = list(stats["grp"])
-
-    def _col(roi):
-        lobe = str(roi).split("-", 1)[-1]          # "L-occipital" -> "occipital"
-        return fc.LOBE_COLORS.get(lobe, "0.5")
-    colors = [_col(r) for r in stats["roi"]]
-
-    fig, axes = plt.subplots(
-        1, 2, figsize=(13, max(4.0, 0.32 * len(order) + 1.6)), sharey=True)
-
-    data = [df.loc[df["grp"] == g, "abs_t"].to_numpy(float) for g in order]
-    bp = axes[0].boxplot(data, vert=False, showfliers=False, widths=0.65,
-                         patch_artist=True)
-    for patch, c in zip(bp["boxes"], colors):
-        patch.set_facecolor(c); patch.set_alpha(0.85); patch.set_edgecolor("0.25")
-    for med in bp["medians"]:
-        med.set_color("0.15"); med.set_linewidth(1.4)
-    axes[0].set_yticks(np.arange(1, len(order) + 1))
-    axes[0].set_yticklabels([fc.pretty_roi(g) for g in order], fontsize=8)
-    axes[0].set_xlabel("|t| per electrode")
-    axes[0].axvline(0, color="0.7", lw=0.8)
-    axes[0].invert_yaxis()
-
-    y = np.arange(1, len(order) + 1)
-    axes[1].barh(y, stats["n_responsive"], color=colors, alpha=0.85,
-                 edgecolor="0.25")
-    axes[1].set_xlabel("electrodes")
-    axes[1].set_title(f"Number of responsive electrodes (p < {alpha:g})",
-                      fontsize=10)
-    axes[1].tick_params(labelleft=False)
-    xmax = max(1, int(stats["n_responsive"].max()))
-    for yi, nr, ne, pc in zip(y, stats["n_responsive"], stats["n_elec"],
-                              stats["pct_responsive"]):
-        axes[1].text(nr + 0.01 * xmax, yi, f"{nr:.0f} / {ne}  ({pc:.0f}%)",
-                     va="center", fontsize=7)
-    axes[1].set_xlim(0, xmax * 1.28)
-
-    axes[0].set_title(f"{band} power, "
-                      f"{fc.contrast(beh)['hi_label']} vs "
-                      f"{fc.contrast(beh)['lo_label']}", fontsize=10)
-
-    # Lobe legend, outside on the right; only the lobes actually drawn.
-    from matplotlib.patches import Patch
-    seen, handles = set(), []
-    for r in stats["roi"]:
-        lobe = str(r).split("-", 1)[-1]
-        if lobe not in seen:
-            seen.add(lobe)
-            handles.append(Patch(facecolor=fc.LOBE_COLORS.get(lobe, "0.5"),
-                                 edgecolor="0.25", alpha=0.85,
-                                 label=fc.pretty_roi(lobe)))
-    # tight_layout FIRST, so the axes are already shrunk into rect before the
-    # legend is anchored against the reserved strip. Anchoring at x=1.0 (the
-    # figure's right EDGE) put the legend outside the canvas, where savefig
-    # silently clipped it -- the legend was being drawn all along, just off-page.
-    fig.tight_layout(rect=(0, 0, 0.88, 1))
-    if handles:
-        fig.legend(handles=handles, loc="center left", bbox_to_anchor=(0.885, 0.5),
-                   frameon=False, fontsize=8, title="ROI",
-                   title_fontsize=8)
-    os.makedirs(out_dir, exist_ok=True)
-    path = join(out_dir, f"responsiveness_{tag}.png")
-    # bbox_inches="tight" is belt-and-braces: anything that still lands slightly
-    # outside the canvas gets included rather than cropped away.
-    fig.savefig(path, dpi=160, bbox_inches="tight"); plt.close(fig)
-    return path
 
 
 def main() -> None:

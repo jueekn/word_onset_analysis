@@ -40,7 +40,7 @@ OpenNeuro lists, so the cohort grows as the release is updated.
 ## How it runs
 
 ```bash
-snakemake --cores 8                               # full run (config.yaml `runs`: alpha + high gamma, PPC)
+snakemake --cores 8                               # full run (config.yaml `runs`: alpha ciPLV + high-gamma AEC-c)
 snakemake --cores 4 --config smokescreen=true     # first 3 subjects, *.smokescreen outputs
 snakemake simulations --cores 4                   # validity checks -> figures/simulations/
 # add --config longetal=true for the Long et al. 2020 replication (power only) -> *.longetal
@@ -52,7 +52,6 @@ or by hand:
 python prepare_sessions.py --n-subjects 3 --workers 4   # session list, data check, events
 python build_roi_power.py     --band high_gamma --workers 4
 python build_roi_synchrony.py --band high_gamma --workers 4
-python build_power_synchrony.py --band high_gamma
 ```
 
 `prepare_sessions.py` writes the session list and per-session artifacts under
@@ -81,16 +80,11 @@ plotted into its directory (alpha, high gamma), paired t per ROI, BH-FDR.
 | directory | figure | |
 |---|---|---|
 | `burke_roi_power/` | `roi_power_word_on.png` | Cohen's *d* of power per ROI |
-| | `responsiveness_word_on_<band>_multitaper.png` | per-electrode \|t\| and number of responsive electrodes (p < 1e-8); `--fine-labels` adds a figure by raw label (top 15) |
+| | `power_spectrum_word_on_rois.png` / `_occipital.png` | t per ROI x log-spaced frequency bin (5–100 Hz); occipital subregions |
 | | `power_timecourse_word_on_high_gamma_multitaper_50ms.png` | *d* vs latency per ROI — **gamma only** |
-| `burke_roi_synchrony/` | `roi_synchrony_word_on_ppc.png` | on − off PPC per ROI, collapsed over distance |
-| | `roi_synchrony_distance_word_on_<band>_ppc.png` | the same per distance bin, per ROI |
-| `power_synchrony/` | `power_synchrony_word_on_ppc.png` | across-electrode r of power *d* vs synchrony change |
-
-Synchrony is raw PPC by default (whole-brain changes show). `--zscore`
-z-scores each distance bin across the session's electrodes first, leaving only
-ROI-vs-ROI differences. `--rmin/--rmax/--bin-w` set the bins,
-`--exclude-same-shank` drops same-lead pairs; pair centroids are in MNI.
+| `burke_roi_synchrony/` | `roi_synchrony_word_on.png` | on − off synchrony per ROI (alpha ciPLV, high-gamma AEC-c), each electrode's mean over all partners |
+| | `roi_synchrony_epochs_word_on.png` / `_fine_` | 200 ms epoch network: hubs (region pairs with >= 100 subjects), top-5 edges per hub |
+| `simulations/` | `recovery.png`, `<tag>/…` | validity checks (config/simulation_config.yaml) |
 
 ---
 
@@ -114,9 +108,8 @@ ROI-vs-ROI differences. `--rmin/--rmax/--bin-w` set the bins,
 
 ```
 prepare_sessions.py         session list, data check, events (run first)
-build_roi_power.py          power, responsiveness, gamma time course
-build_roi_synchrony.py      phase connectivity, per ROI and vs distance
-build_power_synchrony.py    power-synchrony correlation (consumes the other two)
+build_roi_power.py          power per ROI, spectrum, gamma time course
+build_roi_synchrony.py      synchrony per ROI and epoch network
 plot_recovery.py            simulation recovery curves
 roi_subregion_counts.py     ROI/subregion coverage tables (standalone)
 
