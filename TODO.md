@@ -6,6 +6,16 @@
   power band). data_check then stops excluding on notched harmonics: the 16 sessions
   excluded for 120 Hz come back; the 9 with non-mains 100 Hz peaks stay excluded.
 
+## After the recompute: modular scripts (one compute, one script per figure)
+- `compute.py` (done) -> the build_roi_* compute stages and run_sess_* go.
+- Plot scripts reading the per-session pickles: `plot_boxplots.py` (power + synchrony,
+  subject and mean ± CI versions), `plot_spectrum.py` (ROI x frequency t heatmap),
+  `plot_case_studies.py` (subregion curves; `--regions`, default fusiform + lateral
+  occipital), `plot_timecourse.py` (high gamma), `plot_epoch_network.py`; Snakefile and
+  run_streamed.sh call compute.py then the plot scripts.
+- Next analysis: high-gamma latency / order of activation from the stored 10 ms envelopes
+  (needs an electrode-selection rule).
+
 ## On hold
 - **Region labels for depth contacts (151 subjects).** The OpenNeuro BIDS release has no
   whole-brain volumetric label (`wb` / rhino `atlases.whole_brain` / `mni.region`) for the

@@ -132,7 +132,11 @@ def replace_w_simulated_EEG(eeg: TimeSeries, dfrow: pd.Series, condition_mask: N
         import mne
         sf = float(eeg.samplerate)
         carrier = mne.filter.filter_data(np.random.standard_normal(eeg.shape), sf, *p["band"], verbose=False)
-        env = mne.filter.filter_data(np.random.standard_normal(eeg.shape), sf, None, p["env_hz"], verbose=False)
+        # slow envelope filtered on a 2 s-padded segment, then cropped: the low-pass
+        # is longer than the shorter clips, so its edges must not reach the clip
+        pad = int(2 * sf)
+        env = mne.filter.filter_data(np.random.standard_normal((*eeg.shape[:-1], eeg.shape[-1] + 2 * pad)),
+                                     sf, None, p["env_hz"], verbose=False)[..., pad:-pad]
         mask = np.asarray(condition_mask, bool)
         own = env[np.ix_(mask, target)]
         env[np.ix_(mask, target)] = np.where(win, own[:, :1], own)   # first target channel's envelope, shared

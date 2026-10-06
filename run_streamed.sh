@@ -1,8 +1,8 @@
 #!/bin/zsh
 # Juee (default) full run when the bipolar EEG (FR1+catFR1+pyFR, ~680 GB) doesn't
-# fit on disk: per batch of subjects, download -> data check + events -> compute
-# power then synchrony (both runs' bands) -> delete the batch's raw bipolar EEG.
-# Results are cached per session, so the final snakemake pass only plots.
+# fit on disk: per batch of subjects, download -> data check + events -> compute.py
+# (power + synchrony, one load per session) -> delete the batch's raw bipolar EEG.
+# Results are cached per session; the final plot stages only read them.
 # Resumable: finished batches are listed in <scratch>/logs/stream_done.txt.
 #   caffeinate -is zsh run_streamed.sh [batch_size]
 cd "${0:A:h}"
@@ -23,14 +23,9 @@ for ((i = 1; i <= ${#SUBS}; i += B)); do
   grep -qx "$batch" $DONE && continue
   echo "[stream] $(date +%H:%M) batch $(( (i - 1) / B + 1 )): $batch"
   retry $PY prepare_sessions.py --subjects $batch --workers 3 || continue   # downloads this batch
-  for band in $BANDS spectrum; do   # local only: sessions from earlier batches are cached, nothing re-downloads
-    CML_DATA_SOURCE=local $PY build_roi_power.py --stage compute --band $band --workers 3
-  done
-  for band in $BANDS; do
-    CML_DATA_SOURCE=local $PY build_roi_synchrony.py --stage compute --band $band --workers 3
-  done
+  CML_DATA_SOURCE=local $PY compute.py --workers 3   # single pass; earlier batches are cached
   drop_raw; echo "$batch" >> $DONE
 done
-CML_DATA_SOURCE=local ~/.venvs/phase_viz/bin/snakemake all --cores 3   # plots from the cache
-CML_DATA_SOURCE=local $PY build_roi_power.py --stage plot --band spectrum   # t vs frequency figures
+for band in $BANDS spectrum; do CML_DATA_SOURCE=local $PY build_roi_power.py --stage plot --band $band; done
+for band in $BANDS; do CML_DATA_SOURCE=local $PY build_roi_synchrony.py --stage plot --band $band; done
 drop_raw

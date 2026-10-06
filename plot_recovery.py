@@ -79,8 +79,9 @@ def main():
                 continue
             noise = sweep.split("_")[-1] if sweep.endswith(("noisy", "clean")) else ""
             for col, lab, ls in ((0, f"target {noise}", "-"), (1, f"other {noise}", ":")):
-                y = np.array([s[:, col].mean() if len(s) else np.nan for s in v])
-                e = np.array([s[:, col].std(ddof=1) / np.sqrt(len(s)) if len(s) > 1 else np.nan for s in v])
+                y = np.array([np.nanmean(s[:, col]) if len(s) else np.nan for s in v])   # NaN: session without target pairs
+                e = np.array([np.nanstd(s[:, col], ddof=1) / np.sqrt(np.isfinite(s[:, col]).sum())
+                              if len(s) > 1 else np.nan for s in v])
                 ax.errorbar(x, y, yerr=e, marker="o", ls=ls, capsize=3, label=lab)
             lim = [min(lim[0], x.min()), max(lim[1], x.max())]
         if not np.isfinite(lim[0]):   # nothing run for this kind
