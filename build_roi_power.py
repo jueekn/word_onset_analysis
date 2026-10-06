@@ -661,8 +661,9 @@ def run_plot_stage(save_root, beh, band, args):
         f"the ROI's electrodes), per ROI:")
     stem = f"roi_power_{beh}_{{band}}"
     fc.write_roi_csvs(args.out_dir, stem.format(band=band), tbl, per_elec, stats)
-    fc.band_contrast_figure(args.out_dir, stem, "cohens_d",
-                            f"Power, Cohen's d ({c['hi_label']} vs. {c['lo_label']})")
+    for ci in (False, True):
+        fc.band_contrast_figure(args.out_dir, stem, "cohens_d",
+                                f"Power, Cohen's d ({c['hi_label']} vs. {c['lo_label']})", ci=ci)
     return tbl
 
 

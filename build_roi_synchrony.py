@@ -187,7 +187,8 @@ def run_plot_stage(
     stem = f"roi_synchrony_{beh}_{{band}}_{{metric}}"
     fc.write_roi_csvs(args.out_dir, stem.format(band=band, metric=metric), tbl, elec_df, stats)
     ylab = f"{{metric}} ({c['hi_label']} vs. {c['lo_label']})"
-    fc.band_contrast_figure(args.out_dir, stem, "sync_diff", ylab)
+    for ci in (False, True):
+        fc.band_contrast_figure(args.out_dir, stem, "sync_diff", ylab, ci=ci)
 
     # time-resolved network: per region pair and 200 ms epoch, FDR over pairs x epochs;
     # 12 ROIs, and the fine anatomical regions within them
