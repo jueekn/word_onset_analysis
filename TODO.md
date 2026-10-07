@@ -1,20 +1,17 @@
 # On hold / to do
 
-## Next recompute (after the current plots are reviewed)
+## Done in the 2026-10-06 recompute
 - Single-pass compute: load each session once, write power + synchrony together.
 - Notch the 120 Hz mains harmonic (`notch_harmonics_up_to_hz: 150`; inside the 70-150 Hz
   power band). data_check then stops excluding on notched harmonics: the 16 sessions
   excluded for 120 Hz come back; the 9 with non-mains 100 Hz peaks stay excluded.
 
-## After the recompute: modular scripts (one compute, one script per figure)
-- `compute.py` (done) -> the build_roi_* compute stages and run_sess_* go.
-- Plot scripts reading the per-session pickles: `plot_boxplots.py` (power + synchrony,
-  subject and mean ± CI versions), `plot_spectrum.py` (ROI x frequency t heatmap),
-  `plot_case_studies.py` (subregion curves; `--regions`, default fusiform + lateral
-  occipital), `plot_timecourse.py` (high gamma), `plot_epoch_network.py`; Snakefile and
-  run_streamed.sh call compute.py then the plot scripts.
-- Next analysis: high-gamma latency / order of activation from the stored 10 ms envelopes
-  (needs an electrode-selection rule).
+## Modular scripts (done 2026-10-07)
+- compute.py + plot_boxplots / plot_spectrum / plot_case_studies / plot_timecourse /
+  plot_epoch_network / plot_latency; build_roi_synchrony.py removed; build_roi_power.py is
+  Long-only legacy (delete with the Long code when you decide).
+- High-gamma envelopes from the 2026-10-06 run are float16 (one electrode overflowed;
+  plot_latency skips non-finite); compute.py now stores float32 (next recompute).
 
 ## On hold
 - **Region labels for depth contacts (151 subjects).** The OpenNeuro BIDS release has no

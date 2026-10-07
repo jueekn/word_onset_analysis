@@ -50,8 +50,9 @@ or by hand:
 
 ```bash
 python prepare_sessions.py --n-subjects 3 --workers 4   # session list, data check, events
-python build_roi_power.py     --band high_gamma --workers 4
-python build_roi_synchrony.py --band high_gamma --workers 4
+python compute.py --workers 4                            # power + synchrony, one load per session
+python plot_boxplots.py; python plot_spectrum.py; python plot_case_studies.py
+python plot_timecourse.py; python plot_epoch_network.py; python plot_latency.py
 ```
 
 `prepare_sessions.py` writes the session list and per-session artifacts under
@@ -100,7 +101,6 @@ plotted into its directory (alpha, high gamma), paired t per ROI, BH-FDR.
 | `mt_bandwidth` | 2 | NW = 0.6 over a 600 ms window |
 | `time_bin_ms` / `mt_window_ms` | 50 / 100 | gamma time course: bin step / sliding window |
 | `real_data_buffer_ms` | 50 | real EEG around each window (riley-thesis), cropped before estimation |
-| `computation_metrics` | coh, plv, ppc, ciplv, pli, wpli, pac | `build_roi_synchrony --metrics` |
 
 ---
 
@@ -108,9 +108,16 @@ plotted into its directory (alpha, high gamma), paired t per ROI, BH-FDR.
 
 ```
 prepare_sessions.py         session list, data check, events (run first)
-build_roi_power.py          power per ROI, spectrum, gamma time course
-build_roi_synchrony.py      synchrony per ROI and epoch network
+compute.py                  per session, one load: alpha + spectrum power (multitaper), high-gamma
+                            power (Hilbert sub-bands, + per-trial envelopes), alpha ciPLV, high-gamma AEC-c
+plot_boxplots.py            power + synchrony per ROI (subject and mean +/- CI versions)
+plot_spectrum.py            t per ROI x frequency bin
+plot_case_studies.py        t vs frequency for chosen regions (--regions)
+plot_timecourse.py          high-gamma d per 50 ms bin per ROI
+plot_epoch_network.py       200 ms epoch synchrony network (hubs + edges)
+plot_latency.py             high-gamma half-max latency / order of activation
 plot_recovery.py            simulation recovery curves
+build_roi_power.py          Long et al. replication only (legacy, longetal=true)
 roi_subregion_counts.py     ROI/subregion coverage tables (standalone)
 
 fc_comparison_functions.py  connectivity estimators, ROI stats, figures, session dispatch

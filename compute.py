@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -33,14 +34,42 @@ import pandas as pd
 
 import fc_comparison_functions as fc
 import helper
-from build_roi_power import FREQ_EDGES, band_power, band_power_bins, power_dir
-from build_roi_synchrony import cond_dir
+
+FREQ_EDGES = np.geomspace(5, 100, 11)   # log-spaced bins of the power spectrum (5-100 Hz)
+
+
+def power_dir(root: str, beh: str, band: str) -> Path:
+    return Path(root) / beh / "power" / fc.band_dirname(band, fc.POWER_MODE)
+
+
+def cond_dir(root: str, beh: str, cond: str, band: str) -> Path:
+    return Path(root) / beh / "fc_mats" / cond / band
+
+
+def band_power(seg: np.ndarray, sf: float, fmin: float, fmax: float, bandwidth: float) -> np.ndarray:
+    """(E, C) multitaper power averaged over [fmin, fmax] (same front end as the phase metrics)."""
+    from mne.time_frequency import psd_array_multitaper
+    psds, _ = psd_array_multitaper(seg, sf, fmin=fmin, fmax=fmax, bandwidth=bandwidth, adaptive=False,
+                                   low_bias=False, normalization="full", verbose=False)
+    return np.asarray(psds).mean(-1)
+
+
+def band_power_bins(seg: np.ndarray, sf: float, bandwidth: float, edges: np.ndarray = FREQ_EDGES) -> np.ndarray:
+    """(E, C, n_bins) multitaper power averaged within each [edges[k], edges[k+1]) bin,
+    leaving out the notched mains frequencies (48-52, 58-62 Hz)."""
+    from mne.time_frequency import psd_array_multitaper
+    psds, f = psd_array_multitaper(seg, sf, fmin=edges[0], fmax=edges[-1], bandwidth=bandwidth,
+                                   adaptive=False, low_bias=False, normalization="full", verbose=False)
+    keep = (np.abs(f - 50) > 2) & (np.abs(f - 60) > 2)
+    return np.stack([np.asarray(psds)[..., (f >= a) & (f < b) & keep].mean(-1)
+                     for a, b in zip(edges[:-1], edges[1:])], axis=-1)
+
 
 BEH = "word_on"
 SYNC = {"alpha": "ciplv", "high_gamma": "aec_c"}
 HG_SUBBANDS = [(f, f + 10) for f in range(70, 150, 10)]
 ENV_STEP_MS = 10          # stored per-trial high-gamma envelope resolution
-VERSION = "single_pass_1"
+VERSION = "single_pass_2"   # 2: envelopes stored float32 (float16 overflowed)
 
 
 def _crop(eeg: Any, win: tuple[float, float]) -> np.ndarray:
@@ -154,7 +183,7 @@ def run_session(dfrow: pd.Series, save_root: str, root_dir: str,
     d_bins = np.stack([_cohens_d(env_post[..., (t_post >= a) & (t_post < b)].mean(-1), p_lo)
                        for a, b in zip(edges[:-1], edges[1:])], -1)
     step = int(round(ENV_STEP_MS * sf / 1000.0))
-    ds = lambda e: e[..., :e.shape[-1] // step * step].reshape(*e.shape[:2], -1, step).mean(-1).astype(np.float16)
+    ds = lambda e: e[..., :e.shape[-1] // step * step].reshape(*e.shape[:2], -1, step).mean(-1).astype(np.float32)
     save("high_gamma", p_lo, p_hi,
          {"measure": "power", "fc_mode": "hilbert_subbands", "subbands": HG_SUBBANDS,
           "cohens_d_bins": d_bins, "bin_centers_ms": (edges[:-1] + edges[1:]) / 2 - post_win[0],

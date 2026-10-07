@@ -46,7 +46,7 @@ bands:
 #   data (their windows are 100 ms apart). Note: our earlier hg_null simulation
 #   (with the 100/120/150 Hz harmonic notches) showed a small null power bias at
 #   50 ms (d ~ -0.08) that vanished at >= 500 ms.
-real_data_buffer_ms: 50
+real_data_buffer_ms: 500
 mt_bandwidth: 2
 
 # Power time course (gamma only; build_roi_power TIMING_MIN_HZ).
@@ -75,7 +75,7 @@ min_sample_rate_hz: 499
 #   subjects, 2026-10-01); data_check records line_100/120/150 for every session
 #   so any that do carry harmonics are visible. A number notches the harmonics up
 #   to it as well (site-uniform, helper.notch_filter).
-notch_harmonics_up_to_hz: null
+notch_harmonics_up_to_hz: 150
 # max_line_harmonic_ratio: sessions whose 100/120/150 Hz mains-harmonic peak
 #   exceeds this multiple of the neighbouring power (data_check line_*) are
 #   excluded (2026-10-02: 16 of 716 sessions).

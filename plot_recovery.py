@@ -21,8 +21,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import fc_comparison_functions as fc
-from build_roi_power import power_dir
-from build_roi_synchrony import cond_dir
+from compute import cond_dir, power_dir
 from simulate_eeg import SWEEPS, _target_lobe_mask, simulation_parameters
 
 BEH = "word_on"

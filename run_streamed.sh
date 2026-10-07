@@ -26,6 +26,7 @@ for ((i = 1; i <= ${#SUBS}; i += B)); do
   CML_DATA_SOURCE=local $PY compute.py --workers 3   # single pass; earlier batches are cached
   drop_raw; echo "$batch" >> $DONE
 done
-for band in $BANDS spectrum; do CML_DATA_SOURCE=local $PY build_roi_power.py --stage plot --band $band; done
-for band in $BANDS; do CML_DATA_SOURCE=local $PY build_roi_synchrony.py --stage plot --band $band; done
+for s in plot_boxplots plot_spectrum plot_case_studies plot_timecourse plot_epoch_network plot_latency; do
+  CML_DATA_SOURCE=local $PY $s.py   # figures from the cache
+done
 drop_raw

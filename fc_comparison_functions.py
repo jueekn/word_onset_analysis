@@ -576,8 +576,7 @@ LOBE_COLORS: dict[str, str] = {
 # Minimum subjects per test; a subject
 # needs only 1 electrode in a region. Simulations (20 subjects) use 5 (resolve_roots).
 MIN_SUBJECTS_ROI: int = 30     # region-level tests (ROIs, subregions, bins)
-MIN_SUBJECTS_PAIR: int = 100   # region-pair connections (epoch network), as riley-thesis;
-                               # 60/78 ROI pairs, 89 fine-region pairs reach it
+MIN_SUBJECTS_PAIR: int = 100   # region pairs (epoch network edges and hubs), as riley-thesis
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -1184,6 +1183,21 @@ def add_common_args(p: Any, compute: bool = True) -> Any:
                        help="sessions computed at once in separate processes "
                             "(1 = in this process); budget a few GB of RAM each")
     return p
+
+
+def plot_args(doc: str, out_dir: str, **extra: Any) -> tuple[Any, str]:
+    """CLI shared by the plot_*.py scripts -> (args, save_root). `extra`:
+    {flag: argparse kwargs} for script-specific options."""
+    import argparse
+    p = argparse.ArgumentParser(description=doc.splitlines()[0])
+    add_common_args(p, compute=False)
+    p.add_argument("--out-dir", default=out_dir)
+    p.add_argument("--min-electrodes", type=int, default=1,
+                   help="min electrodes a subject needs in a region to enter its test")
+    for flag, kw in extra.items():
+        p.add_argument(flag, **kw)
+    args = p.parse_args()
+    return args, resolve_roots(args)[1]
 
 
 def resolve_roots(args: Any) -> tuple[str, str]:
