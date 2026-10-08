@@ -415,8 +415,10 @@ def compute_pac(
     amp_band: tuple[float, float] = bands["gamma"],
     buffer_left_samples: int = 0,
     buffer_right_samples: int = 0,
+    keep_diagonal: bool = False,
 ) -> NDArrayAny:
-    """Ozkurt phase-amplitude coupling, channel × channel.
+    """Ozkurt phase-amplitude coupling, channel × channel (phase channel i, amplitude
+    channel j). The diagonal (within-electrode PAC) is NaN unless `keep_diagonal`.
 
     Mathematically identical to looping ``pactools.Comodulogram(method='ozkurt',
     n_surrogates=0).fit(low_sig=data[:, i], high_sig=data[:, j])`` for every
@@ -503,8 +505,8 @@ def compute_pac(
     Z = phase_phasor @ amp.T  # complex (n_ch, n_ch); sum over time
     Z /= N
     M = np.abs(Z) * (np.sqrt(N) / norm_a[np.newaxis, :])
-
-    np.fill_diagonal(M, np.nan)
+    if not keep_diagonal:
+        np.fill_diagonal(M, np.nan)
     return M.astype(float, copy=False)
 
 
@@ -901,7 +903,7 @@ def band_contrast_figure(out_dir: str, stem: str, col: str, ylabel: str, ci: boo
 
 
 def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
-                         max_lw: float = 6.0) -> None:
+                         max_lw: float = 6.0, extra_rows: Sequence[tuple[str, str, str]] = ()) -> None:
     """Rao et al. 2025 / Solomon et al. 2017 style network per EPOCHS window
     (columns) for each band with `<stem>_hubs.csv` (rows; band_stems).
 
@@ -914,13 +916,14 @@ def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
     from matplotlib import patheffects
     from matplotlib.lines import Line2D
     from nilearn import plotting
-    rows = band_stems(out_dir, stem, "_hubs.csv")
+    # rows: (row label, metric, hubs csv); `extra_rows` (e.g. PAC) are appended as given
+    rows = [(band_label(b), m, f) for b, m, f in band_stems(out_dir, stem, "_hubs.csv")] + list(extra_rows)
     if not rows:
         return
     nE = len(EPOCHS)
     fig, axes = plt.subplots(len(rows), nE, figsize=(2.7 * nE + 2.5, 3.2 * len(rows) + 0.6),
                              squeeze=False)
-    for r, (band, metric, f) in enumerate(rows):
+    for r, (row_label, metric, f) in enumerate(rows):
         hubs = pd.read_csv(f)
         pairs = pd.read_csv(f.replace("_hubs.csv", "_stats.csv")).dropna(subset=["t"])
         pairs[["a", "b"]] = pairs["roi"].str.split("|", expand=True)
@@ -966,7 +969,7 @@ def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
         axes[r, -1].legend(handles=handles, loc="center left", bbox_to_anchor=(1.05, 0.5),
                            frameon=False, fontsize=11, title_fontsize=12,
                            title=ylabel.format(metric=METRIC_LABELS.get(metric, metric)).replace(" (", "\n("))
-        axes[r, 0].text(-0.08, 0.5, band_label(band), transform=axes[r, 0].transAxes,
+        axes[r, 0].text(-0.08, 0.5, row_label, transform=axes[r, 0].transAxes,
                         rotation=90, ha="right", va="center", fontsize=15)
     path = join(out_dir, stem.replace("_{band}", "").replace("_{metric}", ""))
     fig.savefig(f"{path}.png", dpi=300, bbox_inches="tight")

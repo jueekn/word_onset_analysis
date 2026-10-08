@@ -8,6 +8,9 @@ shared by:
   synchrony  alpha ciPLV (multitaper) and high-gamma AEC-c (70-110 Hz Hilbert),
              main window + 200 ms epochs  -> <save_root>/word_on/fc_mats/diff/<band>/
              (fc.compute_prepost_separate, as build_roi_synchrony)
+  PAC        3-8 Hz phase x 70-110 Hz amplitude (Ozkurt, riley-thesis compute_pac),
+             between electrodes (phase channel x amplitude channel) and within
+             each electrode, main window + 200 ms epochs -> word_on/fc_mats/diff/pac/
   power      alpha: multitaper over 8-13 Hz           -> word_on/power/alpha/
              spectrum: multitaper, 10 log bins 5-100   -> word_on/power/spectrum/
              high gamma: Hilbert in 10 Hz sub-bands 70-150 Hz, each normalized by
@@ -69,7 +72,7 @@ BEH = "word_on"
 SYNC = {"alpha": "ciplv", "high_gamma": "aec_c"}
 HG_SUBBANDS = [(f, f + 10) for f in range(70, 150, 10)]
 ENV_STEP_MS = 10          # stored per-trial high-gamma envelope resolution
-VERSION = "single_pass_2"   # 2: envelopes stored float32 (float16 overflowed)
+VERSION = "single_pass_4"   # 2: envelopes float32 (float16 overflowed); 3: + PAC; 4: + PAC epochs
 
 
 def _crop(eeg: Any, win: tuple[float, float]) -> np.ndarray:
@@ -103,7 +106,7 @@ def run_session(dfrow: pd.Series, save_root: str, root_dir: str,
                 simulation_tag: str | None = None) -> str:
     fc.root_dir = helper.root_dir = root_dir
     sid = fc.ftag(dfrow)
-    outs = {b: cond_dir(save_root, BEH, "diff", b) / f"{sid}_fc_mats.pkl" for b in SYNC}
+    outs = {b: cond_dir(save_root, BEH, "diff", b) / f"{sid}_fc_mats.pkl" for b in (*SYNC, "pac")}
     pows = {b: power_dir(save_root, BEH, b) / f"{sid}_power.pkl" for b in ("alpha", "high_gamma", "spectrum")}
     if all(p.exists() for p in [*outs.values(), *pows.values()]) and \
             fc.load_pickle(str(outs["alpha"])).get("version") == VERSION:   # small file; written first
@@ -147,6 +150,30 @@ def run_session(dfrow: pd.Series, save_root: str, root_dir: str,
     blank = _blank_before(word_ev)
     blank_lo = blank[np.asarray(pre_eeg.event, int)]
     blank_hi = blank[np.asarray(post_eeg.event, int)]
+    # PAC: between electrodes (as riley-thesis) and within each electrode, same clips
+    # one PAC matrix per window: diagonal = within electrode; off-diagonal (overlap-masked,
+    # as riley-thesis) = between electrodes
+    def pac_matrix(eeg, win):
+        i = int(round((win[0] - float(eeg.time[0])) * sf / 1000.0))
+        n = int(round((win[1] - win[0]) * sf / 1000.0))
+        return fc.compute_pac(np.asarray(eeg.data, float)[..., i - n_buf:i + n + n_buf], sf,
+                              buffer_left_samples=n_buf, buffer_right_samples=n_buf, keep_diagonal=True)
+    def split(P):   # -> (between electrodes: diagonal NaN + overlap mask, within electrode)
+        loc = np.diag(P).copy()
+        np.fill_diagonal(P, np.nan)
+        return fc.apply_overlap_mask(P, om), loc
+    (p_lo, loc_lo), (p_hi, loc_hi) = split(pac_matrix(pre_eeg, pre_win)), split(pac_matrix(post_eeg, post_win))
+    # epochs, as the synchrony epochs: each post epoch minus the mean of the word-off epochs
+    base = [split(pac_matrix(pre_eeg, w)) for w in fc.EPOCH_BASELINE]
+    b_btw, b_loc = np.nanmean([b[0] for b in base], axis=0), np.mean([b[1] for b in base], axis=0)
+    ep = [split(pac_matrix(post_eeg, w)) for w in fc.EPOCHS]
+    os.makedirs(outs["pac"].parent, exist_ok=True)
+    fc.save_pickle(str(outs["pac"]), {**meta, "pac": p_hi - p_lo, "pac_lo": p_lo, "pac_hi": p_hi,
+                                      "pac_local": loc_hi - loc_lo, "pac_local_lo": loc_lo,
+                                      "pac_local_hi": loc_hi,
+                                      "pac_epochs": np.stack([e[0] - b_btw for e in ep]),
+                                      "pac_local_epochs": np.stack([e[1] - b_loc for e in ep])})
+
     lo, hi = fc.equalize_time_length(_crop(pre_eeg, pre_win), _crop(post_eeg, post_win))
     trial = {"labels": labels, "n_lo": len(lo), "n_hi": len(hi), "n_win_samples": lo.shape[-1],
              "lo_win": pre_win, "hi_win": post_win, "blank_ms_lo": blank_lo, "blank_ms_hi": blank_hi}
