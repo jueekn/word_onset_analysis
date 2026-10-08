@@ -793,27 +793,26 @@ def roi_panel(
     return pos
 
 
-def roi_ci_panel(
+def roi_bar_panel(
     ax: Any, stats: pd.DataFrame, roi_order: Sequence[str] = tuple(ROI_ORDER),
     lobes: Sequence[str] = tuple(LOBES),
 ) -> list[float]:
-    """One 12-ROI panel of the across-subject mean +/- 95% CI (roi_stats); FDR
-    stars in a fixed row along the top, n along the bottom."""
+    """One 12-ROI panel of bars, across-subject mean +/- SEM (roi_stats), coloured by
+    lobe; FDR stars in a fixed row along the top, n along the bottom."""
     pos = _roi_positions(roi_order, lobes)
     s = stats.set_index("roi")
     for i, roi in enumerate(roi_order):
         if roi not in s.index or s.loc[roi, "n_subjects"] < MIN_SUBJECTS_ROI:
             continue
         r = s.loc[roi]
-        ax.errorbar(pos[i], r["mean"], yerr=[[r["mean"] - r["ci95_lo"]], [r["ci95_hi"] - r["mean"]]],
-                    fmt="o", ms=8, color=LOBE_COLORS.get(roi.split("-", 1)[1], "0.5"),
-                    mec="0.15", ecolor="0.25", elinewidth=1.4, capsize=4, zorder=3)
+        ax.bar(pos[i], r["mean"], yerr=r["sem"], width=0.7, capsize=3, edgecolor="0.15",
+               ecolor="0.2", color=LOBE_COLORS.get(roi.split("-", 1)[1], "0.5"), zorder=3)
         ax.annotate(f"{int(r['n_subjects'])}", (pos[i], 0.015), xycoords=("data", "axes fraction"),
                     ha="center", va="bottom", fontsize=7, color="0.45")
         if stars(float(r["q"])):
             ax.annotate(stars(float(r["q"])), (pos[i], 0.93), xycoords=("data", "axes fraction"),
                         ha="center", va="bottom", fontsize=11, fontweight="bold")
-    lo, hi = np.nanmin(stats["ci95_lo"]), np.nanmax(stats["ci95_hi"])
+    lo, hi = np.nanmin(stats["mean"] - stats["sem"]), np.nanmax(stats["mean"] + stats["sem"])
     pad = 0.12 * (max(hi, 0) - min(lo, 0))
     ax.set_ylim(min(lo, 0) - 1.4 * pad, max(hi, 0) + 1.6 * pad)   # room for n and stars
     _roi_axis_furniture(ax, pos, roi_order, lobes)
@@ -886,20 +885,20 @@ def band_stems(out_dir: str, stem: str, suffix: str) -> list[tuple[str, str, str
     return out
 
 
-def band_contrast_figure(out_dir: str, stem: str, col: str, ylabel: str, ci: bool = False) -> None:
+def band_contrast_figure(out_dir: str, stem: str, col: str, ylabel: str, bars: bool = False) -> None:
     """hi - lo contrast, one row per band whose `<stem>_per_subject.csv` exists
     (band_stems); `{metric}` in ylabel becomes that band's metric label. Saved as
-    stem without its `_{band}` / `_{metric}` fields; `ci`: mean +/- 95% CI panels
-    (roi_ci_panel) instead of subject distributions, saved with suffix `_ci`."""
+    stem without its `_{band}` / `_{metric}` fields; `bars`: bars of the mean +/- SEM
+    (roi_bar_panel) instead of subject distributions, saved with suffix `_sem`."""
     panels = []
     for band, metric, f in band_stems(out_dir, stem, "_per_subject.csv"):
         tbl = pd.read_csv(f)
         st = roi_stats(tbl, col)
         panels.append((f"{band_label(band)}\n{ylabel.format(metric=METRIC_LABELS.get(metric, metric))}",
-                       (lambda ax, st=st: roi_ci_panel(ax, st)) if ci else
+                       (lambda ax, st=st: roi_bar_panel(ax, st)) if bars else
                        (lambda ax, tbl=tbl, st=st: roi_panel(ax, tbl, col, np.random.default_rng(0), stats=st))))
     if panels:   # none when no band's run metric has been plotted yet
-        roi_figure(panels, out_dir, stem.replace("_{band}", "").replace("_{metric}", "") + ("_ci" if ci else ""))
+        roi_figure(panels, out_dir, stem.replace("_{band}", "").replace("_{metric}", "") + ("_sem" if bars else ""))
 
 
 def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,

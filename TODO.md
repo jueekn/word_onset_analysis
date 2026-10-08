@@ -26,6 +26,26 @@
   Currently `subtract_erp: false`. Also covers the early high-gamma AEC-c network (0–200 ms),
   which may be a shared stimulus-locked envelope rise, and power vs synchrony consistency.
 
+## Next: reliability analysis (final analysis of the paper, per PI)
+- Main: test-retest across sessions (subjects with 2+ sessions; per-electrode effect in
+  session 1 vs 2 for alpha / high-gamma power d, alpha ciPLV, high-gamma AEC-c, latency) +
+  within- vs between-subject identifiability (own session-2 map vs other subjects', on
+  matched regions). No recompute needed: per-session results are stored.
+- Robustness (pick one): subject-subsampling replicability (how many patients to find each
+  ROI effect again), or cross-cohort replication (RAM FR1/catFR1 vs pyFR).
+- Supplement if asked: split-half (odd/even trials) per measure; power from the stored
+  per-trial values, synchrony would need a recompute with trial splits.
+- First step: count subjects with multiple sessions and overlapping electrodes.
+- PAC: include in the reliability checks. Trial-shuffle control (12 subj, 2026-10-08):
+  shuffled PAC rises as much at word onset as real PAC, so the increase is stimulus-locked
+  (evoked); real > shuffled within electrodes by ~0.004 in both windows (steady coupling,
+  not a word-onset change). Decide: drop PAC, or report shuffle-corrected.
+
+## Latency figure refinement
+- plot_latency.py: two panels (lobe-coloured bars, mean +/- SEM | magma heatmap); y labels
+  repeated across panels -> share them; consider pairwise tests of the order (within
+  subjects with both regions) before claiming a specific sequence.
+
 ## Open
 - **Spectrum 64 Hz bin.** 60 Hz notch rings at the clip edges with the 50 ms buffer (null
   sim: d -0.75 at 60 Hz, ~56–64 Hz). Options: notch the continuous recording before cutting

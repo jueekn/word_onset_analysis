@@ -95,7 +95,8 @@ def main() -> None:
     for roi, g in tbl.groupby("roi"):
         m, ci = fc.mean_ci(g["latency_ms"].to_numpy())
         st.append({"roi": roi, "n_subjects": len(g), "n_electrodes": int(g["n_elec"].sum()),
-                   "mean_ms": m, "ci95_ms": ci, "median_ms": float(g["latency_ms"].median())})
+                   "mean_ms": m, "ci95_ms": ci, "sem_ms": float(g["latency_ms"].std(ddof=1) / np.sqrt(len(g))),
+                   "median_ms": float(g["latency_ms"].median())})
     st = pd.DataFrame(st).sort_values("mean_ms")
     os.makedirs(args.out_dir, exist_ok=True)
     stem = join(args.out_dir, "hg_latency_word_on" + ("_fine" if args.fine else "") + ("_pooled" if args.pool_hemispheres else ""))
@@ -116,13 +117,13 @@ def main() -> None:
                                  gridspec_kw={"width_ratios": [1, 1.6]})
     y = np.arange(len(shown))
     for i, r in enumerate(shown.itertuples()):
-        a1.errorbar(r.mean_ms, i, xerr=r.ci95_ms, fmt="o", ms=8, capsize=4, mec="0.15", ecolor="0.3",
-                    color=fc.LOBE_COLORS.get(lobe[r.roi], "0.5"))
+        a1.barh(i, r.mean_ms, xerr=r.sem_ms, height=0.7, capsize=3, edgecolor="0.15", ecolor="0.2",
+                color=fc.LOBE_COLORS.get(lobe[r.roi], "0.5"))
         a1.annotate(f"n={r.n_subjects}", (1.01, i), xycoords=("axes fraction", "data"), va="center", fontsize=9, color="0.4")
     names = [fc.pretty_roi(r) for r in shown["roi"]]
     a1.set_yticks(y, names, fontsize=12)
     a1.invert_yaxis()
-    a1.set_xlabel("High-gamma half-max latency (ms after word onset)", fontsize=13)
+    a1.set_xlabel("High-gamma half-max latency (ms after word onset, mean ± SEM)", fontsize=13)
     a1.spines[["top", "right"]].set_visible(False)
     im = a2.imshow(prof.to_numpy(), aspect="auto", cmap="magma", vmin=0, vmax=1,
                    extent=[0, 1000, len(shown) - 0.5, -0.5])

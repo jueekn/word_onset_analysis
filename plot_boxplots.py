@@ -1,17 +1,17 @@
 """plot_boxplots.py -- word on vs word off per Burke ROI, alpha and high gamma rows.
 
   power      per-electrode Cohen's d of band power (compute.py power pickles)
-             -> figures/burke_roi_power/roi_power_word_on(_ci).png
+             -> figures/burke_roi_power/roi_power_word_on(_sem).png
   synchrony  per-electrode mean on - off change over all partners (fc.electrode_sync,
              as Rao et al. 2025): alpha ciPLV, high-gamma AEC-c
-             -> figures/burke_roi_synchrony/roi_synchrony_word_on(_ci).png
+             -> figures/burke_roi_synchrony/roi_synchrony_word_on(_sem).png
   pac        theta (3-8 Hz) phase x gamma (70-110 Hz) amplitude coupling, on - off:
              within each electrode, and each electrode's mean over all partners
-             (both directions) -> figures/burke_roi_pac/roi_pac_word_on(_ci).png
+             (both directions) -> figures/burke_roi_pac/roi_pac_word_on(_sem).png
 
 Sessions are averaged per electrode, electrodes per subject and ROI; one-sample t
 vs 0 across subjects, BH-FDR over the 12 ROIs (fc.roi_stats). Two versions of each
-figure: subject distributions, and mean +/- 95% CI (`_ci`).
+figure: subject distributions, and bars of the mean +/- SEM (`_sem`).
 
     python plot_boxplots.py [--measure power synchrony pac] [--simulation-tag TAG]
 """
@@ -79,16 +79,16 @@ def pac_table(save_root: str, lobe_of: dict, n_sessions=None) -> pd.DataFrame:
     return df.groupby(["sub", "label", "roi"], as_index=False)[["within", "between"]].mean()
 
 
-def pac_figure(out: str, ci: bool) -> None:
+def pac_figure(out: str, bars: bool) -> None:
     """Rows: within-electrode and between-electrode PAC change per ROI."""
     panels = []
     for m, lab in (("within", "within electrode"), ("between", "between electrodes")):
         tbl = pd.read_csv(join(out, f"roi_pac_{BEH}_{m}_per_subject.csv"))
         st = fc.roi_stats(tbl, m)
         panels.append((f"PAC, {lab}\n(Word On vs. Word Off)",
-                       (lambda ax, st=st: fc.roi_ci_panel(ax, st)) if ci else
+                       (lambda ax, st=st: fc.roi_bar_panel(ax, st)) if bars else
                        (lambda ax, tbl=tbl, st=st, m=m: fc.roi_panel(ax, tbl, m, np.random.default_rng(0), stats=st))))
-    fc.roi_figure(panels, out, f"roi_pac_{BEH}" + ("_ci" if ci else ""))
+    fc.roi_figure(panels, out, f"roi_pac_{BEH}" + ("_sem" if bars else ""))
 
 
 def main() -> None:
@@ -105,8 +105,8 @@ def main() -> None:
             stats = {m: fc.roi_stats(tbl, m) for m in MEASURES}
             fc.print_roi_stats(stats["cohens_d"], f"{band} power, Cohen's d {vs}:")
             fc.write_roi_csvs(out, stem.format(band=band), tbl, el, stats)
-        for ci in (False, True):
-            fc.band_contrast_figure(out, stem, "cohens_d", f"Power, Cohen's d {vs}", ci=ci)
+        for bars in (False, True):
+            fc.band_contrast_figure(out, stem, "cohens_d", f"Power, Cohen's d {vs}", bars=bars)
     if "synchrony" in args.measure:
         out, stem = join(args.out_dir, "burke_roi_synchrony"), f"roi_synchrony_{BEH}_{{band}}_{{metric}}"
         for band in BANDS:
@@ -116,8 +116,8 @@ def main() -> None:
             stats = {"sync_diff": fc.roi_stats(tbl, "sync_diff")}
             fc.print_roi_stats(stats["sync_diff"], f"{band} {metric}, mean over partners {vs}:")
             fc.write_roi_csvs(out, stem.format(band=band, metric=metric), tbl, el, stats)
-        for ci in (False, True):
-            fc.band_contrast_figure(out, stem, "sync_diff", f"{{metric}} {vs}", ci=ci)
+        for bars in (False, True):
+            fc.band_contrast_figure(out, stem, "sync_diff", f"{{metric}} {vs}", bars=bars)
     if "pac" in args.measure:
         out = join(args.out_dir, "burke_roi_pac")
         el = pac_table(save_root, lobe_of, args.n_sessions)
@@ -126,8 +126,8 @@ def main() -> None:
             stats = {m: fc.roi_stats(tbl, m)}
             fc.print_roi_stats(stats[m], f"PAC {m} {vs}:")
             fc.write_roi_csvs(out, f"roi_pac_{BEH}_{m}", tbl, el, stats)
-        for ci in (False, True):
-            pac_figure(out, ci)
+        for bars in (False, True):
+            pac_figure(out, bars)
 
 
 if __name__ == "__main__":
