@@ -728,6 +728,9 @@ def _roi_axis_furniture(
     ax.set_xticks(list(pos))
     ax.set_xticklabels([r.split("-", 1)[1] for r in roi_order], rotation=35,
                        ha="right", fontsize=9)
+    for lab, r in zip(ax.get_xticklabels(), roi_order):   # lobe names double as the colour key
+        lab.set_color(LOBE_COLORS.get(r.split("-", 1)[1], "k"))
+        lab.set_fontweight("bold")
     ax.set_axisbelow(True)
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
@@ -1013,6 +1016,15 @@ def bin_stats(tbl: pd.DataFrame, x: str, y: str, min_subjects: int | None = None
     return out
 
 
+def lobe_key(fig: Any, y: float = 1.0, fontsize: float = 11) -> None:
+    """One line of lobe names, each in its LOBE_COLORS colour, centred at figure height `y`."""
+    from matplotlib.lines import Line2D
+    fig.legend([Line2D([], [], ls="") for _ in LOBE_COLORS], [l.capitalize() for l in LOBE_COLORS],
+               labelcolor=list(LOBE_COLORS.values()), loc="lower center", bbox_to_anchor=(0.5, y),
+               ncol=len(LOBE_COLORS), frameon=False, handlelength=0, handletextpad=0, columnspacing=1.5,
+               prop={"size": fontsize, "weight": "bold"})
+
+
 def roi_curve_figure(stats: pd.DataFrame, x: str, path: str, xlabel: str, ylabel: str) -> str:
     """One small-multiple panel per ROI: mean +/- 95% CI across subjects vs `x`,
     FDR stars per bin (stats from bin_stats). Saves <path>.png."""
@@ -1025,13 +1037,14 @@ def roi_curve_figure(stats: pd.DataFrame, x: str, path: str, xlabel: str, ylabel
     for ax, roi in zip(axes, rois):
         s = stats[stats["roi"] == roi].sort_values(x)
         xv, y, e = (s[c].to_numpy(float) for c in (x, "mean", "ci95"))
+        col = LOBE_COLORS.get(roi.split("-", 1)[1], "C0")
         ax.axhline(0, color="0.6", lw=0.8, zorder=1)
-        ax.fill_between(xv, y - e, y + e, alpha=0.25, lw=0, zorder=2)
-        ax.plot(xv, y, lw=1.6, zorder=3)
+        ax.fill_between(xv, y - e, y + e, alpha=0.25, lw=0, color=col, zorder=2)
+        ax.plot(xv, y, lw=1.6, color=col, zorder=3)
         for xi, qi in zip(xv, s["q"].to_numpy(float)):
             if stars(qi):
                 ax.text(xi, ylim * 0.80, stars(qi), ha="center", va="center", fontsize=9, zorder=4)
-        ax.set_title(f"{pretty_roi(roi)}  (n={int(np.nanmax(s['n']))})", fontsize=9)
+        ax.set_title(f"{pretty_roi(roi)}  (n={int(np.nanmax(s['n']))})", fontsize=9, color=col, fontweight="bold")
         ax.set_ylim(-ylim, ylim)
     for ax in axes[len(rois):]:
         ax.axis("off")
