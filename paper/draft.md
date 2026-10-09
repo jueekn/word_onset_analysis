@@ -57,23 +57,22 @@ Values from the 2026-10-06/08 runs (1009 sessions); **(verify)** = check before 
 - Alpha: decrease in occipital (L −0.14, R −0.11 d), smaller decreases in limbic, hippocampus, R temporal; increase in frontal (L +0.031, R +0.024) and L parietal (+0.020).
 - High gamma: large increase in occipital (L +0.41, R +0.33 d); smaller increases in limbic (+0.04), hippocampus (+0.04), L temporal (+0.02); slight decrease R frontal (−0.011).
 
-### 2. Spectral profile
+#### Spectral profile
 ![Spectrum heatmap](img/fig2a_spectrum.png)
 ![Occipital case studies](img/fig2b_occipital.png)
-- 66 of 120 ROI × frequency cells significant.
 - Frontal: theta/low-alpha increase (t up to 11) with beta decrease (t to −13.5).
 - Occipital: alpha–beta decrease (10.6 Hz t ≈ −8), broadband increase ≥ 35 Hz (t up to 8.6).
 - Limbic / hippocampus: mild alpha decrease, gamma increase.
 - Case studies: fusiform and lateral occipital cortex, L/R.
 
-### 3. Order of activation
+### 2. Order of activation
 ![Latency, ROIs](img/fig4a_latency.png)
 ![Latency, subregions](img/fig4b_latency_fine.png)
 - Posterior → anterior: R occipital 130 ms, L occipital 157 → limbic, R temporal (~167–171) → R parietal, R hippocampus (~180) → L temporal 201, L hippocampus 212, R frontal 215 → L parietal 235, L frontal 261 ms.
 - Subregions: lateral occipital 124 → lingual 151, fusiform 157 → parahippocampal 170, amygdala 171 → … temporal gyri ~191–199, hippocampus 197 → frontal gyri 219–237 → orbitofrontal 301 ms.
 - Early regions: sharp peak ~150 ms; hippocampus / insula / frontal: broad peaks ~350–550 ms.
 
-### 4. Synchrony
+### 3. Synchrony
 ![Synchrony per ROI](img/fig5_synchrony.png)
 - Alpha ciPLV increases in 10 / 12 ROIs, about twice as much in occipital (~0.0016) as elsewhere (~0.0003–0.0008).
 - High-gamma AEC-c: no significant change in any ROI.
@@ -82,7 +81,7 @@ Values from the 2026-10-06/08 runs (1009 sessions); **(verify)** = check before 
 ![Epoch network](img/fig6a_epochs.png)
 - Alpha: 19 hub × epoch cells; occipital hubs at 0–400 ms, then temporal / parietal / limbic 200–1200 ms
 - High gamma: 3 hubs (bilateral occipital 0-200 ms, L limbic 200–400 ms); no late desynchronization.
-- PAC: pending 
+- PAC: brain-wide positive hubs 0–1200 ms (93 hub × epoch cells; fine 174), strongest 200–600 ms, negative at 1400–1600 ms; within-electrode PAC peaks 200–400 ms (occipital largest, ~0.06). Matches the trial-shuffle result → stimulus-locked (evoked), not coupling.
 
 
 ## Supplementary

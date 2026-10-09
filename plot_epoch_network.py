@@ -26,7 +26,7 @@ import fc_comparison_functions as fc
 from compute import cond_dir
 
 BEH, BANDS = "word_on", ("alpha", "high_gamma")
-PAC_LABEL = "PAC (θ 3–8 Hz × γ 70–110 Hz)"
+PAC_LABEL = "PAC\n(θ 3–8 × γ 70–110 Hz)"
 
 
 def epoch_table(save_root: str, band: str, metric: str, lobe_of: dict, n_sessions=None, fine: bool = False):

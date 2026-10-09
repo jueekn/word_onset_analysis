@@ -966,13 +966,13 @@ def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
                 axes[r, c].set_title(f"{w0:g}–{w1:g} ms", fontsize=15)
         handles = [Line2D([], [], marker="o", ls="", color="red", ms=9, label="Positive hub"),
                    Line2D([], [], marker="o", ls="", color="blue", ms=9, label="Negative hub"),
-                   Line2D([], [], color="red", lw=3, label="Synchronized"),
-                   Line2D([], [], color="blue", lw=3, label="Desynchronized")]
+                   Line2D([], [], color="red", lw=3, label="Coupled" if metric == "pac" else "Synchronized"),
+                   Line2D([], [], color="blue", lw=3, label="Decoupled" if metric == "pac" else "Desynchronized")]
         axes[r, -1].legend(handles=handles, loc="center left", bbox_to_anchor=(1.05, 0.5),
                            frameon=False, fontsize=11, title_fontsize=12,
                            title=ylabel.format(metric=METRIC_LABELS.get(metric, metric)).replace(" (", "\n("))
         axes[r, 0].text(-0.08, 0.5, row_label, transform=axes[r, 0].transAxes,
-                        rotation=90, ha="right", va="center", fontsize=15)
+                        rotation=90, ha="right", va="center", multialignment="center", fontsize=15)
     path = join(out_dir, stem.replace("_{band}", "").replace("_{metric}", ""))
     fig.savefig(f"{path}.png", dpi=300, bbox_inches="tight")
     fig.savefig(f"{path}.pdf", bbox_inches="tight")

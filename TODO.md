@@ -41,6 +41,16 @@
   (evoked); real > shuffled within electrodes by ~0.004 in both windows (steady coupling,
   not a word-onset change). Decide: drop PAC, or report shuffle-corrected.
 
+## Spectrum heatmap: better significance + spectral tilt
+- Present significance as contiguous frequency ranges, not per-bin stars: finer spectrum
+  (1-2 Hz steps, ~2-150 Hz) + TFCE with sign-flip permutations across subjects (per ROI along
+  frequency, corrected over ROIs), drawn as outlines on the heatmap.
+- Spectral tilt (frontal: low up / beta down; occipital: alpha down / gamma up): test directly
+  with specparam (aperiodic exponent change, word on vs off, per ROI) + periodic peaks
+  (alpha) separately; small extra figure.
+- Needs: compute.py to store per-electrode word-off / word-on spectra (trial-averaged, 1 Hz)
+  and per-electrode d at that resolution -> next recompute.
+
 ## Latency figure refinement
 - plot_latency.py: two panels (lobe-coloured bars, mean +/- SEM | magma heatmap); y labels
   repeated across panels -> share them; consider pairwise tests of the order (within
