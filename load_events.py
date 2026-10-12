@@ -79,6 +79,9 @@ def get_events(dfrow: pd.Series | list[Any] | NDArrayAny) -> None:
     # first word of each list follows the countdown, not a blank screen
     word_evs = all_word.copy() if (LONGETAL or {}).get('include_first_word') else all_word.query('serialpos > 1').copy()
     elog.excluded('word_on_serialpos1', all_word, word_evs); elog.final(word_evs); elog.write()
+    # later recalled (match_events' list-level matching; NaN if the session has no recalls)
+    rec = matcher.study_events.set_index('mstime')['correct_recall'] if matcher.study_events is not None else {}
+    word_evs['correct_recall'] = word_evs['mstime'].map(rec).astype(float)
     word_evs, mask = add_pre_events(fix_event_cols(word_evs), 'PRE_WORD')
     metadata = pd.Series({'beh': beh, 'sr': sr, 'mask': mask, 'matching_successful': True})
     metadata.to_json(join(root_dir, beh, 'events', f'{ftag(dfrow)}_events_metadata.json'))

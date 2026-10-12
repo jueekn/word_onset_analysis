@@ -69,8 +69,8 @@ BEH = "word_on"
 SYNC = {"alpha": "ciplv", "high_gamma": "aec_c"}
 HG_SUBBANDS = [(f, f + 10) for f in range(70, 150, 10)]
 ENV_STEP_MS = 10          # stored per-trial high-gamma envelope resolution
-VERSION = "single_pass_5"   # 2: envelopes float32 (float16 overflowed); 3-4: PAC (since removed);
-#                            5: epochs 0-1000 ms, 200 ms every 100 ms
+VERSION = "single_pass_6"   # 2: envelopes float32 (float16 overflowed); 3-4: PAC (since removed);
+#                            5: epochs 0-1000 ms, 200 ms every 100 ms; 6: recalled_hi
 
 
 def _crop(eeg: Any, win: tuple[float, float]) -> np.ndarray:
@@ -150,7 +150,8 @@ def run_session(dfrow: pd.Series, save_root: str, root_dir: str,
     blank_hi = blank[np.asarray(post_eeg.event, int)]
     lo, hi = fc.equalize_time_length(_crop(pre_eeg, pre_win), _crop(post_eeg, post_win))
     trial = {"labels": labels, "n_lo": len(lo), "n_hi": len(hi), "n_win_samples": lo.shape[-1],
-             "lo_win": pre_win, "hi_win": post_win, "blank_ms_lo": blank_lo, "blank_ms_hi": blank_hi}
+             "lo_win": pre_win, "hi_win": post_win, "blank_ms_lo": blank_lo, "blank_ms_hi": blank_hi,
+             "recalled_hi": word_ev["correct_recall"].to_numpy(float)[np.asarray(post_eeg.event, int)]}
 
     def save(band, p_lo, p_hi, extra):
         out = {**meta, **trial, "band": band, "fmin": fc.bands[band][0], "fmax": fc.bands[band][1],
