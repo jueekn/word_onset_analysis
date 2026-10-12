@@ -10,8 +10,8 @@ Reads compute.py's high-gamma power pickles (per-trial sub-band Hilbert envelope
 
 Sessions are averaged per electrode, each subject contributes its median latency
 per region, and regions are compared by the across-subject mean +/- 95% CI (regions
-with >= MIN_SUBJECTS_ROI subjects). Figure: regions ordered by latency, and each
-region's group-mean response (scaled to its peak) over time.
+with >= MIN_SUBJECTS_ROI subjects). Figure: regions ordered by latency (bars), and each
+region's group-mean response over time (curves, each scaled to its peak).
 
     python plot_latency.py [--simulation-tag TAG]
 """
@@ -23,7 +23,7 @@ from os.path import join
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.stats import ttest_ind
+from scipy.stats import t as tdist, ttest_ind
 from statsmodels.stats.multitest import multipletests
 from tqdm.auto import tqdm
 
@@ -46,7 +46,8 @@ def electrode_rows(p: dict, lobe_of: dict) -> list[tuple]:
     curve = np.nanmean(np.asarray(p["env_hi"], float), axis=0)                 # (C, T)
     curve -= np.nanmean(np.asarray(p["env_lo"], float), axis=(0, 2))[:, None]  # minus word-off mean
     k = max(1, int(round(SMOOTH_MS / step)))
-    curve = np.apply_along_axis(lambda c: np.convolve(c, np.ones(k) / k, mode="same"), 1, curve)
+    pad = np.pad(curve, ((0, 0), (k // 2, k - 1 - k // 2)), mode="edge")   # edge-padded: no dip at the ends
+    curve = np.apply_along_axis(lambda c: np.convolve(c, np.ones(k) / k, mode="valid"), 1, pad)
     times = p["env_hi_t0_ms"] + step * (np.arange(curve.shape[1]) + 0.5)
     win = (times >= PEAK_WIN_MS[0]) & (times < PEAK_WIN_MS[1])
     roi = fc.roi_of_reg_full(p["reg_full"], lobe_of)
@@ -108,10 +109,15 @@ def main() -> None:
     # group-mean response per ROI: electrode curves -> subject mean -> mean over subjects
     cdf = pd.DataFrame(curves)
     cdf[["sub", "roi"]] = [(r[0], g) for r, g in zip(rows, region)]
-    prof = cdf.groupby(["roi", "sub"]).mean().groupby("roi").mean().reindex(shown["roi"])
     shown_t = (times >= 0) & (times < 1000)              # the plotted range
-    prof = prof.loc[:, shown_t]
-    prof = prof.div(prof.max(axis=1), axis=0)
+    subj = cdf.groupby(["roi", "sub"]).mean().loc[:, shown_t]
+    g = subj.groupby("roi")
+    prof = g.mean().reindex(shown["roi"])
+    # pointwise 95% CI across subjects (t-based), descriptive
+    ci = (g.std(ddof=1) / np.sqrt(g.size().to_numpy()[:, None])
+          * tdist.ppf(0.975, g.size().to_numpy()[:, None] - 1)).reindex(shown["roi"])
+    peak = prof.max(axis=1)
+    prof, ci = prof.div(peak, axis=0), ci.div(peak, axis=0)   # scaled to each region's group peak
 
     # bars and heatmap share the rows (and one set of row labels, on the bars)
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 0.45 * len(shown) + 2.2), sharey=True,
@@ -129,11 +135,20 @@ def main() -> None:
     a1.set_xlim(0, xmax)
     a1.set_xlabel("Half-max latency (ms)", fontsize=13)
     a1.spines[["top", "right"]].set_visible(False)
-    im = a2.imshow(prof.to_numpy(), aspect="auto", cmap="magma", vmin=0, vmax=1,
-                   extent=[0, 1000, len(shown) - 0.5, -0.5])
+    # one curve per row (each scaled to its own peak), baseline at the bottom of the row
+    tt = times[shown_t]
+    for i, (r, curve, e) in enumerate(zip(shown["roi"], prof.to_numpy(), ci.to_numpy())):
+        col = fc.LOBE_COLORS.get(lobe[r], "0.5")
+        a2.axhline(i + 0.4, color="0.85", lw=0.6, zorder=0)                     # each row's zero
+        a2.fill_between(tt, i + 0.4 - 0.8 * (curve - e), i + 0.4 - 0.8 * (curve + e),
+                        color=col, alpha=0.3, lw=0)                             # 95% CI
+        a2.plot(tt, i + 0.4 - 0.8 * curve, color=col, lw=1.5)
+    a2.set_xlim(0, 1000)
     a2.tick_params(axis="y", left=False, labelleft=False)
+    a2.spines[["top", "right", "left"]].set_visible(False)
     a2.set_xlabel("Time after word onset (ms)", fontsize=13)
-    fig.colorbar(im, ax=a2, shrink=0.8).set_label("High-gamma response (fraction of peak)", fontsize=12)
+    a2.yaxis.set_label_position("right")
+    a2.set_ylabel("High-gamma response (fraction of peak)", fontsize=12)
     fc.lobe_key(fig, y=0.9)
     fig.tight_layout()
     fig.savefig(f"{stem}.png", dpi=300, bbox_inches="tight")   # keeps the row labels

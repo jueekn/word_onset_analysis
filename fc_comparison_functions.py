@@ -600,32 +600,29 @@ def print_roi_stats(st: pd.DataFrame, title: str) -> None:
 
 # --- ROI figures -------------------------------------------------------------
 def _roi_positions(roi_order: Sequence[str], lobes: Sequence[str]) -> list[float]:
-    """x positions with a gap between the left-hemisphere and right blocks."""
-    return [i + (0.8 if i >= len(lobes) else 0.0) for i in range(len(roi_order))]
+    """x positions: each region's left and right ROI side by side, regions spaced apart."""
+    side = {"L": 0.0, "R": 1.0}
+    return [2.6 * list(lobes).index(r.split("-", 1)[1]) + side[r[0]] for r in roi_order]
 
 
 def _roi_axis_furniture(
     ax: Any, pos: Sequence[float], roi_order: Sequence[str],
     lobes: Sequence[str],
 ) -> None:
-    """Shared axis dress: 0 line, hemisphere divider, tick labels, LEFT/RIGHT."""
+    """Shared axis dress: 0 line, L / R tick labels, region names (lobe colour) under each pair."""
     ax.axhline(0, color="0.7", lw=0.9, zorder=0)
-    ax.axvline(len(lobes) - 0.1, color="0.85", lw=1.0, zorder=0)
-    ax.set_xlim(-0.7, len(roi_order) + 0.5)
+    ax.set_xlim(min(pos) - 0.7, max(pos) + 0.7)
     ax.set_xticks(list(pos))
-    ax.set_xticklabels([r.split("-", 1)[1] for r in roi_order], rotation=35,
-                       ha="right", fontsize=9)
-    for lab, r in zip(ax.get_xticklabels(), roi_order):   # lobe names double as the colour key
-        lab.set_color(LOBE_COLORS.get(r.split("-", 1)[1], "k"))
-        lab.set_fontweight("bold")
+    ax.set_xticklabels([r[0] for r in roi_order], fontsize=9, color="0.35")
+    for lobe in lobes:
+        xs = [x for x, r in zip(pos, roi_order) if r.split("-", 1)[1] == lobe]
+        if xs:
+            ax.annotate(lobe, (float(np.mean(xs)), 0), xycoords=("data", "axes fraction"),
+                        xytext=(0, -20), textcoords="offset points", ha="center", va="top",
+                        fontsize=10, fontweight="bold", color=LOBE_COLORS.get(lobe, "k"))
     ax.set_axisbelow(True)
-    for s in ("top", "right"):
-        ax.spines[s].set_visible(False)
-    for name, sl in (("LEFT", slice(None, len(lobes))),
-                     ("RIGHT", slice(len(lobes), None))):
-        ax.annotate(name, (float(np.mean(pos[sl])), 1.02),
-                    xycoords=("data", "axes fraction"), ha="center",
-                    fontsize=9, color="0.35", fontweight="bold")
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
 
 
 def roi_panel(

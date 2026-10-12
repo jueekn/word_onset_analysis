@@ -63,13 +63,13 @@ Values from the 2026-10-06/08 runs (1009 sessions); **(verify)** = check before 
 - Frontal: theta/low-alpha increase (t up to 11) with beta decrease (t to −13.5).
 - Occipital: alpha–beta decrease (10.6 Hz t ≈ −8), broadband increase ≥ 35 Hz (t up to 8.6).
 - Limbic / hippocampus: mild alpha decrease, gamma increase.
-- Case studies: fusiform and lateral occipital cortex, L/R.
+- Occipital subregions (hemispheres pooled; the 4 with most subjects): fusiform (199), lateral occipital (86), lingual (77), cuneus (32). All: alpha/beta decrease and gamma increase (≥35–47 Hz); fusiform strongest (t ≈ −7.5 at 11 Hz, +8.9 at 64 Hz); lateral occipital also a 6 Hz increase; cuneus weakest (gamma only). TFCE, family-wise p < .05.
 
 ### 2. Order of activation
 ![Latency, ROIs](img/fig4a_latency.png)
 ![Latency, subregions](img/fig4b_latency_fine.png)
-- Posterior → anterior: R occipital 130 ms, L occipital 157 → limbic, R temporal (~167–171) → R parietal, R hippocampus (~180) → L temporal 201, L hippocampus 212, R frontal 215 → L parietal 235, L frontal 261 ms.
-- Subregions: lateral occipital 124 → lingual 151, fusiform 157 → parahippocampal 170, amygdala 171 → … temporal gyri ~191–199, hippocampus 197 → frontal gyri 219–237 → orbitofrontal 301 ms.
+- Posterior → anterior: R occipital 128 ms, L occipital 157 → limbic, R temporal (~164–169) → R hippocampus, R parietal (~175–178) → L temporal 199, L hippocampus 207, R frontal 216 → L parietal 235, L frontal 259 ms.
+- Subregions: lateral occipital 122 → lingual 150, fusiform 157 → parahippocampal 167, amygdala 170, insula 174 → superior parietal 188, temporal gyri ~189–194, hippocampus 192 → supramarginal 214, frontal gyri 215–237 → orbitofrontal 300 ms.
 - Early regions: sharp peak ~150 ms; hippocampus / insula / frontal: broad peaks ~350–550 ms.
 
 ### 3. Synchrony
