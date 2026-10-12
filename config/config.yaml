@@ -24,9 +24,7 @@ paths:
 # as `tuple(v)` by project_paths.BANDS.
 bands:
   alpha:      [8, 13]
-  # PAC phase (low) and PAC-amplitude / AEC-c (gamma) bands; gamma is 40 Hz wide
-  # so its envelope stays below the 70 Hz carrier (Bedrosian).
-  low:        [3, 8]
+  # AEC-c band; 40 Hz wide so its envelope stays below the 70 Hz carrier (Bedrosian).
   gamma:      [70, 110]
   # high_gamma: the analysis band (70-150, as Long et al. on this dataset); it
   # contains the 100/120/150 Hz line harmonics (see notch_harmonics_up_to_hz).
@@ -41,7 +39,7 @@ bands:
 #   null = MNE default (~8*sfreq/n_times). Code_issues #79 recommends 2.
 # real_data_buffer_ms: ms of REAL adjacent EEG loaded on each side of every
 #   analysis window (riley-thesis value). Resample + notch (and the band-pass +
-#   Hilbert for AEC-c/PAC) run on the buffered clip; the buffer is removed before
+#   Hilbert for AEC-c) run on the buffered clip; the buffer is removed before
 #   estimation. With 50 ms the word-off and word-on synchrony clips never share
 #   data (their windows are 100 ms apart). Note: our earlier hg_null simulation
 #   (with the 100/120/150 Hz harmonic notches) showed a small null power bias at
@@ -90,9 +88,8 @@ pair_distance_threshold_mm: 20
 # computation_metrics: synchrony metrics build_roi_synchrony can compute: MNE
 # multitaper phase metrics, orthogonalized AEC (aec_c: mne_connectivity
 # envelope_correlation on the bands.gamma Hilbert envelope -- 70-110 Hz keeps the
-# envelope below the carrier, Bedrosian; as riley-thesis) and PAC (phase of
-# bands.low, amplitude of bands.gamma). The evoked response is subtracted first.
-computation_metrics: [coh, plv, ppc, ciplv, pli, wpli, aec_c, pac]
+# envelope below the carrier, Bedrosian; as riley-thesis).
+computation_metrics: [coh, plv, ppc, ciplv, pli, wpli, aec_c]
 # subtract_erp: subtract each window's across-trial mean (the evoked response)
 #   before synchrony. Off pending a literature-based choice of how to handle
 #   the stimulus-locked component (PI, 2026-10-02).

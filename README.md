@@ -96,7 +96,7 @@ plotted into its directory (alpha, high gamma), paired t per ROI, BH-FDR.
 | `resample_hz` | 500 | Nyquist 250 Hz |
 | `min_sample_rate_hz` | 499 | sessions below this are excluded upstream |
 | `bands.high_gamma` | 70–150 Hz | Long et al.'s band |
-| `bands.low` / `bands.gamma` | 3–8 / 70–110 Hz | PAC phase / amplitude bands |
+| `bands.gamma` | 70–110 Hz | AEC-c band |
 | `notch_harmonics_up_to_hz` | null | mains fundamental only (as riley-thesis); data_check records harmonic peaks |
 | `mt_bandwidth` | 2 | NW = 0.6 over a 600 ms window |
 | `time_bin_ms` / `mt_window_ms` | 50 / 100 | gamma time course: bin step / sliding window |
@@ -116,6 +116,7 @@ plot_case_studies.py        t vs frequency for chosen regions (--regions)
 plot_timecourse.py          high-gamma d per 50 ms bin per ROI
 plot_epoch_network.py       200 ms epoch synchrony network (hubs + edges)
 plot_latency.py             high-gamma half-max latency / order of activation
+plot_anticipation.py        high-gamma response after short vs long waits (blank before the word)
 plot_recovery.py            simulation recovery curves
 build_roi_power.py          Long et al. replication only (legacy, longetal=true)
 roi_subregion_counts.py     ROI/subregion coverage tables (standalone)

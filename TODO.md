@@ -26,6 +26,15 @@
   Currently `subtract_erp: false`. Also covers the early high-gamma AEC-c network (0–200 ms),
   which may be a shared stimulus-locked envelope rise, and power vs synchrony consistency.
 
+## Monday (2026-10-12): epoch figures per PI
+- Epochs now 200 ms windows every 100 ms, 0-1000 ms (0-200, 100-300, ..., 800-1000; 9 epochs),
+  excluding the word's offset response (1600 ms); word-off baseline epochs unchanged.
+  Recompute launched 2026-10-10 (compute.py VERSION single_pass_5; log
+  stream_2026-10-10_epochs_0-1000.log). Main-window results essentially unchanged by the
+  shorter word-on clip (r >= 0.9997, test session). After it finishes: check the epoch
+  network (alpha / high gamma rows), refresh
+  paper/img (zsh paper/sync_figures.sh) and the draft's epoch numbers.
+
 ## Next: reliability analysis (final analysis of the paper, per PI)
 - Main: test-retest across sessions (subjects with 2+ sessions; per-electrode effect in
   session 1 vs 2 for alpha / high-gamma power d, alpha ciPLV, high-gamma AEC-c, latency) +
@@ -36,10 +45,6 @@
 - Supplement if asked: split-half (odd/even trials) per measure; power from the stored
   per-trial values, synchrony would need a recompute with trial splits.
 - First step: count subjects with multiple sessions and overlapping electrodes.
-- PAC: include in the reliability checks. Trial-shuffle control (12 subj, 2026-10-08):
-  shuffled PAC rises as much at word onset as real PAC, so the increase is stimulus-locked
-  (evoked); real > shuffled within electrodes by ~0.004 in both windows (steady coupling,
-  not a word-onset change). Decide: drop PAC, or report shuffle-corrected.
 
 ## Spectrum heatmap: better significance + spectral tilt
 - Present significance as contiguous frequency ranges, not per-bin stars: finer spectrum

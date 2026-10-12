@@ -14,7 +14,6 @@ typeset -A F=(
   fig6b_epochs_fine          burke_roi_synchrony/roi_synchrony_epochs_fine_word_on.png
   figS1_power_subjects       burke_roi_power/roi_power_word_on.png
   figS2_synchrony_subjects   burke_roi_synchrony/roi_synchrony_word_on.png
-  figS3_pac                  burke_roi_pac/roi_pac_word_on_sem.png
   figS4_recovery             simulations/recovery.png
 )
 for k v in ${(kv)F}; do [[ -f figures/$v ]] && cp figures/$v paper/img/$k.png || echo "[missing] figures/$v"; done

@@ -7,9 +7,7 @@ and case-study contrast tests.
 
 Dominated by pandas + mne_connectivity + matplotlib pyplot method chains
 — all weakly stubbed. File-level narrowing for the library-stub-noise
-rules; the other strict-mode rules stay on. (compute_pac uses pactools
-via a function-scope import; compute_hub_scores' eigencent path now uses
-numpy.linalg.eigh, having dropped its NetworkX dependency.)
+rules; the other strict-mode rules stay on.
 """
 # pyright: reportUnknownMemberType=warning, reportUnknownArgumentType=warning, reportUnknownVariableType=warning, reportAttributeAccessIssue=warning, reportConstantRedefinition=warning
 from __future__ import annotations
@@ -33,10 +31,6 @@ import matplotlib.pyplot as plt
 from misc import *  # noqa: F401,F403
 from mne_connectivity import (  # pyright: ignore[reportMissingTypeStubs]
     spectral_connectivity_epochs, envelope_correlation)
-# pactools is imported at function scope inside compute_pac (the only
-# caller). The high-level Comodulogram API was removed in favor of
-# pactools.bandpass_filter.multiple_band_pass + a direct Ozkurt MI
-# matmul; no top-level import is needed.
 
 from project_paths import (
     SCRATCH_DIR as _SCRATCH_DIR,
@@ -232,19 +226,15 @@ def compute_aec_c(analytic: NDArrayAny) -> NDArrayAny:
 
 
 def window_fc(x: NDArrayAny, sf: float, t0: float, win: tuple[float, float], m: str,
-              fmin: float, fmax: float, nw_ms: float, n_buf: int,
+              fmin: float, fmax: float, nw_ms: float,
               analytic: NDArrayAny | None = None) -> NDArrayAny:
     """Metric `m` over window `win` (ms) of `x`, whose first sample is at t0 ms.
-    aec_c: from the whole-clip `analytic`; pac: the window plus n_buf buffer
-    samples each side; phase metrics: MNE multitaper on the window, bandwidth
-    scaled so the time-bandwidth product equals that of an nw_ms window."""
+    aec_c: from the whole-clip `analytic`; phase metrics: MNE multitaper on the
+    window, bandwidth scaled so the time-bandwidth product equals that of an nw_ms window."""
     i = int(round((win[0] - t0) * sf / 1000.0))
     n = int(round((win[1] - win[0]) * sf / 1000.0))
     if m == "aec_c":
         return compute_aec_c(analytic[..., i:i + n])
-    if m == "pac":
-        return compute_pac(x[..., i - n_buf:i + n + n_buf], sf,
-                           buffer_left_samples=n_buf, buffer_right_samples=n_buf)
     return compute_spectral_fc(x[..., i:i + n], sf, method=m, fmin=fmin, fmax=fmax,
                                bandwidth=MT_BANDWIDTH * nw_ms / (win[1] - win[0]))
 
@@ -289,7 +279,7 @@ def compute_spectral_fc(
 
 
 # Pre/post spec: PRE_WORD events load at the pre window and WORD events at the
-# post window (disjoint), each widened by the real-data buffer. PAC keeps the
+# post window (disjoint), each widened by the real-data buffer. AEC-c keeps the
 # buffer through the envelope; the phase metrics drop it then equalize lengths.
 PREPOST_SPEC: dict[str, dict[str, Any]] = {
     "word_on": {"pre_type": "PRE_WORD", "post_type": "WORD",
@@ -297,7 +287,8 @@ PREPOST_SPEC: dict[str, dict[str, Any]] = {
 }
 # 200 ms epochs of the word presentation, each minus the mean of the same-length
 # epochs of the word-off window (the time-resolved synchrony figure).
-EPOCHS: tuple[tuple[float, float], ...] = tuple((s, s + 200.0) for s in range(0, 1600, 200))
+# 200 ms windows every 100 ms, 0-1000 ms (stops before the word's offset response at 1600 ms)
+EPOCHS: tuple[tuple[float, float], ...] = tuple((s, s + 200.0) for s in range(0, 801, 100))
 EPOCH_BASELINE: tuple[tuple[float, float], ...] = tuple((s, s + 200.0) for s in range(-700, -100, 200))
 if LONGETAL:   # Long et al.: blank screen vs word on screen
     PREPOST_SPEC["word_on"].update(pre_win=tuple(map(float, LONGETAL["pre_win"])),
@@ -320,7 +311,7 @@ def compute_prepost_separate(
     window's evoked response (across-trial mean, per channel and sample) is
     subtracted first. Returns
     {metric: {baseline, succ, diff, epochs}}: diff = FC(post) - FC(pre); epochs =
-    FC(each EPOCHS window) - mean FC(EPOCH_BASELINE windows), (8, ch, ch).
+    FC(each EPOCHS window) - mean FC(EPOCH_BASELINE windows), (n_epochs, ch, ch).
 
     `load_fn(dfrow, events, window, real_data_buffer_ms, simulation_tag)`
     defaults to get_beh_eeg.
@@ -374,7 +365,6 @@ def compute_prepost_separate(
         post -= post.mean(axis=0, keepdims=True)
         pre -= pre.mean(axis=0, keepdims=True)
     arms = {"post": (post, float(post_eeg.time[0])), "pre": (pre, float(pre_eeg.time[0]))}
-    n_buf = int(round(real_data_buffer_ms * sf / 1000.0))
     nw_ms = post_win[1] - post_win[0]
 
     out_m: dict[str, dict[str, NDArrayAny]] = {}
@@ -385,13 +375,12 @@ def compute_prepost_separate(
               if m == "aec_c" else {})
         def fc_(arm: str, win: tuple[float, float]) -> NDArrayAny:
             x, t0 = arms[arm]
-            return apply_overlap_mask(window_fc(x, sf, t0, win, m, fmin, fmax, nw_ms, n_buf,
+            return apply_overlap_mask(window_fc(x, sf, t0, win, m, fmin, fmax, nw_ms,
                                                 an.get(arm)), overlap_mask)
         C_post, C_pre = fc_("post", post_win), fc_("pre", pre_win)
         out_m[m] = {"baseline": C_pre, "succ": C_post, "diff": C_post - C_pre}
-        if m != "pac":
-            base = np.nanmean([fc_("pre", w) for w in EPOCH_BASELINE], axis=0)
-            out_m[m]["epochs"] = np.stack([fc_("post", w) - base for w in EPOCHS])
+        base = np.nanmean([fc_("pre", w) for w in EPOCH_BASELINE], axis=0)
+        out_m[m]["epochs"] = np.stack([fc_("post", w) - base for w in EPOCHS])
     return out_m
 
 
@@ -406,108 +395,6 @@ def compute_session_fc(
     fmin, fmax = bands[band]
     return compute_prepost_separate(dfrow, beh, ev, metrics, fmin, fmax, overlap_mask,
                                     REAL_DATA_BUFFER_MS, simulation_tag=simulation_tag)
-
-
-def compute_pac(
-    data: NDArrayAny,
-    sfreq: float,
-    phase_band: tuple[float, float] = bands["low"],
-    amp_band: tuple[float, float] = bands["gamma"],
-    buffer_left_samples: int = 0,
-    buffer_right_samples: int = 0,
-    keep_diagonal: bool = False,
-) -> NDArrayAny:
-    """Ozkurt phase-amplitude coupling, channel × channel (phase channel i, amplitude
-    channel j). The diagonal (within-electrode PAC) is NaN unless `keep_diagonal`.
-
-    Mathematically identical to looping ``pactools.Comodulogram(method='ozkurt',
-    n_surrogates=0).fit(low_sig=data[:, i], high_sig=data[:, j])`` for every
-    (i, j) pair, but hoists pactools' band-pass filtering out of the inner
-    loop: the n_ch² calls to ``fit`` each triggered ``multiple_band_pass`` on
-    BOTH bands, so the original implementation did 2*n_ch² channel filterings.
-    Here we filter each channel ONCE per band (2*n_ch filterings total) and
-    reuse the cached analytic signals to evaluate the closed-form Ozkurt MI
-    for every off-diagonal (i, j).
-
-    The Ozkurt modulation index for a single (low, high) channel pair, with
-    epochs concatenated along time (matching pactools' internal reshape in
-    ``_comodulogram`` when no mask is given), is::
-
-        phi = angle(bandpass_hilbert(low_sig))     # phase of low band
-        a   = abs(bandpass_hilbert(high_sig))      # amplitude envelope
-        MI  = |mean(a * exp(1j*phi))| * sqrt(N) / sqrt(sum(a**2))
-
-    See ``pactools/comodulogram.py::_one_modulation_index`` (method='ozkurt')
-    and the ``filtered_low.reshape(filtered_low.shape[0], -1)`` flatten step
-    in ``_comodulogram`` for the reference implementation that this matches.
-    """
-    from pactools.bandpass_filter import multiple_band_pass
-
-    n_ep, n_ch, n_t = data.shape
-    data_ep = data.transpose(1, 0, 2)  # (n_ch, n_ep, n_t)
-    low_fq_range = np.array([float(np.mean(phase_band))])
-    high_fq_range = np.array([float(np.mean(amp_band))])
-    low_fq_width = float(phase_band[1] - phase_band[0])
-    high_fq_width = float(amp_band[1] - amp_band[0])
-
-    # Filter all channels in one shot per band by flattening (channel × epoch)
-    # into rows. pactools' BandPassFilter.transform applies fftconvolve
-    # row-by-row, so flattened rows stay independent.
-    flat = data_ep.reshape(n_ch * n_ep, n_t)
-    # multiple_band_pass returns shape (n_frequencies, n_signals, n_points)
-    # with n_frequencies==1 here.
-    filt_low = multiple_band_pass(
-        flat, sfreq, low_fq_range, low_fq_width,
-    )[0].reshape(n_ch, n_ep, n_t)
-    filt_high = multiple_band_pass(
-        flat, sfreq, high_fq_range, high_fq_width,
-    )[0].reshape(n_ch, n_ep, n_t)
-
-    # Real-data buffer: the band-pass + Hilbert above ran on the FULL (buffered)
-    # window; crop the buffer off the analytic signals so the Ozkurt MI is
-    # evaluated only on the interior. Mathematically identical to pactools'
-    # Comodulogram.fit(..., mask=<buffer True>) ("PAC evaluated where mask is
-    # False"). buffer_left==buffer_right==0 is a no-op (bit-identical to the
-    # unbuffered path; guarded by the test_compute_pac_*_snapshot_pin tests).
-    if buffer_left_samples < 0 or buffer_right_samples < 0:
-        raise ValueError(
-            f"buffer samples must be >= 0, got left={buffer_left_samples} "
-            f"right={buffer_right_samples}"
-        )
-    if buffer_left_samples or buffer_right_samples:
-        if buffer_left_samples + buffer_right_samples >= n_t:
-            raise ValueError(
-                f"buffer_left_samples={buffer_left_samples} + "
-                f"buffer_right_samples={buffer_right_samples} >= n_times={n_t}; "
-                "nothing left after crop."
-            )
-        end = n_t - buffer_right_samples if buffer_right_samples > 0 else n_t
-        filt_low = filt_low[:, :, buffer_left_samples:end]
-        filt_high = filt_high[:, :, buffer_left_samples:end]
-        n_t = filt_low.shape[-1]
-
-    # Concatenate epochs into time (matches the no-mask reshape in
-    # pactools.comodulogram._comodulogram).
-    # phase[i]: shape (n_ep*n_t,) complex unit phasor
-    # amp[j]:   shape (n_ep*n_t,) real envelope
-    phase_phasor = np.exp(
-        1j * np.angle(filt_low.reshape(n_ch, n_ep * n_t))
-    )  # shape (n_ch, N)
-    amp = np.abs(filt_high.reshape(n_ch, n_ep * n_t))  # shape (n_ch, N)
-    # norm_a[j] = sqrt(sum(amp[j]**2))  (== np.linalg.norm)
-    norm_a = np.sqrt(np.einsum("jt,jt->j", amp, amp))  # shape (n_ch,)
-
-    # MI[i, j] = |mean_t(amp[j,t] * exp(1j * phi[i,t]))| * sqrt(N) / norm_a[j]
-    # Vectorized: form Z[i, j] = sum_t(amp[j, t] * phasor[i, t]) / N
-    # Then MI = |Z| * sqrt(N) / norm_a[j].
-    N = phase_phasor.shape[1]
-    # phase_phasor: (n_ch_i, N), amp: (n_ch_j, N) → Z: (n_ch_i, n_ch_j)
-    Z = phase_phasor @ amp.T  # complex (n_ch, n_ch); sum over time
-    Z /= N
-    M = np.abs(Z) * (np.sqrt(N) / norm_a[np.newaxis, :])
-    if not keep_diagonal:
-        np.fill_diagonal(M, np.nan)
-    return M.astype(float, copy=False)
 
 
 def stars(q):
@@ -867,7 +754,7 @@ def roi_figure(
 
 
 METRIC_LABELS: dict[str, str] = {"coh": "Coherence", "plv": "PLV", "ppc": "PPC", "ciplv": "ciPLV",
-                                  "pli": "PLI", "wpli": "wPLI", "aec_c": "AEC-c", "pac": "PAC"}
+                                  "pli": "PLI", "wpli": "wPLI", "aec_c": "AEC-c"}
 
 
 def band_label(band: str) -> str:
@@ -905,7 +792,7 @@ def band_contrast_figure(out_dir: str, stem: str, col: str, ylabel: str, bars: b
 
 
 def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
-                         max_lw: float = 6.0, extra_rows: Sequence[tuple[str, str, str]] = ()) -> None:
+                         max_lw: float = 6.0) -> None:
     """Rao et al. 2025 / Solomon et al. 2017 style network per EPOCHS window
     (columns) for each band with `<stem>_hubs.csv` (rows; band_stems).
 
@@ -918,8 +805,7 @@ def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
     from matplotlib import patheffects
     from matplotlib.lines import Line2D
     from nilearn import plotting
-    # rows: (row label, metric, hubs csv); `extra_rows` (e.g. PAC) are appended as given
-    rows = [(band_label(b), m, f) for b, m, f in band_stems(out_dir, stem, "_hubs.csv")] + list(extra_rows)
+    rows = [(band_label(b), m, f) for b, m, f in band_stems(out_dir, stem, "_hubs.csv")]   # (label, metric, hubs csv)
     if not rows:
         return
     nE = len(EPOCHS)
@@ -966,8 +852,8 @@ def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
                 axes[r, c].set_title(f"{w0:g}–{w1:g} ms", fontsize=15)
         handles = [Line2D([], [], marker="o", ls="", color="red", ms=9, label="Positive hub"),
                    Line2D([], [], marker="o", ls="", color="blue", ms=9, label="Negative hub"),
-                   Line2D([], [], color="red", lw=3, label="Coupled" if metric == "pac" else "Synchronized"),
-                   Line2D([], [], color="blue", lw=3, label="Decoupled" if metric == "pac" else "Desynchronized")]
+                   Line2D([], [], color="red", lw=3, label="Synchronized"),
+                   Line2D([], [], color="blue", lw=3, label="Desynchronized")]
         axes[r, -1].legend(handles=handles, loc="center left", bbox_to_anchor=(1.05, 0.5),
                            frameon=False, fontsize=11, title_fontsize=12,
                            title=ylabel.format(metric=METRIC_LABELS.get(metric, metric)).replace(" (", "\n("))

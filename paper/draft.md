@@ -14,7 +14,7 @@ Values from the 2026-10-06/08 runs (1009 sessions); **(verify)** = check before 
 ### Preprocessing
 - Word-off and word-on clips loaded separately per word, each with 500 ms of real data buffer on both sides.
 - Resampled to 500 Hz, notch 60 Hz + 120 Hz harmonic (4th-order Butterworth, ±2 Hz); buffer cropped before every estimate.
-- Why 500 ms buffer: resampling (FFT) and notching each short clip ring at its edges for > 50 ms; the ringing is simultaneous across channels and biased amplitude-correlation and PAC measures. No effect on multitaper alpha (Supplement)
+- Why 500 ms buffer: resampling (FFT) and notching each short clip ring at its edges for > 50 ms; the ringing is simultaneous across channels and biased the amplitude-correlation measure (AEC-c). No effect on multitaper alpha (Supplement)
 
 ### Electrode localization
 - Bipolar pairs labelled by lab localization default (depth: volumetric; grid/strip: surface).
@@ -36,7 +36,7 @@ Values from the 2026-10-06/08 runs (1009 sessions); **(verify)** = check before 
 - Pairs sharing a contact excluded. Per electrode: mean on − off change over all partners (Rao et al. 2025).
 
 ### Time-resolved network (epochs)
-- 8 × 200 ms epochs (0–1600 ms), each minus the mean of three 200 ms word-off epochs.
+- 9 overlapping 200 ms epochs every 100 ms, 0–1000 ms (stops before the word's offset response at 1600 ms), each minus the mean of three 200 ms word-off epochs.
 - Region pairs with ≥ 100 subjects. Hub (Rao): a region's mean change over its connections; t across subjects; two-stage FDR (Benjamini–Krieger–Yekutieli) over region × epoch.
 - Edges: each significant hub's 5 strongest connections (|mean change|), either sign; width ∝ |t| (Solomon et al. 2017 style).
 
@@ -79,15 +79,13 @@ Values from the 2026-10-06/08 runs (1009 sessions); **(verify)** = check before 
 
 #### Time-resolved network
 ![Epoch network](img/fig6a_epochs.png)
-- Alpha: 19 hub × epoch cells; occipital hubs at 0–400 ms, then temporal / parietal / limbic 200–1200 ms
-- High gamma: 3 hubs (bilateral occipital 0-200 ms, L limbic 200–400 ms); no late desynchronization.
-- PAC: brain-wide positive hubs 0–1200 ms (93 hub × epoch cells; fine 174), strongest 200–600 ms, negative at 1400–1600 ms; within-electrode PAC peaks 200–400 ms (occipital largest, ~0.06). Matches the trial-shuffle result → stimulus-locked (evoked), not coupling.
+- Alpha: 38 hub × epoch cells; occipital hubs 0–400 ms; parietal from 100 ms; frontal, temporal, limbic mainly 400–1000 ms; fine regions (9 cells): L fusiform 0–400 ms → L inferior/middle temporal 500–1000 ms, L orbitofrontal 400–600 ms.
+- High gamma: 3 hubs (bilateral occipital 0–200 ms, L limbic 200–400 ms); no fine-region hubs; no late desynchronization.
 
 
 ## Supplementary
 ![Power, subject distributions](img/figS1_power_subjects.png)
 ![Synchrony, subject distributions](img/figS2_synchrony_subjects.png)
-![PAC](img/figS3_pac.png)
 
 
 ## Limitations / discussion

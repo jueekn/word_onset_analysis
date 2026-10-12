@@ -7,6 +7,15 @@ earlier than the last entry below is undocumented.
 
 ---
 
+## 2026-10-12 — PAC removed (PI decision)
+
+Theta-gamma PAC (compute.py, plot_boxplots, plot_epoch_network, fc.compute_pac,
+bands.low, pactools) removed with its results and figures. Trial-shuffled
+surrogates reproduced the whole word-onset increase (stimulus-locked, not
+within-trial coupling).
+
+---
+
 ## 2026-09-30 — word onset, multitaper only: large cut
 
 Outputs checked unchanged on a recomputed session (power, d, time bins, PPC:
