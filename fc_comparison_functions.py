@@ -461,6 +461,13 @@ LOBE_COLORS: dict[str, str] = {
     "hippocampus": "#D55E00",
 }
 
+
+def roi_color(roi: str) -> Any:
+    """'<H>-<lobe>' -> its lobe colour; right hemisphere a lighter shade of it."""
+    import matplotlib.colors as mcolors
+    c = np.array(mcolors.to_rgb(LOBE_COLORS.get(roi.split("-", 1)[1], "0.5")))
+    return tuple(c + 0.4 * (1 - c)) if roi.startswith("R") else tuple(c)
+
 # Minimum subjects contributing an ROI before it is tested / drawn.
 # Minimum subjects per test; a subject
 # needs only 1 electrode in a region. Simulations (20 subjects) use 5 (resolve_roots).
@@ -638,7 +645,7 @@ def roi_panel(
     pos = _roi_positions(roi_order, lobes)
     for roi in roi_order:
         data.append(tbl.loc[tbl["roi"] == roi, measure].dropna().to_numpy(float))
-        colors.append(LOBE_COLORS.get(roi.split("-", 1)[1], "0.5"))
+        colors.append(roi_color(roi))
 
     drawn = [i for i, v in enumerate(data) if v.size >= MIN_SUBJECTS_ROI]
 
@@ -693,7 +700,7 @@ def roi_bar_panel(
             continue
         r = s.loc[roi]
         ax.bar(pos[i], r["mean"], yerr=r["sem"], width=0.7, capsize=3, edgecolor="0.15",
-               ecolor="0.2", color=LOBE_COLORS.get(roi.split("-", 1)[1], "0.5"), zorder=3)
+               ecolor="0.2", color=roi_color(roi), zorder=3)
         ax.annotate(f"{int(r['n_subjects'])}", (pos[i], 0.015), xycoords=("data", "axes fraction"),
                     ha="center", va="bottom", fontsize=7, color="0.45")
         if stars(float(r["q"])):

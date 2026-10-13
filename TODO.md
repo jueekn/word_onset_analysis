@@ -74,6 +74,8 @@
   (AEC-c), leak_frontal (zero-lag; both should stay 0), hg_null; 30 subjects ->
   figures/simulations/<tag>/. hg_ppc bursts sit at the clip centre (~800 ms in the 0-1600 ms
   post load), outside the 0-600 ms window -- fix or retire hg_ppc / the PPC recovery sweeps.
+- **Decoder hyperparameter tuning**: nested CV over the L2 strength C per subject (now fixed at
+  the lab's 7.2e-4, Ezzyat et al. 2017).
 
 ## Methods notes / deviations to report
 - Region-pair floor 30 subjects (riley-thesis 100: only 3 ROI pairs reach it here).

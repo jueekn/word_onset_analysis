@@ -23,6 +23,7 @@ from os.path import join
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy.ndimage import uniform_filter1d
 from scipy.stats import t as tdist, ttest_ind
 from statsmodels.stats.multitest import multipletests
 from tqdm.auto import tqdm
@@ -34,33 +35,47 @@ PEAK_WIN_MS = (0, 800)
 SMOOTH_MS = 30
 
 
-def electrode_rows(p: dict, lobe_of: dict) -> list[tuple]:
-    """(sub, label, roi, latency_ms, trial-mean response curve, fine label) per responsive electrode."""
+def responsive(p: dict) -> np.ndarray:
+    """(C,) word on > word off per-trial power: one-sided Welch t, BH-FDR within session, q < .05."""
     lo, hi = np.asarray(p["trial_pow_lo"], float), np.asarray(p["trial_pow_hi"], float)
-    t, pv = ttest_ind(hi, lo, axis=0, equal_var=False, alternative="greater", nan_policy="omit")
+    _, pv = ttest_ind(hi, lo, axis=0, equal_var=False, alternative="greater", nan_policy="omit")
     ok = np.isfinite(pv)
     resp = np.zeros(len(pv), bool)
     if ok.any():
         resp[ok] = multipletests(pv[ok], method="fdr_bh")[0]
+    return resp
+
+
+def response(p: dict) -> tuple[np.ndarray, np.ndarray]:
+    """Per-trial high-gamma envelope minus each electrode's word-off mean, smoothed
+    (SMOOTH_MS, edge-padded: no dip at the ends): (E, C, T), and times (T,)."""
     step = float(p["env_step_ms"])
-    curve = np.nanmean(np.asarray(p["env_hi"], float), axis=0)                 # (C, T)
-    curve -= np.nanmean(np.asarray(p["env_lo"], float), axis=(0, 2))[:, None]  # minus word-off mean
-    k = max(1, int(round(SMOOTH_MS / step)))
-    pad = np.pad(curve, ((0, 0), (k // 2, k - 1 - k // 2)), mode="edge")   # edge-padded: no dip at the ends
-    curve = np.apply_along_axis(lambda c: np.convolve(c, np.ones(k) / k, mode="valid"), 1, pad)
-    times = p["env_hi_t0_ms"] + step * (np.arange(curve.shape[1]) + 0.5)
-    win = (times >= PEAK_WIN_MS[0]) & (times < PEAK_WIN_MS[1])
+    x = np.asarray(p["env_hi"], float) - np.nanmean(np.asarray(p["env_lo"], float), axis=(0, 2))[:, None]
+    x = uniform_filter1d(x, max(1, int(round(SMOOTH_MS / step))), axis=-1, mode="nearest")
+    return x, p["env_hi_t0_ms"] + step * (np.arange(x.shape[-1]) + 0.5)
+
+
+def half_max(c: np.ndarray, times: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """(latency, peak) along the last axis within PEAK_WIN_MS: latency = first time the
+    curve reaches half its peak; NaN where the peak is <= 0."""
+    w = (times >= PEAK_WIN_MS[0]) & (times < PEAK_WIN_MS[1])
+    c, t = c[..., w], times[w]
+    pk = c.max(-1)
+    lat = t[np.argmax(c >= pk[..., None] / 2, -1)]
+    return np.where(pk > 0, lat, np.nan), pk
+
+
+def electrode_rows(p: dict, lobe_of: dict) -> list[tuple]:
+    """(sub, label, roi, latency_ms, trial-mean response curve, fine label) per responsive electrode."""
+    x, times = response(p)
+    curve = np.nanmean(x, axis=0)   # (C, T); smoothing is linear, so = smoothed trial mean
+    lat, _ = half_max(curve, times)
     roi = fc.roi_of_reg_full(p["reg_full"], lobe_of)
     out = []
-    for c in np.flatnonzero(resp):
-        if roi[c] is None or not np.isfinite(curve[c]).all():   # float16 overflow in compute.py v1 envelopes
+    for c in np.flatnonzero(responsive(p)):
+        if roi[c] is None or np.isnan(lat[c]):
             continue
-        w = curve[c, win]
-        pk = int(np.argmax(w))
-        if w[pk] <= 0:
-            continue
-        lat = times[win][int(np.argmax(w[:pk + 1] >= w[pk] / 2))]   # first crossing of half max
-        out.append((str(p["sid"][0]), str(p["labels"][c]), roi[c], float(lat), curve[c], str(p["reg_full"][c])))
+        out.append((str(p["sid"][0]), str(p["labels"][c]), roi[c], float(lat[c]), curve[c], str(p["reg_full"][c])))
     return out
 
 
@@ -74,8 +89,6 @@ def main() -> None:
     for f in tqdm(fc.session_files(power_dir(save_root, "word_on", "high_gamma"), "_power.pkl", args.n_sessions),
                   desc="sessions"):
         p = fc.load_pickle(str(f))
-        if p.get("env_hi") is None:
-            continue
         n_elec += len(p["labels"])
         if times is None:
             times = p["env_hi_t0_ms"] + p["env_step_ms"] * (np.arange(np.shape(p["env_hi"])[-1]) + 0.5)

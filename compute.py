@@ -69,8 +69,8 @@ BEH = "word_on"
 SYNC = {"alpha": "ciplv", "high_gamma": "aec_c"}
 HG_SUBBANDS = [(f, f + 10) for f in range(70, 150, 10)]
 ENV_STEP_MS = 10          # stored per-trial high-gamma envelope resolution
-VERSION = "single_pass_6"   # 2: envelopes float32 (float16 overflowed); 3-4: PAC (since removed);
-#                            5: epochs 0-1000 ms, 200 ms every 100 ms; 6: recalled_hi
+VERSION = "single_pass_7"   # 2: envelopes float32 (float16 overflowed); 3-4: PAC (since removed);
+#                            5: epochs 0-1000 ms, 200 ms every 100 ms; 6: recalled_hi; 7: per-trial spectrum bins
 
 
 def _crop(eeg: Any, win: tuple[float, float]) -> np.ndarray:
@@ -167,7 +167,8 @@ def run_session(dfrow: pd.Series, save_root: str, root_dir: str,
     b_lo, b_hi = band_power_bins(lo, sf, bw), band_power_bins(hi, sf, bw)   # (E, C, n_bins)
     save("spectrum", b_lo.mean(-1), b_hi.mean(-1),
          {"measure": "power", "fc_mode": "multitaper", "mt_bandwidth": bw, "freq_edges": FREQ_EDGES,
-          "cohens_d_freq": np.stack([_cohens_d(b_hi[..., k], b_lo[..., k]) for k in range(b_lo.shape[-1])], -1)})
+          "cohens_d_freq": np.stack([_cohens_d(b_hi[..., k], b_lo[..., k]) for k in range(b_lo.shape[-1])], -1),
+          "trial_pow_bins_lo": b_lo.astype(np.float32), "trial_pow_bins_hi": b_hi.astype(np.float32)})   # decoder
 
     # high gamma: sub-band Hilbert power, each sub-band / its word-off mean (per channel), averaged
     t_pre = np.asarray(pre_eeg.time, float)[n_buf:len(pre_eeg.time) - n_buf]

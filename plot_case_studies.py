@@ -6,7 +6,7 @@ Default: the 4 occipital subregions (Burke occipital ROI) with the most subjects
 plot_spectrum.py; a subject's value is the mean over its electrodes in the region,
 both hemispheres. Significance: TFCE along frequency with sign-flip permutations
 and max-statistic correction over all region x bin cells (plot_spectrum.tfce_test);
-filled markers p_FWE < .05.
+stars p_FWE < .05.
 -> figures/burke_roi_power/power_spectrum_word_on_<name>.png
 
     python plot_case_studies.py [--regions "fusiform gyrus" ...] [--name occipital]
@@ -17,6 +17,7 @@ import os
 from os.path import join
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 import fc_comparison_functions as fc
@@ -42,21 +43,20 @@ def main() -> None:
     stem = join(args.out_dir, f"power_spectrum_{BEH}_{args.name}")
     pd.DataFrame([(r, CENTRES[b], T[i, b], p[i, b]) for i, r in enumerate(args.regions) for b in range(len(CENTRES))],
                  columns=["region", "freq_hz", "t", "p_fwe_tfce"]).to_csv(f"{stem}_stats.csv", index=False)
-    fig, ax = plt.subplots(figsize=(7.5, 5))
-    for i, r in enumerate(args.regions):
-        line, = ax.plot(CENTRES, T[i], lw=2, label=f"{r[:1].upper() + r[1:]} (n={n_sub.get(r, 0)})")
+    fig, axes = plt.subplots(2, 2, figsize=(9, 6.5), sharex=True, sharey=True)
+    for i, (r, ax) in enumerate(zip(args.regions, axes.flat)):
+        col = f"C{i}"
+        ax.plot(CENTRES, T[i], "o-", lw=2, ms=5, color=col)
         sig = p[i] < 0.05
-        ax.plot(CENTRES[~sig], T[i][~sig], "o", ms=6, mfc="white", mec=line.get_color(), mew=1.5)
-        ax.plot(CENTRES[sig], T[i][sig], "o", ms=7, color=line.get_color())
-    ax.axhline(0, color="0.6", lw=0.8)
-    ax.set_xscale("log")
-    ax.set_xticks(CENTRES, [f"{x:.0f}" for x in CENTRES], fontsize=12)
-    ax.minorticks_off()
-    ax.tick_params(axis="y", labelsize=12)
-    ax.set_xlabel("Frequency (Hz)", fontsize=14)
-    ax.set_ylabel(t_label(), fontsize=14)
-    ax.spines[["top", "right"]].set_visible(False)
-    ax.legend(fontsize=11, frameon=False, title="filled: p$_{FWE}$ < .05 (TFCE)", title_fontsize=10)
+        ax.plot(CENTRES[sig], T[i][sig] + 1.0 * np.sign(T[i][sig]), "*", ms=9, color=col)
+        ax.axhline(0, color="0.6", lw=0.8)
+        ax.set_title(f"{r[:1].upper() + r[1:]} (n={n_sub.get(r, 0)})", fontsize=12, color=col)
+        ax.set_xscale("log")
+        ax.set_xticks(CENTRES, [f"{x:.0f}" for x in CENTRES], fontsize=10)
+        ax.minorticks_off()
+        ax.spines[["top", "right"]].set_visible(False)
+    fig.supxlabel("Frequency (Hz)", fontsize=14)
+    fig.supylabel(t_label(), fontsize=14)
     fig.tight_layout()
     fig.savefig(f"{stem}.png", dpi=300)
     fig.savefig(f"{stem}.pdf")

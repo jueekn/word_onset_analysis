@@ -23,17 +23,9 @@ from tqdm.auto import tqdm
 
 import fc_comparison_functions as fc
 from compute import power_dir
-from plot_latency import PEAK_WIN_MS, SMOOTH_MS
-from scipy.stats import ttest_ind
-from statsmodels.stats.multitest import multipletests
+from plot_latency import half_max, response, responsive
 
 BEH = "word_on"
-
-
-def peak(curve: np.ndarray, t: np.ndarray, k: int) -> float:
-    """Peak of a smoothed response curve within PEAK_WIN_MS."""
-    c = np.convolve(curve, np.ones(k) / k, mode="same")
-    return float(c[(t >= PEAK_WIN_MS[0]) & (t < PEAK_WIN_MS[1])].max())
 
 
 def main() -> None:
@@ -43,26 +35,16 @@ def main() -> None:
     for f in tqdm(fc.session_files(power_dir(save_root, BEH, "high_gamma"), "_power.pkl", args.n_sessions),
                   desc="sessions"):
         p = fc.load_pickle(str(f))
-        lo, hi = np.asarray(p["trial_pow_lo"], float), np.asarray(p["trial_pow_hi"], float)
-        _, pv = ttest_ind(hi, lo, axis=0, equal_var=False, alternative="greater", nan_policy="omit")
-        ok = np.isfinite(pv)
-        resp = np.zeros(len(pv), bool)
-        if ok.any():
-            resp[ok] = multipletests(pv[ok], method="fdr_bh")[0]
-        env_hi = np.asarray(p["env_hi"], float)
-        t = p["env_hi_t0_ms"] + p["env_step_ms"] * (np.arange(env_hi.shape[-1]) + 0.5)
-        k = max(1, int(round(SMOOTH_MS / p["env_step_ms"])))
+        x, t = response(p)
         blank = np.asarray(p["blank_ms_hi"], float)
         waits.append(blank[np.isfinite(blank)])
-        split = {"short": blank < np.nanmedian(blank), "long": blank > np.nanmedian(blank)}
-        base = np.nanmean(np.asarray(p["env_lo"], float), axis=(0, 2))   # common word-off baseline
+        long, short = blank > np.nanmedian(blank), blank < np.nanmedian(blank)
         roi = fc.roi_of_reg_full(p["reg_full"], lobe_of)
-        for c in np.flatnonzero(resp):
+        for c in np.flatnonzero(responsive(p)):
             if roi[c] is None:
                 continue
             r = {"sub": str(p["sid"][0]), "label": str(p["labels"][c]), "roi": roi[c]}
-            r["peak"] = peak(np.nanmean(env_hi[split["long"], c], 0) - base[c], t, k) \
-                - peak(np.nanmean(env_hi[split["short"], c], 0) - base[c], t, k)
+            r["peak"] = half_max(np.nanmean(x[long, c], 0), t)[1] - half_max(np.nanmean(x[short, c], 0), t)[1]
             rows.append(r)
     el = pd.DataFrame(rows).groupby(["sub", "label", "roi"], as_index=False)["peak"].mean()
     os.makedirs(args.out_dir, exist_ok=True)

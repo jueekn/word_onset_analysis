@@ -27,7 +27,8 @@ SWEEP_TAGS = [t for tags in SWEEPS.values() for t in tags]   # recovery sweeps: 
 # plot script -> its figure subdirectory ("" = the script writes its own subdirectories)
 PLOTS = {"plot_boxplots": "", "plot_spectrum": "burke_roi_power", "plot_case_studies": "burke_roi_power",
          "plot_timecourse": "burke_roi_power", "plot_epoch_network": "burke_roi_synchrony",
-         "plot_latency": "latency", "plot_anticipation": "latency"}
+         "plot_latency": "latency", "plot_anticipation": "latency",
+         "plot_decoding": "decoding"}
 
 
 def sim(w): return "" if w.sim == "real" else f"--simulation-tag {w.sim}"   # sims -> <scratch>/sim/<tag>
