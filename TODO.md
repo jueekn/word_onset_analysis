@@ -44,7 +44,13 @@
   ROI effect again), or cross-cohort replication (RAM FR1/catFR1 vs pyFR).
 - Supplement if asked: split-half (odd/even trials) per measure; power from the stored
   per-trial values, synchrony would need a recompute with trial splits.
-- First step: count subjects with multiple sessions and overlapping electrodes.
+- Done (2026-10-14): per-electrode alpha / high-gamma d test-retest between session halves
+  (plot_reliability.py; 279 subjects with 2+ sessions, all with the same electrodes; median
+  r 0.38 alpha, 0.40 high gamma). Identifiability: a first try confounds stable electrode
+  placement with a subject trait -- needs matched regions.
+- **Individual differences (later)**: subject recall rate vs onset measures (alpha d, high-gamma
+  d, latency per lobe). Decide how to handle experiment (FR1 / catFR1 / pyFR recall rates
+  differ) and electrode coverage before testing.
 
 ## Spectrum heatmap: better significance + spectral tilt
 - Present significance as contiguous frequency ranges, not per-bin stars: finer spectrum

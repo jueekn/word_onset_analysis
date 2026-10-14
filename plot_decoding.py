@@ -1,21 +1,15 @@
-"""plot_decoding.py -- does the single-trial word-onset response predict later recall?
+"""plot_decoding.py -- when, along the word-onset response, does information about later
+recall appear, and where?
 
-Per trial and Burke ROI (LOBES: those with a clear spectral effect), from compute.py's
-power pickles, mean over the ROI's electrodes; one group per paper section:
-  power        word on (0-600 ms): log alpha, log high-gamma power         (power figure)
-  time course  high-gamma response (plot_latency.response) in 100 ms bins,
-               0-1000 ms                                                  (time course)
-  pre-word     word off (the blank before the word): log alpha, log high-gamma
-               power; and the blank's duration                           (anticipation)
-z-scored within session; missing values (ROI absent) -> 0.
-
-Per subject (>= MIN_TRIALS recalled and forgotten words): L2 logistic regression
-(C as the lab's RAM encoding classifiers, Ezzyat et al. 2017), balanced class weights,
-leave-one-session-out (single-session subjects: 5 contiguous blocks of trials); AUC of
-the pooled held-out predictions. Models add the groups in turn. Across subjects:
-one-sample t of AUC vs 0.5; paired t of each model vs the one before it (does the
-group add information?).
--> figures/decoding/recall_auc_word_on.png (+ _per_subject.csv)
+Per trial and electrode: the high-gamma response (plot_latency.response: envelope minus
+its word-off mean, smoothed) averaged in 100 ms windows, 0-1000 ms; z-scored within
+session. Per subject, Burke lobe (hemispheres pooled) and window: L2 logistic regression
+on the lobe's electrodes (C as the lab's RAM encoding classifiers, Ezzyat et al. 2017;
+balanced class weights), leave-one-session-out (single-session subjects: 5 contiguous
+blocks of trials); AUC of the pooled held-out predictions. Subjects need
+>= MIN_TRIALS recalled and forgotten words. Across subjects: t of AUC vs 0.5, BH-FDR
+over lobe x window (one-sided: above chance); stars q < .05.
+-> figures/decoding/recall_auc_time_word_on.png (+ _per_subject.csv, _stats.csv)
 
     python plot_decoding.py [--simulation-tag TAG]
 """
@@ -27,10 +21,11 @@ from os.path import join
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.stats import ttest_1samp, ttest_rel
+from scipy.stats import ttest_1samp
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import roc_auc_score
 from sklearn.model_selection import LeaveOneGroupOut, cross_val_predict
+from statsmodels.stats.multitest import multipletests
 from tqdm.auto import tqdm
 
 import fc_comparison_functions as fc
@@ -38,27 +33,18 @@ from compute import power_dir
 from plot_latency import response
 
 BEH = "word_on"
-LOBES = ("frontal", "occipital", "hippocampus")   # both hemispheres
-GROUPS = {"power": ["alpha", "hg_power"], "time course": ["hg_t"], "pre-word": ["alpha_pre", "hg_pre", "wait"]}
-MODELS = {"power": GROUPS["power"], "+ time course": GROUPS["power"] + GROUPS["time course"],
-          "+ pre-word": sum(GROUPS.values(), [])}
-BIN_MS = 100
+WIN_MS = 100
+WINDOWS = range(0, 1000, WIN_MS)
 MIN_TRIALS = 10
-C = 7.2e-4   # L2 strength of the lab's encoding classifiers; C = 1 overfits the time-course features
+C = 7.2e-4   # L2 strength of the lab's encoding classifiers
 
 
-def session_features(p: dict, p_alpha: dict, lobe_of: dict) -> pd.DataFrame:
-    """(trials x '<feature>|<roi>') z-scored within the session, + recalled, session."""
+def session_features(p: dict, lobe_of: dict) -> pd.DataFrame:
+    """(trials x '<lobe>|<electrode>|<window start>') z-scored within the session, + recalled, session."""
     roi = fc.roi_of_reg_full(p["reg_full"], lobe_of)
     x, t = response(p)
-    log = lambda q, k: np.log(np.asarray(q[k], float))
-    cols = {"wait": p["blank_ms_hi"]}
-    for r in {r for r in roi if r is not None and r.split("-", 1)[1] in LOBES}:
-        e = roi == r
-        cols[f"alpha|{r}"], cols[f"hg_power|{r}"] = log(p_alpha, "trial_pow_hi")[:, e].mean(1), log(p, "trial_pow_hi")[:, e].mean(1)
-        cols[f"alpha_pre|{r}"], cols[f"hg_pre|{r}"] = log(p_alpha, "trial_pow_lo")[:, e].mean(1), log(p, "trial_pow_lo")[:, e].mean(1)
-        for a in range(0, 1000, BIN_MS):
-            cols[f"hg_t|{r}|{a}"] = x[:, e][..., (t >= a) & (t < a + BIN_MS)].mean((1, 2))
+    cols = {f"{r.split('-', 1)[1]}|{lab}|{a}": x[:, c, (t >= a) & (t < a + WIN_MS)].mean(1)
+            for c, (r, lab) in enumerate(zip(roi, p["labels"])) if r is not None for a in WINDOWS}
     f = pd.DataFrame(cols)
     f = (f - f.mean()) / f.std()
     f["recalled"], f["session"] = p["recalled_hi"], str(p["sid"])
@@ -72,8 +58,7 @@ def main() -> None:
     for f in tqdm(fc.session_files(power_dir(save_root, BEH, "high_gamma"), "_power.pkl", args.n_sessions),
                   desc="sessions"):
         p = fc.load_pickle(str(f))
-        p_alpha = fc.load_pickle(str(power_dir(save_root, BEH, "alpha") / f.name))
-        subs.setdefault(str(p["sid"][0]), []).append(session_features(p, p_alpha, lobe_of))
+        subs.setdefault(str(p["sid"][0]), []).append(session_features(p, lobe_of))
 
     rows = []
     for sub, fs in tqdm(subs.items(), desc="subjects"):
@@ -82,34 +67,38 @@ def main() -> None:
         if min(y.sum(), len(y) - y.sum()) < MIN_TRIALS:
             continue
         groups = d["session"] if d["session"].nunique() > 1 else np.arange(len(d)) * 5 // len(d)
-        r = {"sub": sub, "n_sessions": d["session"].nunique(), "n_trials": len(y), "recall_rate": y.mean()}
-        for m, feats in MODELS.items():
-            X = d[[c for c in d if c.split("|")[0] in feats]].fillna(0).to_numpy()
-            if X.shape[1]:
-                prob = cross_val_predict(LogisticRegression(C=C, class_weight="balanced", max_iter=1000), X, y,
-                                         groups=groups, cv=LeaveOneGroupOut(), method="predict_proba")[:, 1]
-                r[m] = roc_auc_score(y, prob)
-        rows.append(r)
+        for lobe in fc.LOBES:
+            for a in WINDOWS:
+                cols = [c for c in d.columns if c.startswith(f"{lobe}|") and c.endswith(f"|{a}")]
+                if not cols:
+                    continue
+                prob = cross_val_predict(LogisticRegression(C=C, class_weight="balanced", max_iter=1000),
+                                         d[cols].fillna(0).to_numpy(), y, groups=groups,
+                                         cv=LeaveOneGroupOut(), method="predict_proba")[:, 1]
+                rows.append({"sub": sub, "lobe": lobe, "window_ms": a, "auc": roc_auc_score(y, prob)})
     df = pd.DataFrame(rows)
+    st = df.groupby(["lobe", "window_ms"])["auc"].agg(["mean", "sem", "size"]).reset_index()
+    st["p"] = [ttest_1samp(g["auc"], 0.5, alternative="greater").pvalue for _, g in df.groupby(["lobe", "window_ms"])]
+    st["q"] = multipletests(st["p"], method="fdr_bh")[1]
     os.makedirs(args.out_dir, exist_ok=True)
-    stem = join(args.out_dir, f"recall_auc_{BEH}")
+    stem = join(args.out_dir, f"recall_auc_time_{BEH}")
     df.to_csv(f"{stem}_per_subject.csv", index=False)
+    st.to_csv(f"{stem}_stats.csv", index=False)
+    print(st.round(4).to_string(index=False))
 
-    fig, ax = plt.subplots(figsize=(4.5, 4))
-    for i, m in enumerate(MODELS):
-        a = df[m].dropna()
-        t, pv = ttest_1samp(a, 0.5)
-        print(f"[decoding] {m}: AUC {a.mean():.3f} ± {a.sem():.3f} SEM, t({len(a) - 1}) = {t:.2f}, p = {pv:.2g}")
-        ax.bar(i, a.mean(), yerr=a.sem(), color=plt.cm.Blues(0.4 + 0.25 * i), edgecolor="0.15", capsize=4)
-    for m0, m1 in zip(MODELS, list(MODELS)[1:]):
-        t, pv = ttest_rel(df[m1], df[m0], nan_policy="omit")
-        print(f"[decoding] {m1} vs {m0}: t = {t:.2f}, p = {pv:.2g}")
-    ax.axhline(0.5, color="black", ls="--", lw=1)
-    ax.set_ylim(0.45, None)
-    ax.set_xticks(range(len(MODELS)), list(MODELS), fontsize=11)
-    ax.set_xlabel("Features used", fontsize=12)
-    ax.set_ylabel("AUC", fontsize=12)
-    ax.spines[["top", "right"]].set_visible(False)
+    fig, axes = plt.subplots(2, 3, figsize=(11, 6), sharex=True, sharey=True)
+    for lobe, ax in zip(fc.LOBES, axes.flat):
+        s = st[st["lobe"] == lobe]
+        x, col = s["window_ms"] + WIN_MS / 2, fc.LOBE_COLORS[lobe]
+        ax.fill_between(x, s["mean"] - s["sem"], s["mean"] + s["sem"], color=col, alpha=0.3, lw=0)
+        ax.plot(x, s["mean"], "o-", color=col, lw=2, ms=4)
+        sig = s["q"] < 0.05
+        ax.plot(x[sig], (s["mean"] + s["sem"])[sig] + 0.004, "*", color=col, ms=8)
+        ax.axhline(0.5, color="black", ls="--", lw=1)
+        ax.set_title(f"{lobe.capitalize()} (n={int(s['size'].max())})", fontsize=12, color=col)
+        ax.spines[["top", "right"]].set_visible(False)
+    fig.supxlabel("Time after word onset (ms)", fontsize=13)
+    fig.supylabel("Recall AUC", fontsize=13)
     fig.tight_layout()
     fig.savefig(f"{stem}.png", dpi=300)
     fig.savefig(f"{stem}.pdf")

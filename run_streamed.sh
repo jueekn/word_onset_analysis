@@ -26,7 +26,7 @@ for ((i = 1; i <= ${#SUBS}; i += B)); do
   CML_DATA_SOURCE=local $PY compute.py --workers 3   # single pass; earlier batches are cached
   drop_raw; echo "$batch" >> $DONE
 done
-for s in plot_boxplots plot_spectrum plot_case_studies plot_timecourse plot_epoch_network plot_latency plot_anticipation plot_decoding; do
+for s in plot_boxplots plot_spectrum plot_case_studies plot_timecourse plot_epoch_network plot_latency plot_anticipation plot_decoding plot_reliability; do
   CML_DATA_SOURCE=local $PY $s.py   # figures from the cache
 done
 drop_raw
