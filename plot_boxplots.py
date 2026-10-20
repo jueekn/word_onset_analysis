@@ -34,11 +34,11 @@ def power_table(save_root: str, band: str, lobe_of: dict, n_sessions=None) -> pd
     for f in tqdm(fc.session_files(power_dir(save_root, BEH, band), "_power.pkl", n_sessions), desc=f"power {band}"):
         p = fc.load_pickle(str(f))
         roi = fc.roi_of_reg_full(p["reg_full"], lobe_of)
-        rows += [(str(p["sid"][0]), str(lab), r, float(lo), float(hi), float(d))
-                 for lab, r, lo, hi, d in zip(p["labels"], roi, p["pow_lo"], p["pow_hi"], p["cohens_d"])
+        rows += [(str(p["sid"][0]), str(lab), r, str(fine), float(lo), float(hi), float(d))
+                 for lab, r, fine, lo, hi, d in zip(p["labels"], roi, p["reg_full"], p["pow_lo"], p["pow_hi"], p["cohens_d"])
                  if r is not None and np.isfinite(lo) and np.isfinite(hi)]
-    df = pd.DataFrame(rows, columns=["sub", "label", "roi", "lo", "hi", "cohens_d"])
-    df = df.groupby(["sub", "label", "roi"], as_index=False)[["lo", "hi", "cohens_d"]].mean()
+    df = pd.DataFrame(rows, columns=["sub", "label", "roi", "fine", "lo", "hi", "cohens_d"])
+    df = df.groupby(["sub", "label", "roi", "fine"], as_index=False)[["lo", "hi", "cohens_d"]].mean()
     return df.assign(change_dB=10 * np.log10(df["hi"] / df["lo"]))
 
 

@@ -84,6 +84,7 @@ def main() -> None:
         "--fine": dict(action="store_true", help="anatomical labels within the Burke ROIs instead of the 12 ROIs"),
         "--pool-hemispheres": dict(action="store_true", help="with --fine: pool left and right")})
     lobe_of = fc.load_burke_maps()
+    os.makedirs(args.out_dir, exist_ok=True)
     rows, times = [], None
     n_elec = 0
     for f in tqdm(fc.session_files(power_dir(save_root, "word_on", "high_gamma"), "_power.pkl", args.n_sessions),
@@ -99,6 +100,9 @@ def main() -> None:
     el = pd.DataFrame([(r[0], r[1], g, r[3]) for r, g in zip(rows, region)],
                       columns=["sub", "label", "roi", "latency_ms"])
     curves = np.array([r[4] for r in rows])
+    (pd.DataFrame([(r[0], r[1], r[2], r[5], r[3]) for r in rows], columns=["sub", "label", "roi", "fine", "latency_ms"])
+       .groupby(["sub", "label", "roi", "fine"], as_index=False)["latency_ms"].mean()
+       .to_csv(join(args.out_dir, "hg_latency_word_on_electrodes.csv"), index=False))   # mixed_models.R latency
     print(f"[latency] {len(el)} responsive electrode-sessions of {n_elec}, {el['sub'].nunique()} subjects")
 
     # sessions -> electrode (mean), electrodes -> subject x ROI (median)
@@ -112,7 +116,6 @@ def main() -> None:
                    "mean_ms": m, "ci95_ms": ci, "sem_ms": float(g["latency_ms"].std(ddof=1) / np.sqrt(len(g))),
                    "median_ms": float(g["latency_ms"].median())})
     st = pd.DataFrame(st).sort_values("mean_ms")
-    os.makedirs(args.out_dir, exist_ok=True)
     stem = join(args.out_dir, "hg_latency_word_on" + ("_fine" if args.fine else "") + ("_pooled" if args.pool_hemispheres else ""))
     st.to_csv(f"{stem}_stats.csv", index=False)
     tbl.to_csv(f"{stem}_per_subject.csv", index=False)

@@ -12,6 +12,8 @@ typeset -A F=(
   fig5_synchrony             burke_roi_synchrony/roi_synchrony_word_on_sem.png
   fig6a_epochs               burke_roi_synchrony/roi_synchrony_epochs_word_on.png
   fig6b_epochs_fine          burke_roi_synchrony/roi_synchrony_epochs_fine_word_on.png
+  fig7_recall_time           decoding/recall_auc_time_word_on.png
+  fig8_reliability           reliability/reliability_word_on.png
   figS1_power_subjects       burke_roi_power/roi_power_word_on.png
   figS2_synchrony_subjects   burke_roi_synchrony/roi_synchrony_word_on.png
   figS4_recovery             simulations/recovery.png

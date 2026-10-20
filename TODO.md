@@ -1,18 +1,5 @@
 # On hold / to do
 
-## Done in the 2026-10-06 recompute
-- Single-pass compute: load each session once, write power + synchrony together.
-- Notch the 120 Hz mains harmonic (`notch_harmonics_up_to_hz: 150`; inside the 70-150 Hz
-  power band). data_check then stops excluding on notched harmonics: the 16 sessions
-  excluded for 120 Hz come back; the 9 with non-mains 100 Hz peaks stay excluded.
-
-## Modular scripts (done 2026-10-07)
-- compute.py + plot_boxplots / plot_spectrum / plot_case_studies / plot_timecourse /
-  plot_epoch_network / plot_latency; build_roi_synchrony.py removed; build_roi_power.py is
-  Long-only legacy (delete with the Long code when you decide).
-- High-gamma envelopes from the 2026-10-06 run are float16 (one electrode overflowed;
-  plot_latency skips non-finite); compute.py now stores float32 (next recompute).
-
 ## On hold
 - **Region labels for depth contacts (151 subjects).** The OpenNeuro BIDS release has no
   whole-brain volumetric label (`wb` / rhino `atlases.whole_brain` / `mni.region`) for the
@@ -23,73 +10,56 @@
   leave-one-subject-out agreement 89% (12 ROIs) / 79% (fine regions), 70% coverage.
 - **Time-locked (evoked) component in synchrony.** PI: ERP subtraction is not the answer;
   review how the literature handles stimulus-locked effects in phase / envelope coupling.
-  Currently `subtract_erp: false`. Also covers the early high-gamma AEC-c network (0–200 ms),
-  which may be a shared stimulus-locked envelope rise, and power vs synchrony consistency.
+  Currently `subtract_erp: false`. Also covers the early high-gamma AEC-c hubs (0–200 ms,
+  within-region pairs), which may be a shared stimulus-locked envelope rise.
 
-## Monday (2026-10-12): epoch figures per PI
-- Epochs now 200 ms windows every 100 ms, 0-1000 ms (0-200, 100-300, ..., 800-1000; 9 epochs),
-  excluding the word's offset response (1600 ms); word-off baseline epochs unchanged.
-  Recompute launched 2026-10-10 (compute.py VERSION single_pass_5; log
-  stream_2026-10-10_epochs_0-1000.log). Main-window results essentially unchanged by the
-  shorter word-on clip (r >= 0.9997, test session). After it finishes: check the epoch
-  network (alpha / high gamma rows), refresh
-  paper/img (zsh paper/sync_figures.sh) and the draft's epoch numbers.
-
-## Next: reliability analysis (final analysis of the paper, per PI)
-- Main: test-retest across sessions (subjects with 2+ sessions; per-electrode effect in
-  session 1 vs 2 for alpha / high-gamma power d, alpha ciPLV, high-gamma AEC-c, latency) +
-  within- vs between-subject identifiability (own session-2 map vs other subjects', on
-  matched regions). No recompute needed: per-session results are stored.
+## Reliability (final analysis of the paper, per PI)
+- Done (2026-10-14, plot_reliability.py): test-retest as riley-thesis
+  compute_retest_reliability.py (random session halves, >= 2 sessions per half, >= 10 regions,
+  Pearson, medians), per anatomical region: power d (alpha 0.63, high gamma 0.79) and synchrony
+  node strength (alpha ciPLV 0.16, high-gamma AEC-c 0.13); 91 subjects.
+- Identifiability (own half-B profile vs other subjects'): a first try confounded stable
+  electrode placement with a subject trait -- needs matched regions.
 - Robustness (pick one): subject-subsampling replicability (how many patients to find each
   ROI effect again), or cross-cohort replication (RAM FR1/catFR1 vs pyFR).
 - Supplement if asked: split-half (odd/even trials) per measure; power from the stored
   per-trial values, synchrony would need a recompute with trial splits.
-- Done (2026-10-14): per-electrode alpha / high-gamma d test-retest between session halves
-  (plot_reliability.py; 279 subjects with 2+ sessions, all with the same electrodes; median
-  r 0.38 alpha, 0.40 high gamma). Identifiability: a first try confounds stable electrode
-  placement with a subject trait -- needs matched regions.
 - **Individual differences (later)**: subject recall rate vs onset measures (alpha d, high-gamma
   d, latency per lobe). Decide how to handle experiment (FR1 / catFR1 / pyFR recall rates
   differ) and electrode coverage before testing.
 
-## Spectrum heatmap: better significance + spectral tilt
-- Present significance as contiguous frequency ranges, not per-bin stars: finer spectrum
-  (1-2 Hz steps, ~2-150 Hz) + TFCE with sign-flip permutations across subjects (per ROI along
-  frequency, corrected over ROIs), drawn as outlines on the heatmap.
-- Spectral tilt (frontal: low up / beta down; occipital: alpha down / gamma up): test directly
-  with specparam (aperiodic exponent change, word on vs off, per ROI) + periodic peaks
-  (alpha) separately; small extra figure.
-- Needs: compute.py to store per-electrode word-off / word-on spectra (trial-averaged, 1 Hz)
-  and per-electrode d at that resolution -> next recompute.
+## Latency
+- Done (2026-10-19): pairwise lobe tests, mixed model with fine regions as random effects
+  (mixed_models.R latency). Next: show them on the latency figure (brackets or letters).
 
-## Latency figure refinement
-- plot_latency.py: two panels (lobe-coloured bars, mean +/- SEM | magma heatmap); y labels
-  repeated across panels -> share them; consider pairwise tests of the order (within
-  subjects with both regions) before claiming a specific sequence.
+## Spectral tilt
+- Frontal: low up / beta down; occipital: alpha down / gamma up. Test directly with specparam
+  (aperiodic exponent change, word on vs off, per ROI) + periodic peaks (alpha) separately;
+  small extra figure. Needs compute.py to store per-electrode word-off / word-on spectra
+  (trial-averaged, 1 Hz) -> next recompute.
+
+## Recall decoding (plot_decoding.py)
+- Current: encoding contrast, high gamma per lobe x 100 ms window, >= 5 electrodes per lobe,
+  stars AUC > 0.5 (permutation chance 0.493 reported only).
+- **Hyperparameter tuning**: nested CV over the L2 strength C per subject (now fixed at the
+  lab's 7.2e-4, ram_utils / Ezzyat et al. 2017).
+- Check whether the small above-chance recall information at word onset (frontal / parietal,
+  vs the permutation level) is serial-position / encoding-state drift (add serial position).
 
 ## Open
-- **Spectrum 64 Hz bin.** 60 Hz notch rings at the clip edges with the 50 ms buffer (null
-  sim: d -0.75 at 60 Hz, ~56–64 Hz). Options: notch the continuous recording before cutting
-  clips; 500 ms buffer for power; blank the bin. Alpha / high-gamma bands are unaffected.
+- **Spectrum 64 Hz bin**: the 60 Hz notch ringing came from the 50 ms buffer; recheck the
+  64 Hz bin with the 500 ms buffer before dropping this item.
 - **Alpha in 200 ms epochs**: one taper, ±3 Hz smoothing; PI caveat on timing at low
   frequencies. Option: Hilbert phase binned per epoch (Rao / Solomon).
 - **Frontal alpha power increase**: check evoked contribution and fine-region breakdown.
-- **Synchrony locality**: split each electrode's partners into within- vs between-ROI (after
-  the no-ERP synchrony run).
-- **Synchrony simulations (running 2026-10-05)**: alpha_lag_frontal (ciPLV), hg_env_frontal
-  (AEC-c), leak_frontal (zero-lag; both should stay 0), hg_null; 30 subjects ->
-  figures/simulations/<tag>/. hg_ppc bursts sit at the clip centre (~800 ms in the 0-1600 ms
-  post load), outside the 0-600 ms window -- fix or retire hg_ppc / the PPC recovery sweeps.
-- **Decoder hyperparameter tuning**: nested CV over the L2 strength C per subject (now fixed at
-  the lab's 7.2e-4, Ezzyat et al. 2017).
 
 ## Methods notes / deviations to report
-- Region-pair floor 30 subjects (riley-thesis 100: only 3 ROI pairs reach it here).
+- Region-pair floor 100 subjects (MIN_SUBJECTS_PAIR, as riley-thesis).
+- Synchrony includes within-region pairs (contact-sharing pairs excluded).
 - Localization caveats (Riley): grids/strips before ~R1350 not brain-shift corrected;
   FreeSurfer 5.3; provenance of the "mni" coordinates.
-- 16 sessions excluded for mains harmonics > 5x; R1171M_FR1_2 fails event extraction.
+- 9 sessions excluded for non-mains 100 Hz peaks; R1171M_FR1_2 fails event extraction.
 
 ## Cleanup
 - `match_events.py`: encoding/retrieval matching code now unused.
 - ~30 GB raw EEG from the null simulations under `bids_data/` (delete by hand).
-- Nothing committed since 8aa205c.
