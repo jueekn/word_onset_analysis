@@ -131,7 +131,7 @@ def main() -> None:
     st = fc.bin_stats(g, "freq_hz", "d")
     tf = pd.DataFrame([(r, CENTRES[b], tfce[i, b], p[i, b]) for i, r in enumerate(rows) for b in range(len(CENTRES))],
                       columns=["roi", "freq_hz", "tfce", "p_fwe_tfce"])
-    st.merge(tf, on=["roi", "freq_hz"], how="left").to_csv(f"{stem}_stats.csv", index=False)
+    st.merge(tf, on=["roi", "freq_hz"], how="left").to_csv(fc.table_path(f"{stem}_stats.csv"), index=False)
     print(f"[tfce] {int(np.nansum(p < 0.05))} of {int(np.isfinite(p).sum())} cells p_FWE < .05")
     v = float(np.nanmax(np.abs(T))) or 1.0
     fig, ax = plt.subplots(figsize=(11, 6.5))

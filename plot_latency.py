@@ -102,7 +102,7 @@ def main() -> None:
     curves = np.array([r[4] for r in rows])
     (pd.DataFrame([(r[0], r[1], r[2], r[5], r[3]) for r in rows], columns=["sub", "label", "roi", "fine", "latency_ms"])
        .groupby(["sub", "label", "roi", "fine"], as_index=False)["latency_ms"].mean()
-       .to_csv(join(args.out_dir, "hg_latency_word_on_electrodes.csv"), index=False))   # mixed_models.R latency
+       .to_csv(fc.table_path(join(args.out_dir, "hg_latency_word_on_electrodes.csv")), index=False))   # mixed_models.R latency
     print(f"[latency] {len(el)} responsive electrode-sessions of {n_elec}, {el['sub'].nunique()} subjects")
 
     # sessions -> electrode (mean), electrodes -> subject x ROI (median)
@@ -117,8 +117,8 @@ def main() -> None:
                    "median_ms": float(g["latency_ms"].median())})
     st = pd.DataFrame(st).sort_values("mean_ms")
     stem = join(args.out_dir, "hg_latency_word_on" + ("_fine" if args.fine else "") + ("_pooled" if args.pool_hemispheres else ""))
-    st.to_csv(f"{stem}_stats.csv", index=False)
-    tbl.to_csv(f"{stem}_per_subject.csv", index=False)
+    st.to_csv(fc.table_path(f"{stem}_stats.csv"), index=False)
+    tbl.to_csv(fc.table_path(f"{stem}_per_subject.csv"), index=False)
     print(st.round(1).to_string(index=False))
 
     shown = st[st["n_subjects"] >= fc.MIN_SUBJECTS_ROI]

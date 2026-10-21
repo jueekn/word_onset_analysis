@@ -767,13 +767,24 @@ def band_label(band: str) -> str:
     return f"{band.replace('_', ' ').title()} ({lo:g}–{hi:g} Hz)"
 
 
+def table_path(path: str) -> str:
+    """Where a table (CSV) belongs: the same path with its first 'figures' directory replaced
+    by 'results', so figures/ holds figures only; the directory is created."""
+    parts = list(Path(path).parts)
+    if "figures" in parts:
+        parts[parts.index("figures")] = "results"
+    out = Path(*parts)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    return str(out)
+
+
 def band_stems(out_dir: str, stem: str, suffix: str) -> list[tuple[str, str, str]]:
     """[(band, its run metric, path)] for each band whose <stem><suffix> file exists
     in out_dir; stem has a {band} and optionally a {metric} field (config runs)."""
     out = []
     for band in bands:
         metric = RUN_METRIC.get(band, "")
-        f = join(out_dir, stem.format(band=band, metric=metric) + suffix)
+        f = table_path(join(out_dir, stem.format(band=band, metric=metric) + suffix))
         if os.path.exists(f):
             out.append((band, metric, f))
     return out
@@ -1140,9 +1151,8 @@ def write_roi_csvs(
 ) -> None:
     """The three CSVs every ROI figure ships with: per-subject, per-electrode,
     and the per-ROI stats for EVERY measure (drawn or not), stacked."""
-    os.makedirs(out_dir, exist_ok=True)
-    tbl.to_csv(join(out_dir, f"{stem}_per_subject.csv"), index=False)
-    per_elec.to_csv(join(out_dir, f"{stem}_per_electrode.csv"), index=False)
+    tbl.to_csv(table_path(join(out_dir, f"{stem}_per_subject.csv")), index=False)
+    per_elec.to_csv(table_path(join(out_dir, f"{stem}_per_electrode.csv")), index=False)
     pd.concat([s.assign(**{key: m}) for m, s in stats.items()]).to_csv(
-        join(out_dir, f"{stem}_stats.csv"), index=False)
-    print(f"[saved] per-subject / per-electrode / stats CSVs in {out_dir}")
+        table_path(join(out_dir, f"{stem}_stats.csv")), index=False)
+    print(f"[saved] per-subject / per-electrode / stats CSVs in {table_path(out_dir)}")

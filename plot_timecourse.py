@@ -40,8 +40,8 @@ def main() -> None:
     stats = fc.bin_stats(tbl, "bin_ms", "d")
     os.makedirs(args.out_dir, exist_ok=True)
     stem = join(args.out_dir, f"power_timecourse_{BEH}_{BAND}")
-    stats.to_csv(f"{stem}_stats.csv", index=False)
-    tbl.to_csv(f"{stem}_per_subject.csv", index=False)
+    stats.to_csv(fc.table_path(f"{stem}_stats.csv"), index=False)
+    tbl.to_csv(fc.table_path(f"{stem}_per_subject.csv"), index=False)
     path = fc.roi_curve_figure(stats, "bin_ms", stem, "Time after word onset (ms)", "Cohen's d")
     print(f"[saved] {path}")
 

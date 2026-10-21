@@ -42,7 +42,7 @@ def main() -> None:
     os.makedirs(args.out_dir, exist_ok=True)
     stem = join(args.out_dir, f"power_spectrum_{BEH}_{args.name}")
     pd.DataFrame([(r, CENTRES[b], T[i, b], p[i, b]) for i, r in enumerate(args.regions) for b in range(len(CENTRES))],
-                 columns=["region", "freq_hz", "t", "p_fwe_tfce"]).to_csv(f"{stem}_stats.csv", index=False)
+                 columns=["region", "freq_hz", "t", "p_fwe_tfce"]).to_csv(fc.table_path(f"{stem}_stats.csv"), index=False)
     fig, axes = plt.subplots(2, 2, figsize=(9, 6.5), sharex=True, sharey=True)
     for i, (r, ax) in enumerate(zip(args.regions, axes.flat)):
         col = f"C{i}"

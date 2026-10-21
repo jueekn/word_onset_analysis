@@ -104,7 +104,7 @@ def main() -> None:
         "--from-csv": dict(action="store_true", help="redraw from the saved per-subject CSV (no decoding)")})
     stem = join(args.out_dir, f"recall_auc_time_{BEH}")
     if args.from_csv:
-        tres = pd.read_csv(f"{stem}_per_subject.csv")
+        tres = pd.read_csv(fc.table_path(f"{stem}_per_subject.csv"))
     else:
         lobe_of = fc.load_burke_maps()
         subs: dict[str, list] = {}
@@ -116,13 +116,13 @@ def main() -> None:
             delayed(decode_subject)(sub, fs) for sub, fs in tqdm(subs.items(), desc="subjects"))
         tres = pd.DataFrame([t for r in out for t in r])
         os.makedirs(args.out_dir, exist_ok=True)
-        tres.to_csv(f"{stem}_per_subject.csv", index=False)
+        tres.to_csv(fc.table_path(f"{stem}_per_subject.csv"), index=False)
 
     g = tres.groupby(["lobe", "window_ms"])
     st = g["auc"].agg(["mean", "sem", "size"]).join(g["null"].mean()).reset_index()
     st["p"] = [ttest_1samp(x["auc"], 0.5, alternative="greater").pvalue for _, x in g]
     st["q"] = multipletests(st["p"], method="fdr_bh")[1]
-    st.to_csv(f"{stem}_stats.csv", index=False)
+    st.to_csv(fc.table_path(f"{stem}_stats.csv"), index=False)
     fig, axes = plt.subplots(2, 3, figsize=(11, 6), sharex=True, sharey=True)
     for lobe, ax in zip(fc.LOBES, axes.flat):
         s = st[st["lobe"] == lobe]

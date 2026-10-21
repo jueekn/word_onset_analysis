@@ -535,11 +535,11 @@ def run_latency_stage(save_root, beh, band, args, lobe_of):
 
     tag = f"{beh}_{band}_{fc.POWER_MODE}_{fc.TIME_BIN_MS}ms"
     os.makedirs(args.out_dir, exist_ok=True)
-    cnt.to_csv(join(args.out_dir, f"power_timecourse_{tag}_counts.csv"),
+    cnt.to_csv(fc.table_path(join(args.out_dir, f"power_timecourse_{tag}_counts.csv")),
                index=False)
-    stats.to_csv(join(args.out_dir, f"power_timecourse_{tag}_stats.csv"),
+    stats.to_csv(fc.table_path(join(args.out_dir, f"power_timecourse_{tag}_stats.csv")),
                  index=False)
-    tbl.to_csv(join(args.out_dir, f"power_timecourse_{tag}_per_subject.csv"),
+    tbl.to_csv(fc.table_path(join(args.out_dir, f"power_timecourse_{tag}_per_subject.csv")),
                index=False)
     path = fc.roi_curve_figure(stats, "bin_ms", join(args.out_dir, f"power_timecourse_{tag}"),
                                "Time after word onset (ms)", "Cohen's d")
@@ -595,7 +595,7 @@ def run_spectrum_stage(save_root, beh, args, lobe_of):
 
     os.makedirs(args.out_dir, exist_ok=True)
     st = stats("roi", args.min_electrodes)
-    st.to_csv(join(args.out_dir, f"power_spectrum_{beh}_rois_stats.csv"), index=False)
+    st.to_csv(fc.table_path(join(args.out_dir, f"power_spectrum_{beh}_rois_stats.csv")), index=False)
     T = st.pivot(index="roi", columns="freq_hz", values="t").reindex(fc.ROI_ORDER)
     Q = st.pivot(index="roi", columns="freq_hz", values="q").reindex(fc.ROI_ORDER)
     v = float(np.nanmax(np.abs(T.to_numpy()))) or 1.0
@@ -614,7 +614,7 @@ def run_spectrum_stage(save_root, beh, args, lobe_of):
     plt.close(fig)
 
     st = stats("sub_region", args.min_electrodes)
-    st.to_csv(join(args.out_dir, f"power_spectrum_{beh}_occipital_stats.csv"), index=False)
+    st.to_csv(fc.table_path(join(args.out_dir, f"power_spectrum_{beh}_occipital_stats.csv")), index=False)
     panels = sorted({x.split("|")[0] for x in st.dropna(subset=["t"])["roi"]})   # subregions with a test
     fig, axes = plt.subplots(1, len(panels), figsize=(6.5 * len(panels), 5), sharey=True, squeeze=False)
     for ax, panel in zip(axes[0], panels):

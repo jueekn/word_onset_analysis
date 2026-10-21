@@ -72,7 +72,7 @@ def main() -> None:
     rt = retest(el, "region", list(BANDS) + sync_cols, order)
     os.makedirs(args.out_dir, exist_ok=True)
     stem = join(args.out_dir, f"reliability_{BEH}")
-    rt.to_csv(join(args.out_dir, f"test_retest_{BEH}.csv"), index=False)
+    rt.to_csv(fc.table_path(join(args.out_dir, f"test_retest_{BEH}.csv")), index=False)
     print("[reliability] test-retest r (median): " + ", ".join(f"{k} {rt[k].median():.2f}" for k in list(BANDS) + sync_cols)
           + f"  (n={len(rt)} subjects)")
 

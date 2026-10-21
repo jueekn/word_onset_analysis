@@ -68,10 +68,10 @@ def network_csvs(save_root, band, metric, path, lobe_of, n_sessions, fine, tag) 
     """Write <path>_stats / _centroids / _hubs.csv for one row of the network figure."""
     etbl, cen = epoch_table(save_root, band, metric, lobe_of, n_sessions, fine)
     fc.bin_stats(etbl, "epoch_ms", "sync_diff", min_subjects=fc.MIN_SUBJECTS_PAIR).to_csv(
-        f"{path}_stats.csv", index=False)
-    cen.to_csv(f"{path}_centroids.csv")
+        fc.table_path(f"{path}_stats.csv"), index=False)
+    cen.to_csv(fc.table_path(f"{path}_centroids.csv"))
     hub = hubs(etbl)
-    hub.to_csv(f"{path}_hubs.csv", index=False)
+    hub.to_csv(fc.table_path(f"{path}_hubs.csv"), index=False)
     print(f"[epochs {tag}] {int(hub['t'].notna().sum() / len(fc.EPOCHS))} regions tested, "
           f"{int((hub['q'] < 0.05).sum())} hub x epoch cells at q < .05")
 

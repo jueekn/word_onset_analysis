@@ -29,7 +29,7 @@ done
 for s in plot_boxplots plot_spectrum plot_case_studies plot_timecourse plot_epoch_network plot_latency plot_anticipation plot_decoding plot_reliability; do
   CML_DATA_SOURCE=local $PY $s.py   # figures from the cache
 done
-Rscript mixed_models.R latency figures/latency/hg_latency_word_on_electrodes.csv
-Rscript mixed_models.R bands figures/burke_roi_power/roi_power_word_on_alpha_per_electrode.csv
+Rscript mixed_models.R latency results/latency/hg_latency_word_on_electrodes.csv
+Rscript mixed_models.R bands results/burke_roi_power/roi_power_word_on_alpha_per_electrode.csv
 $PY plot_mixed.py
 drop_raw

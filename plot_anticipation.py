@@ -49,11 +49,11 @@ def main() -> None:
     el = pd.DataFrame(rows).groupby(["sub", "label", "roi"], as_index=False)["peak"].mean()
     os.makedirs(args.out_dir, exist_ok=True)
     stem = join(args.out_dir, f"hg_anticipation_{BEH}")
-    el.to_csv(f"{stem}_per_electrode.csv", index=False)
+    el.to_csv(fc.table_path(f"{stem}_per_electrode.csv"), index=False)
 
     tbl = el.groupby(["sub", "roi"], as_index=False)["peak"].mean()
     st = fc.roi_stats(tbl, "peak")
-    st.to_csv(f"{stem}_peak_stats.csv", index=False)
+    st.to_csv(fc.table_path(f"{stem}_peak_stats.csv"), index=False)
     allsub = el.groupby("sub")["peak"].mean()
     print(f"[anticipation] peak, all electrodes: {allsub.mean():+.4g} ± "
           f"{allsub.std() / np.sqrt(len(allsub)):.3g} SEM (n={len(allsub)} subjects)")
