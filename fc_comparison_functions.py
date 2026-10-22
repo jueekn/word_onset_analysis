@@ -66,19 +66,32 @@ def load_pickle(path: str) -> Any:
 @functools.lru_cache(maxsize=None)
 def session_regions(sub: str, exp: str, sess: str) -> NDArrayAny | None:
     """Region label per pair from the session's pairs table (None if absent).
-    Depth pairs with no volumetric atlas label get a neighbour label
-    (mni_neighbour_labels)."""
+    Depth pairs with no volumetric atlas label get the whole-brain label the RAM imaging
+    pipeline dropped (recover_labels, Riley's label database at <root_dir>/IMAGING_LABEL_DB;
+    white matter / ventricles stay unlabelled); pairs the database lacks get a neighbour
+    label (mni_neighbour_labels)."""
+    import recover_labels as rl
     pairs = helper.get_pairs(pd.Series({"sub": sub, "exp": exp, "sess": int(sess)}))
     if pairs is None:
         return None
-    fine = np.array(helper.regionalize_electrodes_by_type(pairs), dtype=object)   # writable copy
     todo = (pairs["type_1"].isin(["D", "UD"]).to_numpy()
             & (helper.get_atlas_labels_by_type(pairs)["atlas"].astype(str) == "no atlas").to_numpy())
-    if todo.any():
-        fine[todo] = mni_neighbour_labels(sub, pairs.loc[todo, ["mni.x", "mni.y", "mni.z"]].to_numpy(float))
+    rl.DB = join(root_dir, IMAGING_LABEL_DB)
+    pw, cw = rl.load_pair_wb(sub), rl.load_contact_wb(sub)
+    wb = np.array([rl.recover_pair_label(lab, pw, cw)[0] if t else None
+                   for lab, t in zip(pairs["label"], todo)], dtype=object)
+    found = wb != None   # noqa: E711
+    if found.any():
+        pairs = pairs.copy()
+        pairs.loc[found, "wb.region"] = wb[found]
+    fine = np.array(helper.regionalize_electrodes_by_type(pairs), dtype=object)   # writable copy
+    rest = todo & ~found
+    if rest.any():
+        fine[rest] = mni_neighbour_labels(sub, pairs.loc[rest, ["mni.x", "mni.y", "mni.z"]].to_numpy(float))
     return fine
 
 
+IMAGING_LABEL_DB = "imaging_label_recovery"   # copied from /Volumes/penn/cml_imaging_label_recovery_2026-10-21
 MNI_LABEL_RADIUS_MM, MNI_LABEL_MIN_NEIGHBOURS = 5.0, 3
 
 

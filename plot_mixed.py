@@ -1,7 +1,7 @@
 """plot_mixed.py -- figures from mixed_models.R (word-on contrast; run that first).
 
-  latency   estimated high-gamma latency per lobe (mixed model, mean +/- SE), lobes ordered by
-            latency; brackets: neighbouring lobes (Holm over all 15 pairs; full table in the CSV)
+  latency   estimated high-gamma latency per lobe (mixed model, +/- SE), ordered by latency;
+            brackets: neighbouring lobes (Holm over all 15 pairs; full table in the _pairs CSV)
             -> figures/latency/hg_latency_word_on_mixed.png
   bands     lobe x lobe matrix of the alpha-vs-high-gamma pattern difference (lobe x band
             interaction contrast, |d|); stars: Holm p
@@ -40,7 +40,7 @@ def latency() -> None:
            color=[fc.LOBE_COLORS[lb] for lb in e["lobe"]])
     pval = {tuple(sorted(pos[x] for x in c.split(" - "))): p for c, p in zip(pr["contrast"], pr["p.value"])}
     top, pad = (e["emmean"] + e["SE"]).to_numpy(), float(e["emmean"].max()) * 0.05
-    for a in range(len(e) - 1):   # neighbours in the latency order: is each step real?
+    for a in range(len(e) - 1):   # neighbours in the latency order
         y = max(top[a], top[a + 1]) + pad
         ax.plot([a + 0.05, a + 0.05, a + 0.95, a + 0.95], [y - pad * 0.4, y, y, y - pad * 0.4], color="0.2", lw=1)
         ax.annotate(fc.stars(pval[(a, a + 1)]) or "n.s.", (a + 0.5, y), ha="center", va="bottom", fontsize=10)

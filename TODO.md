@@ -1,13 +1,11 @@
 # On hold / to do
 
 ## On hold
-- **Region labels for depth contacts (151 subjects).** The OpenNeuro BIDS release has no
-  whole-brain volumetric label (`wb` / rhino `atlases.whole_brain` / `mni.region`) for the
-  depth contacts of 151 FR1/catFR1 subjects (129 with no depth label at all, 22 with only
-  stein/das MTL labels). Ask Riley whether the rhino localization files have them.
-  *Interim (2026-10-03):* `fc.mni_neighbour_labels` labels these contacts from expert-labelled
-  depth contacts of other subjects within 5 mm in MNI space (>= 3, majority vote);
-  leave-one-subject-out agreement 89% (12 ROIs) / 79% (fine regions), 70% coverage.
+- Done (2026-10-21): region labels for depth contacts without a volumetric label now come from
+  Riley's imaging-label database (recover_labels.py, copied to <scratch>/imaging_label_recovery;
+  white matter / ventricles stay unlabelled); the MNI-neighbour labels only fill pairs the
+  database lacks (13%). Before: ~3,600 neighbour-labelled pairs were white matter per the
+  database. All region-based figures replotted.
 - **Time-locked (evoked) component in synchrony.** PI: ERP subtraction is not the answer;
   review how the literature handles stimulus-locked effects in phase / envelope coupling.
   Currently `subtract_erp: false`. Also covers the early high-gamma AEC-c hubs (0–200 ms,
