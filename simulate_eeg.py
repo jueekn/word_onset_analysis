@@ -16,8 +16,12 @@ parameterised in config/simulation_config.yaml (each on top of pink noise):
   leak         zero-lag common source on target channels, post events only
                (volume conduction) -> ciPLV and AEC-c should stay at 0.
 
-Optional `active_ms: [a, b]` restricts the post-onset coupling (osc_lag,
-hg_envelope) to a <= t < b ms, to test the epoch network's timing.
+Optional `active_ms: [a, b]` restricts the post-onset effect (osc_lag, hg_envelope,
+hg_power) to a <= t < b ms, to test the epoch network's / decoder's timing.
+
+hg_power options: `onset_ms: {lobe: ms}` starts each target lobe's gain at its own time
+(latency order); `recalled_only: true` applies the gain only to words later recalled
+(the recall decoder).
 
 Optional `line_amplitude` adds a 60 Hz mains sinusoid (random phase per event,
 shared by all channels), to test the notch filter on line noise.
@@ -60,12 +64,16 @@ for _tag, _p in simulation_parameters.items():
         SWEEPS.setdefault(_p["sweep"], []).append(_tag)
 
 
-def generate_pink_noise(n: int, amplitude: float, exponent: float) -> NDArrayAny:
-    """1/f^exponent noise of length n (global np.random state)."""
+def generate_pink_noise(n: int, amplitude: float, exponent: float, n_ref: int = 1000) -> NDArrayAny:
+    """1/f^exponent noise of length n (global np.random state). Scaled so its spectrum is the
+    same for any n (amplitude = total std at n_ref samples): normalising each clip to a fixed
+    total variance instead moved power out of the analysed band in longer clips (the word-on
+    clip is longer than the word-off clip: a broadband word-on decrease in the null)."""
     m = n + (n % 2)
     scales = np.linspace(0, 0.5, m // 2 + 1)[1:] ** (-exponent / 2)
     f = np.concatenate([[0], np.random.normal(scale=scales) * np.exp(2j * np.pi * np.random.random(m // 2))])
-    sigma = np.sqrt(2 * np.sum(scales ** 2)) / m
+    ref = np.linspace(0, 0.5, n_ref // 2 + 1)[1:] ** (-exponent / 2)
+    sigma = np.sqrt(2 * np.sum(ref ** 2)) / n_ref * np.sqrt(n_ref / m)
     return (amplitude * np.fft.irfft(f) / sigma)[:n]
 
 
@@ -78,10 +86,10 @@ def _pink(shape: tuple[int, ...], p: dict[str, Any]) -> NDArrayAny:
     return np.reshape(rows, shape)
 
 
-def _target_lobe_mask(regionalizations: Sequence[Any], lobes: Sequence[str]) -> NDArrayAny:
-    """True for channels whose region ('L frontal pole' ...) is in one of `lobes` (Burke lobes)."""
+def _channel_lobes(regionalizations: Sequence[Any]) -> NDArrayAny:
+    """Burke lobe of each channel's region ('L frontal pole' -> 'frontal'), None if unmapped."""
     lobe_of = pd.read_csv(Path(__file__).resolve().parent / 'region_to_burke_lobe.csv').set_index('region')['burke_lobe']
-    return np.array([isinstance(r, str) and lobe_of.get(r.split(' ', 1)[1]) in lobes for r in regionalizations])
+    return np.array([lobe_of.get(r.split(' ', 1)[1]) if isinstance(r, str) else None for r in regionalizations], dtype=object)
 
 
 def _phase_cov(target: NDArrayAny, target_ppc: float, global_ppc: float) -> NDArrayAny:
@@ -96,12 +104,14 @@ def _phase_cov(target: NDArrayAny, target_ppc: float, global_ppc: float) -> NDAr
 
 
 def replace_w_simulated_EEG(eeg: TimeSeries, dfrow: pd.Series, condition_mask: NDArrayAny,
-                            simulation_tag: str) -> TimeSeries:
+                            simulation_tag: str, events: pd.DataFrame | None = None) -> TimeSeries:
     """Same shape/coords as `eeg` (time in ms), signal from `simulation_tag`.
-    condition_mask True = post-onset events (osc_lag: target_ppc1), False = pre."""
+    condition_mask True = post-onset events (osc_lag: target_ppc1), False = pre; `events`
+    (indexed by eeg.event) gives correct_recall for `recalled_only`."""
     p = simulation_parameters[simulation_tag]
     np.random.seed(zlib.crc32(np.ascontiguousarray(eeg.data).tobytes()))
-    target = _target_lobe_mask(regionalize_electrodes_by_type(get_pairs(dfrow)), p["target_lobes"])
+    lobes = _channel_lobes(regionalize_electrodes_by_type(get_pairs(dfrow)))
+    target = np.isin(lobes, p["target_lobes"])
     t_ms = np.asarray(eeg.time, float)
     data = _pink(eeg.shape, p)
     win = ((t_ms >= p["active_ms"][0]) & (t_ms < p["active_ms"][1])) if "active_ms" in p \
@@ -110,7 +120,11 @@ def replace_w_simulated_EEG(eeg: TimeSeries, dfrow: pd.Series, condition_mask: N
         import mne
         hg = p["hg_amplitude"] * mne.filter.filter_data(np.random.standard_normal(eeg.shape),
                                                         float(eeg.samplerate), *p["band"], verbose=False)
-        hg[:, target] *= np.where(t_ms >= 0, p["hg_gain"], 1.0)
+        onset = np.array([p.get("onset_ms", {}).get(lb, 0) for lb in lobes])[target]
+        gain = np.where((t_ms[None, :] >= onset[:, None]) & win[None, :], p["hg_gain"], 1.0)   # (target ch, time)
+        rows = (events.loc[np.asarray(eeg.event), "correct_recall"].fillna(0).to_numpy(bool)
+                if p.get("recalled_only") else np.ones(eeg.shape[0], bool))
+        hg[np.ix_(rows, target)] *= gain
         data += hg
     elif p["data_generating_process"] == "osc_lag":
         # sustained oscillation; every other target channel shifted by phase_lag

@@ -13,6 +13,7 @@ typeset -A F=(
   fig4c_latency_mixed        latency/hg_latency_word_on_mixed.png
   fig5_synchrony             burke_roi_synchrony/roi_synchrony_word_on_sem.png
   fig6a_epochs               burke_roi_synchrony/roi_synchrony_epochs_word_on.png
+  fig6c_epochs_alpha         burke_roi_synchrony/roi_synchrony_epochs_word_on_alpha.png
   fig6b_epochs_fine          burke_roi_synchrony/roi_synchrony_epochs_fine_word_on.png
   fig7_recall_time           decoding/recall_auc_time_word_on.png
   fig8_reliability           reliability/reliability_word_on.png

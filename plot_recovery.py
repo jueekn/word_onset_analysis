@@ -22,7 +22,7 @@ import numpy as np
 
 import fc_comparison_functions as fc
 from compute import cond_dir, power_dir
-from simulate_eeg import SWEEPS, _target_lobe_mask, simulation_parameters
+from simulate_eeg import SWEEPS, _channel_lobes, simulation_parameters
 
 BEH = "word_on"
 # data-generating process -> (panel, band, metric; None = power)
@@ -39,13 +39,13 @@ def session_values(root, tag):
     if metric is None:
         for f in fc.session_files(power_dir(sim_root, BEH, band), "_power.pkl"):
             d = fc.load_pickle(str(f))
-            m = _target_lobe_mask(d["reg_full"], p["target_lobes"])
+            m = np.isin(_channel_lobes(d["reg_full"]), p["target_lobes"])
             db = (20 if d.get("measure") == "amplitude" else 10) * np.log10(d["pow_hi"] / d["pow_lo"])
             out.append((np.nanmean(db[m]), np.nanmean(db[~m])))
     else:
         for f in fc.session_files(cond_dir(sim_root, BEH, "diff", band), "_fc_mats.pkl"):
             d = fc.load_pickle(str(f))
-            m = _target_lobe_mask(d["reg_full"], p["target_lobes"])
+            m = np.isin(_channel_lobes(d["reg_full"]), p["target_lobes"])
             M = fc.symmetrize_dense(np.asarray(d[metric], float), diag_value=np.nan)
             tt, oo = np.outer(m, m), ~np.outer(m, m)
             np.fill_diagonal(tt, False); np.fill_diagonal(oo, False)

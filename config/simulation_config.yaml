@@ -29,6 +29,25 @@ hg_power_frontal:
   target_lobes: [frontal]
   pinknoise_amplitude: 10
   pinknoise_exponent: 1
+hg_latency:            # latency order: high-gamma gain starts at a known time per lobe
+  data_generating_process: hg_power
+  band: [70, 150]
+  hg_amplitude: 10
+  hg_gain: 2
+  target_lobes: [occipital, temporal, frontal]
+  onset_ms: {occipital: 100, temporal: 200, frontal: 300}
+  pinknoise_amplitude: 10
+  pinknoise_exponent: 1
+hg_recall_frontal:     # recall decoder: high-gamma gain on later-recalled words only, frontal, 400-700 ms
+  data_generating_process: hg_power
+  band: [70, 150]
+  hg_amplitude: 10
+  hg_gain: 1.5
+  target_lobes: [frontal]
+  recalled_only: true
+  active_ms: [400, 700]
+  pinknoise_amplitude: 10
+  pinknoise_exponent: 1
 # Synchrony checks for ciPLV (alpha) and AEC-c (high gamma); see simulate_eeg.py.
 alpha_lag_frontal:     # 10 Hz, frontal pairs coupled after onset, half of them lagged pi/2
   data_generating_process: osc_lag

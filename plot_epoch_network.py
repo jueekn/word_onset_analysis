@@ -8,6 +8,7 @@ one-sample t across subjects, two-stage FDR over regions x epochs; edges: each
 hub's top-5 connections (fc.epoch_network_figure). 12 ROIs, and the fine
 anatomical regions within them.
 -> figures/burke_roi_synchrony/roi_synchrony_epochs_(fine_)word_on.png
+   (+ roi_synchrony_epochs_word_on_alpha.png: alpha only, two rows)
 
     python plot_epoch_network.py [--simulation-tag TAG]
 """
@@ -88,6 +89,9 @@ def main() -> None:
             network_csvs(save_root, band, metric, join(args.out_dir, stem.format(band=band, metric=metric)),
                          lobe_of, args.n_sessions, fine, f"{level or 'roi_'}{band}")
         fc.epoch_network_figure(args.out_dir, stem, f"{{metric}} ({c['hi_label']} vs. {c['lo_label']})")
+        if not fine:   # paper: alpha only, windows in two rows
+            fc.epoch_network_figure(args.out_dir, stem, f"{{metric}} ({c['hi_label']} vs. {c['lo_label']})",
+                                    only=("alpha",), ncols=5, tag="_alpha")
 
 
 if __name__ == "__main__":

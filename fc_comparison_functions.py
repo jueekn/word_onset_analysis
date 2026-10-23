@@ -637,7 +637,7 @@ def _roi_axis_furniture(
     for lobe in lobes:
         xs = [x for x, r in zip(pos, roi_order) if r.split("-", 1)[1] == lobe]
         if xs:
-            ax.annotate(lobe, (float(np.mean(xs)), 0), xycoords=("data", "axes fraction"),
+            ax.annotate(lobe.capitalize(), (float(np.mean(xs)), 0), xycoords=("data", "axes fraction"),
                         xytext=(0, -20), textcoords="offset points", ha="center", va="top",
                         fontsize=10, fontweight="bold", color=LOBE_COLORS.get(lobe, "k"))
     ax.set_axisbelow(True)
@@ -820,7 +820,8 @@ def band_contrast_figure(out_dir: str, stem: str, col: str, ylabel: str, bars: b
 
 
 def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
-                         max_lw: float = 6.0) -> None:
+                         max_lw: float = 6.0, only: tuple | None = None, ncols: int | None = None,
+                         tag: str = "") -> None:
     """Rao et al. 2025 / Solomon et al. 2017 style network per EPOCHS window
     (columns) for each band with `<stem>_hubs.csv` (rows; band_stems).
 
@@ -829,16 +830,25 @@ def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
     red node = positive hub, blue = negative, grey = not a hub. Edges: each hub's
     `top_n` strongest connections of either sign (ranked by |mean change|, as
     Rao), from region pairs with >= MIN_SUBJECTS_PAIR subjects; red =
-    synchronized, blue = desynchronized, width proportional to |t| (Solomon)."""
+    synchronized, blue = desynchronized, width proportional to |t| (Solomon).
+    only: bands to draw; ncols: wrap the windows into rows of ncols (legend in a spare
+    cell); tag: appended to the file name."""
     from matplotlib import patheffects
     from matplotlib.lines import Line2D
     from nilearn import plotting
-    rows = [(band_label(b), m, f) for b, m, f in band_stems(out_dir, stem, "_hubs.csv")]   # (label, metric, hubs csv)
+    rows = [(band_label(b), m, f) for b, m, f in band_stems(out_dir, stem, "_hubs.csv")
+            if only is None or b in only]   # (label, metric, hubs csv)
     if not rows:
         return
     nE = len(EPOCHS)
-    fig, axes = plt.subplots(len(rows), nE, figsize=(2.7 * nE + 2.5, 3.2 * len(rows) + 0.6),
+    ncol = ncols or nE
+    per = -(-nE // ncol)   # grid rows per band
+    fig, axes = plt.subplots(len(rows) * per, ncol, figsize=(2.7 * ncol + 2.5, 3.2 * len(rows) * per + 0.6),
                              squeeze=False)
+    at = lambda r, c: axes[r * per + c // ncol, c % ncol]
+    for k in range(nE, per * ncol):   # spare cells
+        for r in range(len(rows)):
+            at(r, k).axis("off")
     for r, (row_label, metric, f) in enumerate(rows):
         hubs = pd.read_csv(f)
         pairs = pd.read_csv(f.replace("_hubs.csv", "_stats.csv")).dropna(subset=["t"])
@@ -854,7 +864,7 @@ def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
             h = hubs[(hubs["epoch_ms"] == w0) & (hubs["q"] < 0.05)].set_index("roi")["t"]
             color = ["red" if h.get(x, 0) > 0 else "blue" if h.get(x, 0) < 0 else "0.75" for x in rois]
             size = [(30 if small else 90) if x in h.index else (6 if small else 25) for x in rois]
-            disp = plotting.plot_connectome(np.zeros((len(rois), len(rois))), xyz, axes=axes[r, c],
+            disp = plotting.plot_connectome(np.zeros((len(rois), len(rois))), xyz, axes=at(r, c),
                                             display_mode="z", node_color=color, node_size=size,
                                             node_kwargs={"edgecolors": "black", "linewidths": 0.6},
                                             colorbar=False, annotate=False)
@@ -877,17 +887,20 @@ def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
                              fontweight="bold", ha="center", va="top" if below else "bottom", zorder=1000,
                              path_effects=[patheffects.withStroke(linewidth=2.5, foreground="white")])
             if r == 0:
-                axes[r, c].set_title(f"{w0:g}–{w1:g} ms", fontsize=15)
+                at(r, c).set_title(f"{w0:g}–{w1:g} ms", fontsize=15)
         handles = [Line2D([], [], marker="o", ls="", color="red", ms=9, label="Positive hub"),
                    Line2D([], [], marker="o", ls="", color="blue", ms=9, label="Negative hub"),
                    Line2D([], [], color="red", lw=3, label="Synchronized"),
                    Line2D([], [], color="blue", lw=3, label="Desynchronized")]
-        axes[r, -1].legend(handles=handles, loc="center left", bbox_to_anchor=(1.05, 0.5),
+        spare = per * ncol > nE
+        (at(r, per * ncol - 1) if spare else at(r, nE - 1)).legend(
+                           handles=handles, loc="center" if spare else "center left",
+                           bbox_to_anchor=(0.5, 0.5) if spare else (1.05, 0.5),
                            frameon=False, fontsize=11, title_fontsize=12,
                            title=ylabel.format(metric=METRIC_LABELS.get(metric, metric)).replace(" (", "\n("))
-        axes[r, 0].text(-0.08, 0.5, row_label, transform=axes[r, 0].transAxes,
+        at(r, 0).text(-0.08, 0.5, row_label, transform=at(r, 0).transAxes,
                         rotation=90, ha="right", va="center", multialignment="center", fontsize=15)
-    path = join(out_dir, stem.replace("_{band}", "").replace("_{metric}", ""))
+    path = join(out_dir, stem.replace("_{band}", "").replace("_{metric}", "") + tag)
     fig.savefig(f"{path}.png", dpi=300, bbox_inches="tight")
     fig.savefig(f"{path}.pdf", bbox_inches="tight")
     print(f"[saved] {path}.png / .pdf")

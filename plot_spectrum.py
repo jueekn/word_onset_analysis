@@ -1,7 +1,7 @@
 """plot_spectrum.py -- t of word on vs off power per Burke ROI x log-spaced frequency bin.
 
-Per electrode the Cohen's d of multitaper power in 10 log-spaced bins (5-100 Hz,
-48-52 / 58-62 Hz left out; compute.py); sessions averaged per electrode, electrodes
+Per electrode the Cohen's d of multitaper power in 11 log-spaced bins (5-150 Hz,
+mains 50/60/100/120 +/- 2 Hz left out; compute.py); sessions averaged per electrode, electrodes
 per subject and ROI; one-sample t vs 0 across subjects per cell. Significance by
 threshold-free cluster enhancement along frequency (TFCE, E=0.5, H=2) with
 sign-flip permutations of whole subjects and max-statistic family-wise correction

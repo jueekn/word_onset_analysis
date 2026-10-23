@@ -35,7 +35,8 @@ import pandas as pd
 import fc_comparison_functions as fc
 import helper
 
-FREQ_EDGES = np.geomspace(5, 100, 11)   # log-spaced bins of the power spectrum (5-100 Hz)
+FREQ_EDGES = np.geomspace(5, 150, 12)   # log-spaced bins of the power spectrum (5-150 Hz, high gamma included)
+MAINS_HZ = (50, 60, 100, 120)            # notched frequencies (+/- 2 Hz) left out of the spectrum
 
 
 def power_dir(root: str, beh: str, band: str) -> Path:
@@ -54,23 +55,26 @@ def band_power(seg: np.ndarray, sf: float, fmin: float, fmax: float, bandwidth: 
     return np.asarray(psds).mean(-1)
 
 
-def band_power_bins(seg: np.ndarray, sf: float, bandwidth: float, edges: np.ndarray = FREQ_EDGES) -> np.ndarray:
-    """(E, C, n_bins) multitaper power averaged within each [edges[k], edges[k+1]) bin,
-    leaving out the notched mains frequencies (48-52, 58-62 Hz)."""
+def band_power_bins(seg: np.ndarray, sf: float, bandwidth: float,
+                    edges: np.ndarray = FREQ_EDGES) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(E, C, n_bins) multitaper power averaged within each [edges[k], edges[k+1]) bin, leaving
+    out the notched mains frequencies (MAINS_HZ +/- 2 Hz); + the trial-averaged spectrum at the
+    native resolution (C, F) and its frequencies (F) (for specparam)."""
     from mne.time_frequency import psd_array_multitaper
     psds, f = psd_array_multitaper(seg, sf, fmin=edges[0], fmax=edges[-1], bandwidth=bandwidth,
                                    adaptive=False, low_bias=False, normalization="full", verbose=False)
-    keep = (np.abs(f - 50) > 2) & (np.abs(f - 60) > 2)
-    return np.stack([np.asarray(psds)[..., (f >= a) & (f < b) & keep].mean(-1)
-                     for a, b in zip(edges[:-1], edges[1:])], axis=-1)
+    psds = np.asarray(psds)
+    keep = np.all([np.abs(f - h) > 2 for h in MAINS_HZ], axis=0)
+    bins = np.stack([psds[..., (f >= a) & (f < b) & keep].mean(-1) for a, b in zip(edges[:-1], edges[1:])], axis=-1)
+    return bins, psds.mean(0), f
 
 
 BEH = "word_on"
 SYNC = {"alpha": "ciplv", "high_gamma": "aec_c"}
 HG_SUBBANDS = [(f, f + 10) for f in range(70, 150, 10)]
 ENV_STEP_MS = 10          # stored per-trial high-gamma envelope resolution
-VERSION = "single_pass_7"   # 2: envelopes float32 (float16 overflowed); 3-4: PAC (since removed);
-#                            5: epochs 0-1000 ms, 200 ms every 100 ms; 6: recalled_hi; 7: per-trial spectrum bins
+VERSION = "single_pass_8"   # 2: envelopes float32 (float16 overflowed); 3-4: PAC (since removed);
+#                            5: epochs 0-1000 ms, 200 ms every 100 ms; 6: recalled_hi; 7: per-trial spectrum bins; 8: spectrum to 150 Hz + native trial-mean spectra
 
 
 def _crop(eeg: Any, win: tuple[float, float]) -> np.ndarray:
@@ -164,11 +168,11 @@ def run_session(dfrow: pd.Series, save_root: str, root_dir: str,
     bw = fc.MT_BANDWIDTH
     save("alpha", band_power(lo, sf, *fc.bands["alpha"], bw), band_power(hi, sf, *fc.bands["alpha"], bw),
          {"measure": "power", "fc_mode": "multitaper", "mt_bandwidth": bw})
-    b_lo, b_hi = band_power_bins(lo, sf, bw), band_power_bins(hi, sf, bw)   # (E, C, n_bins)
+    (b_lo, s_lo, f), (b_hi, s_hi, _) = band_power_bins(lo, sf, bw), band_power_bins(hi, sf, bw)   # (E, C, n_bins)
     save("spectrum", b_lo.mean(-1), b_hi.mean(-1),
          {"measure": "power", "fc_mode": "multitaper", "mt_bandwidth": bw, "freq_edges": FREQ_EDGES,
           "cohens_d_freq": np.stack([_cohens_d(b_hi[..., k], b_lo[..., k]) for k in range(b_lo.shape[-1])], -1),
-          "trial_pow_bins_lo": b_lo.astype(np.float32), "trial_pow_bins_hi": b_hi.astype(np.float32)})   # decoder
+          "psd_lo": s_lo.astype(np.float32), "psd_hi": s_hi.astype(np.float32), "psd_freqs": f})   # specparam
 
     # high gamma: sub-band Hilbert power, each sub-band / its word-off mean (per channel), averaged
     t_pre = np.asarray(pre_eeg.time, float)[n_buf:len(pre_eeg.time) - n_buf]

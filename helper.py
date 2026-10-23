@@ -268,7 +268,7 @@ def get_eeg(
 
     if simulation_tag:   # keep the real montage/events, replace the signal (simulate_eeg)
         from simulate_eeg import replace_w_simulated_EEG
-        eeg = replace_w_simulated_EEG(eeg, dfrow, mask, simulation_tag)
+        eeg = replace_w_simulated_EEG(eeg, dfrow, mask, simulation_tag, events)
     if BIDS_ACQUISITION == 'monopolar':   # common average reference, per sample, over the single contacts
         x = np.asarray(eeg.data, float).copy()
         x[:, single] -= x[:, single].mean(axis=1, keepdims=True)
