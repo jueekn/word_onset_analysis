@@ -47,7 +47,8 @@
 \makeatletter  % JNeurosci title block: left-aligned, spans both columns
 \renewcommand{\maketitle}{\twocolumn[{\begin{flushleft}{\LARGE\bfseries\@title\par}\vspace{8pt}%
   {\large\bfseries\@author\par}\vspace{3pt}%
-  {\small Department of Psychology, University of Pennsylvania, Philadelphia, Pennsylvania\par}\end{flushleft}\vspace{14pt}}]}
+  {\small Department of Psychology, University of Pennsylvania, Philadelphia, Pennsylvania\par}\end{flushleft}\vspace{10pt}%
+  \ifdefined\abstracttext{\small\bfseries\noindent\abstracttext\par}\vspace{16pt}\fi}]}
 \makeatother
 
 \newcommand{\cut}{\textcolor{red}{\textbf{\,[C]}}}  % can cut
@@ -64,112 +65,48 @@
 \date{}
 
 \begin{document}
+\newcommand{\abstracttext}{Intracranial studies of free recall mostly ask how activity during 
+word presentation predicts later memory, while the response to the word itself has received less attention. 
+Work on visual word processing with scalp EEG, MEG and fMRI describes a progression from visual to 
+language and memory regions, but these methods cannot resolve local activity in both space and time, 
+and intracranial studies have typically recorded tens of patients with coverage concentrated 
+in the ventral visual stream. Here we map the word-onset response across the brain in 362 neurosurgical 
+patients performing delayed free recall, comparing each word with the blank screen that preceded it. 
+The response was largest in occipital cortex, where alpha (8--13 Hz) power fell and high-gamma 
+(70--150 Hz) power rose, and the same signature of engagement appeared, more weakly, in limbic 
+and hippocampal regions. Frontal cortex instead showed increased low-frequency and decreased beta power,
+ consistent with suppression. High-gamma responses began in lateral occipital cortex (${\sim}$120 ms) 
+ and moved forward, reaching orbitofrontal cortex last (${\sim}$300 ms), while alpha synchrony with 
+ the rest of the brain increased most in occipital cortex. The occipital response was larger when 
+ the word was more expected, after longer waits, and the response predicted later recall only weakly, 
+ from ${\sim}$200 ms onward and most persistently in frontal cortex. Together, these results show how 
+ the response to a word unfolds across the brain, from early visual engagement to later frontal 
+ involvement, and provide a baseline for interpreting memory effects measured during word presentation.}  % bold, full-width abstract under the title (JNeurosci)
 \maketitle
+
+
 
 \section*{Introduction}\label{introduction}
 
 \subsection*{The word-onset response in free recall}\label{intro-word-onset}
 
-Most intracranial EEG (iEEG) studies of free recall contrast words that
-are later recalled with words that are forgotten (the subsequent memory
-effect, SME), or study the retrieval period. As both conditions contain a word, this
-contrast measures how responses differ with later memory, but cancels
-out the response to the word itself. Only a few studies have examined
-the word-onset response directly. \citet{Kucewicz_2019} showed that high gamma (HG) activity after word onset moves from visual cortex to
-the medial temporal lobe (MTL) and then to prefrontal cortex, and \citet{Marks_2021} found that theta, alpha/beta and gamma activity each
-spread across regions on their own timelines during word encoding.
+Most intracranial EEG (iEEG) studies of free recall contrast words that are later recalled with words that are forgotten (the subsequent memory effect, SME), or study the retrieval period. As both conditions contain a word, this contrast measures how responses differ with later memory, but cancels out the response to the word itself. Only a few studies have examined the word-onset response directly. \citet{Kucewicz_2019} showed that high-gamma (HG) activity after word onset moves from visual cortex to the medial temporal lobe (MTL) and then to prefrontal cortex, and \citet{Marks_2021} found that theta, alpha/beta and gamma activity each spread across regions on their own timelines during word encoding.
 
 \subsection*{High gamma and alpha as markers of cortical engagement}\label{intro-hg-alpha}
 
-Broadband HG (70--150 Hz) is widely used as a measure of local population
-spiking \citep{Manning_2009,Ray_2011} and is better described
-as a broadband signal than as an oscillation \citep{Burke_2015a}.
-At stimulus onset, alpha and beta power decrease \citep[event-related desynchronization;][]{Pfurtscheller_1999}, which is thought to
-release cortex from alpha-mediated inhibition \citep{Jensen_2010}. An
-alpha/beta decrease together with an HG increase is the typical cortical
-activation response, first described in sensorimotor cortex \citep{Crone_1998a,Crone_1998b} and observed in visual cortex \citep{Lachaux_2005}, including
-for pseudowords and consonant strings \citep{Vidal_2010}. 
-In successful memory encoding, words later recalled show lower
-low-frequency power and higher HFA than words later forgotten \citep{Sederberg_2003,Long_2014}. This broadband tilt also appears outside memory,
-during arithmetic \citep{Randazzo_2019}, where it predicts
-response speed, mainly in frontal regions \citep{DeHaan_2025}. Not every
-region is engaged by a stimulus, however -- alpha increases in task-irrelevant
-cortex are thought to actively inhibit it \citep{Jensen_2010}, and HG
-often decreases during tasks in default-mode regions \citep{Ossand_n_2011}.
+Broadband HG (70--150 Hz) is widely used as a measure of local population spiking \citep{Manning_2009,Ray_2011}. At stimulus onset, alpha and beta power decrease \citep[event-related desynchronization;][]{Pfurtscheller_1999}, which is thought to release cortex from alpha-mediated inhibition \citep{Jensen_2010}; together, an alpha decrease and an HG increase mark a region engaged by a stimulus. Conversely, alpha increases in task-irrelevant cortex are thought to actively suppress it \citep{Jensen_2010}, so the same two measures can separate regions that a word recruits from regions it suppresses.
 
 \subsection*{Timing of visual word processing}\label{intro-timing}
 
-Reading a word unfolds in stages: visual features are extracted within about
-100 ms \citep{Thorpe_1996}, the letter string is recognised as a word at
-about 200 ms \citep{Cohen_2000}, its sound is activated automatically \citep{van_Orden_1987}, and its meaning is integrated with context at about 400 ms
-\citep{Kutas_1980}. These stages map onto a reading network that runs
-from occipital cortex through left fusiform gyrus, which contains the visual
-word form area \citep[VWFA;][]{Cohen_2000,Dehaene_2011}, to temporal,
-supramarginal and inferior frontal cortex \citep{Price_2012,Taylor_2013},
-with posterior responses to letter strings preceding more anterior responses
-to lexical status \citep{Nobre_1994,Allison_1994}.
+Reading a word unfolds in stages: visual features are extracted within about 100 ms \citep{Thorpe_1996}, the letter string is recognised as a word at about 200 ms \citep{Cohen_2000}, its sound is activated automatically \citep{van_Orden_1987}, and its meaning is integrated with context at about 400 ms \citep{Kutas_1980}. These stages map onto a reading network that runs from occipital cortex through left fusiform gyrus, which contains the visual word form area \citep[VWFA;][]{Cohen_2000,Dehaene_2011}, to temporal, supramarginal and inferior frontal cortex \citep{Price_2012,Taylor_2013}, with posterior responses to letter strings preceding more anterior responses to lexical status \citep{Nobre_1994,Allison_1994}. Much of this picture comes from scalp EEG and MEG, which resolve when these stages occur but not precisely where, and from fMRI, which resolves where but not when; iEEG records local activity with both millisecond and millimetre precision \citep{Parvizi_2018}. However, most intracranial studies of reading record from tens of patients with sparse, clinically determined coverage and focus on the ventral stream, so the order in which regions across the whole brain respond to a word has not been measured within one large dataset.
 
-iEEG resolves when each part of this network responds. Gamma activity begins
-at about 150 ms in basal temporal cortex, reaches the VWFA at about 200 ms,
-and reaches superior temporal and Broca's areas after 400 ms \citep{Mainy_2007}; word-selective ventral temporal electrodes respond at about 150 ms
-\citep{Kadipasaoglu_2016}; and the effects of word properties move
-anteriorly along the ventral stream, with feedback to posterior regions at
-250--500 ms \citep{Woolnough_2020}. Beyond the ventral stream, MEG shows
-responses proceeding from temporal cortex to Broca's area and finally to
-orbitofrontal cortex at about 370 ms \citep{Halgren_2002}, and MTL neurons
-respond later still, at about 270--400 ms \citep{Mormann_2008}. Early visual
-responses are sharp, whereas later responses are broad, consistent with
-feedforward input followed by feedback \citep{Halgren_2006,Ghuman_2014}. However, most intracranial studies of reading record from tens of
-patients with sparse, clinically determined coverage, and focus on the
-ventral stream, so the order in which regions across the whole brain respond
-to a word has not been measured within one large dataset.
+\subsection*{Synchrony, expectation and memory}\label{intro-sync-expect-memory}
 
-\subsection*{Synchrony between regions}\label{intro-synchrony}
-
-Beyond local power, word onset may change how regions synchronize. Alpha phase synchrony is thought 
-to coordinate distant regions \citep{Palva_2007}, and alpha power can fall while alpha synchrony 
-between regions rises \citep{Hanslmayr_2016}. In free recall, slow-frequency synchrony increases 
-while high-frequency activity desynchronizes during successful encoding and retrieval 
-\citep{Burke_2013,Solomon_2017}, and theta hubs mark successful retrieval in this dataset 
-\citep{Rao_2025}. Connectivity measured at stimulus onset is harder to interpret than power: an evoked 
-response shared across regions can raise phase and envelope coupling without any interaction between them, 
-and subtracting the average evoked response does not fully remove it, because its amplitude and latency 
-vary across trials \citep{Truccolo_2002,David_2006}. 
-We therefore treat synchrony as a secondary analysis.
-
-\subsection*{Temporal expectation}\label{intro-expectation}
-
-Reaction times and neural responses depend on how long the participant
-waits for a stimulus and on the changing probability that it will appear
-\citep[the hazard rate;][]{Niemi_1981,Nobre_2017}.
-Temporally expected events evoke larger visual responses: in monkey V1,
-gamma increases and alpha decreases when a stimulus is expected \citep{Lima_2011}, and expectation speeds and enhances visual processing in
-humans \citep{Doherty_2005}.
-%We found no iEEG study of how a longer inter-stimulus interval (ISI) affects responses during verbal encoding.
-
-\subsection*{Predicting recall from the word-onset response}\label{intro-recall}
-
-Spectral features recorded while a word is studied predict whether it will be
-recalled \citep[L2-regularised logistic regression;][]{Ezzyat_2017,Ezzyat_2018b},
-although these classifiers partly track general fluctuations in brain state
-rather than encoding of the item \citep{Weidemann_2021}. Activity before a
-stimulus can also predict memory: pre-stimulus hippocampal theta predicts
-later recognition but not recall \citep{Merkow_2014}, and pre-stimulus MTL
-and cortical low-frequency activity predict encoding success in iEEG \citep{Fell_2011b}. Comparing recalled with forgotten words region by region, HFA
-predicting later recall appears first in visual, fusiform and medial temporal
-regions (about 0--500 ms) and later in left inferior frontal, posterior
-parietal and ventrolateral temporal cortex \citep[about 400--900 ms;][]{Burke_2014a}. These approaches either pool features across the brain and the
-whole word period, or test each region and time point for
-a difference in mean activity; how well each region's single-trial response predicts recall, 
-and when that prediction arises, has not been measured with classifiers.
+Beyond local activity, word onset may change how regions synchronize: alpha phase synchrony is thought to coordinate distant regions \citep{Palva_2007}, and in free recall, theta synchrony between regions increases during successful encoding and retrieval \citep{Solomon_2017,Rao_2025}. The response may also depend on when the word is expected: the blank before each word varies in length, and the longer it lasts, the more expected the word becomes \citep{Nobre_2017}. Finally, spectral features recorded while a word is studied predict whether it will be recalled \citep{Ezzyat_2017}, and comparing recalled with forgotten words region by region, HFA predicting later recall appears first in visual, fusiform and medial temporal regions and later in left inferior frontal, posterior parietal and ventrolateral temporal cortex \citep{Burke_2014a}. These approaches either pool features across the brain and the whole word period, or test each region and time point for a difference in mean activity; how well each region's single-trial response predicts recall, and when that prediction arises, has not been measured with classifiers.
 
 \subsection*{The present study}\label{intro-present}
 
-There have been few whole-brain maps of the response to
-word onset itself, contrasting each word to a pre-stimulus baseline. With 362
-patients, we obtain a complete set of HG onset latencies across all
-regions, extending the existing literature. We also test phase (alpha
-ciPLV) and envelope (HG AEC-c) coupling in the same data.
+Here we characterize the word-onset response in 362 patients performing delayed free recall, contrasting each word with the blank screen before it. We ask (1) which regions respond, using alpha and HG power and the full spectrum; (2) in what order regions respond, using HG latency; (3) how regions synchronize, using alpha phase and HG envelope coupling; (4) whether the response depends on how long the participant waited for the word; (5) whether, where and when single-trial responses predict later recall; and (6) whether each patient's response is reliable across sessions.
 
 \section*{Methods}\label{methods}
 
@@ -241,7 +178,7 @@ ciPLV) and envelope (HG AEC-c) coupling in the same data.
 \item
   High gamma (70--150 Hz): Hilbert in 8 × 10 Hz sub-bands, each divided
   by its word-off mean, averaged (broadband, every frequency weighted
-  equally). \citep{Edwards_2009,Bruns_2004,Manning_2009,Ray_2011} \textbf{(check Edwards et al.\ 2009)}
+  equally), as HFA is better described as a broadband signal than as an oscillation \citep{Burke_2015a}. \citep{Edwards_2009,Bruns_2004,Manning_2009,Ray_2011} \textbf{(check Edwards et al.\ 2009)}
 \item
   Per electrode: Cohen's d of per-trial power, word on vs word off.
   \citep{Cohen_2013,Lakens_2013}
@@ -280,6 +217,8 @@ ciPLV) and envelope (HG AEC-c) coupling in the same data.
 \item
   Pairs sharing a contact excluded. \citep{Mercier_2017} Per electrode:
   mean on − off change over all partners \citep{Rao_2025}.
+\item
+  Synchrony is treated as a secondary analysis: an evoked response shared across regions can raise phase and envelope coupling without any interaction between them (see Discussion).
 \end{itemize}
 
 \subsection*{Time-resolved network
@@ -580,7 +519,29 @@ sessions}\label{reliability-across-sessions}
   ciPLV), 0.14 (high-gamma AEC-c).
 \end{itemize}
 
-\section*{Limitations / discussion}\label{limitations-discussion}
+\section*{Discussion}\label{discussion}
+
+\subsection*{Power}\label{disc-power}
+
+The occipital alpha decrease and HG increase match the activation response first described in sensorimotor cortex \citep{Crone_1998a,Crone_1998b} and in visual cortex \citep{Lachaux_2005}, including for pseudowords and consonant strings, where the electrodes selective in each band overlapped little \citep{Vidal_2010}. The same low-frequency decrease and HFA increase marks successful encoding \citep{Sederberg_2003,Long_2014}, and this broadband tilt also appears outside memory, during arithmetic \citep{Randazzo_2019}, where it predicts response speed, mainly in frontal regions \citep{DeHaan_2025}. The frontal low-frequency increase and beta decrease, without a frontal HG increase, fit active suppression of cortex not needed for the task \citep{Jensen_2010}; HG similarly decreases during tasks in default-mode regions \citep{Ossand_n_2011}.
+
+\subsection*{Timing}\label{disc-timing}
+
+Our latencies agree with smaller iEEG studies. Gamma activity begins at about 150 ms in basal temporal cortex, reaches the VWFA at about 200 ms, and reaches superior temporal and Broca's areas after 400 ms \citep{Mainy_2007}; word-selective ventral temporal electrodes respond at about 150 ms \citep{Kadipasaoglu_2016}; and the effects of word properties move anteriorly along the ventral stream, with feedback to posterior regions at 250--500 ms \citep{Woolnough_2020}. Beyond the ventral stream, MEG shows responses proceeding from temporal cortex to Broca's area and finally to orbitofrontal cortex at about 370 ms \citep{Halgren_2002}, the same order as ours with orbitofrontal cortex last, and MTL neurons respond in the same order as our MTL regions but later, at about 270--400 ms \citep{Mormann_2008}, as expected for selective single-neuron responses compared with population HG. The sharp early and broad late responses we observe are consistent with feedforward input followed by feedback \citep{Halgren_2006,Ghuman_2014}.
+
+\subsection*{Synchrony}\label{disc-synchrony}
+
+Alpha power can fall while alpha synchrony between regions rises \citep{Hanslmayr_2016}, the combination we observe in occipital cortex. The absence of HG envelope coupling is consistent with HFA being local and asynchronous: regions with gamma increases during successful encoding lose global synchrony \citep{Burke_2013}. Synchrony measured at stimulus onset is, however, harder to interpret than power: an evoked response shared across regions can raise phase and envelope coupling without any interaction between them, and subtracting the average evoked response does not fully remove it, because its amplitude and latency vary across trials \citep{Truccolo_2002,David_2006}.
+
+\subsection*{Expectation}\label{disc-expectation}
+
+Temporally expected events evoke larger visual responses: in monkey V1, gamma increases and alpha decreases when a stimulus is expected \citep{Lima_2011}, and expectation speeds and enhances visual processing in humans \citep{Doherty_2005}. The larger occipital response after longer waits fits this account, but a shorter blank also leaves less time for the previous word's offset response to decay, which could raise the baseline (Limitations).
+
+\subsection*{Recall prediction}\label{disc-recall}
+
+Recall prediction appeared only after the early visual response, briefly in occipital cortex and persistently in frontal cortex, in the same direction as the early posterior and late frontal HFA effects found by comparing recalled with forgotten words \citep{Burke_2014a}. These classifiers may partly track general fluctuations in brain state rather than encoding of the item \citep{Weidemann_2021}.
+
+\subsection*{Limitations}\label{limitations-discussion}
 
 \begin{itemize}
 \tightlist
