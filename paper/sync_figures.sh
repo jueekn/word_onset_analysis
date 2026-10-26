@@ -17,6 +17,7 @@ typeset -A F=(
   fig6b_epochs_fine          burke_roi_synchrony/roi_synchrony_epochs_fine_word_on.png
   fig7_recall_time           decoding/recall_auc_time_word_on.png
   fig8_reliability           reliability/reliability_word_on.png
+  fig9a_wait_times           latency/wait_times_word_on.png
   fig9_anticipation          latency/hg_anticipation_word_on.png
   figS1_power_subjects       burke_roi_power/roi_power_word_on.png
   figS2_synchrony_subjects   burke_roi_synchrony/roi_synchrony_word_on.png

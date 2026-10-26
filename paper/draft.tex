@@ -21,6 +21,7 @@
 \usepackage{setspace}
 \usepackage{lineno}
 \usepackage{graphicx}
+\graphicspath{{img/}{paper/img/}}  % figures found whether compiled from paper/ or the repo root (Overleaf)
 \usepackage{float}
 \usepackage{multicol}
 \usepackage{ragged2e}
@@ -295,8 +296,9 @@ predict later recall; and (5) whether each subject's response is reliable across
 \item
   Responsive electrodes (as latency); trials split at the session's
   median blank length; peak (0--800 ms) of the trial-mean high-gamma
-  response after long minus short waits; subject mean per ROI,
-  one-sample t, BH-FDR over ROIs.
+  response after long minus short waits, both relative to the
+  electrode's word-off mean over all trials, so the two groups share
+  one baseline; subject mean per ROI, one-sample t, BH-FDR over ROIs.
 \end{itemize}
 
 \subsection*{Recall prediction (encoding contrast: recalled vs not
@@ -494,8 +496,8 @@ word)}\label{anticipation-blank-length-before-the-word}
 
 \begin{figure*}[!tp]
 \centering
-\includegraphics[width=1\linewidth]{img/fig9_anticipation.png}
-\caption{High-gamma response peak after long minus short waits (median split of the blank before each word), responsive electrodes only; mean $\pm$ SEM across subjects; stars: BH-FDR.}
+\panelc{A}{0.36}{img/fig9a_wait_times.png}\hfill\panelc{B}{0.62}{img/fig9_anticipation.png}
+\caption{Temporal expectation. (A) Duration of the blank before each word, all words; dashed line: median. Trials are split at each session's own median. (B) High-gamma response peak after long minus short waits, responsive electrodes only, both measured against the same trial-averaged word-off baseline; mean $\pm$ SEM across subjects; stars: BH-FDR.}
 \end{figure*}
 
 \begin{itemize}
@@ -504,9 +506,10 @@ word)}\label{anticipation-blank-length-before-the-word}
   Occipital high-gamma peak larger after long than short waits (L
   +0.072, q = .022; R +0.049, q = .029); no other ROI significant.
 \item
-  Consistent with temporal expectation boosting visual responses \citep[][monkey V1]{Lima_2011,Nobre_2017}, but a shorter blank
-  also leaves less time for the previous word's offset response to decay
-  (baseline).
+  Both groups share one trial-averaged baseline, so the difference is
+  not a baseline shift. Consistent with temporal expectation boosting
+  visual responses \citep[][monkey V1]{Lima_2011,Nobre_2017}; after short
+  waits the response may also have recovered less from the previous word.
 \end{itemize}
 
 \subsection*{5. Recall prediction over the response (encoding
@@ -568,7 +571,7 @@ Alpha power can fall while alpha synchrony between regions rises \citep{Hanslmay
 
 \subsection*{Expectation}\label{disc-expectation}
 
-Temporally expected events evoke larger visual responses: in monkey V1, gamma increases and alpha decreases when a stimulus is expected \citep{Lima_2011}, and expectation speeds and enhances visual processing in humans \citep{Doherty_2005}. The larger occipital response after longer waits fits this account, but a shorter blank also leaves less time for the previous word's offset response to decay, which could raise the baseline (Limitations).
+Temporally expected events evoke larger visual responses: in monkey V1, gamma increases and alpha decreases when a stimulus is expected \citep{Lima_2011}, and expectation speeds and enhances visual processing in humans \citep{Doherty_2005}. The larger occipital response after longer waits fits this account. Because long- and short-wait trials were measured against the same trial-averaged baseline, the effect cannot come from a raised baseline after short waits; an alternative is that the visual response recovers less from the previous word when the interval is short.
 
 \subsection*{Recall prediction}\label{disc-recall}
 
@@ -581,7 +584,8 @@ Recall prediction appeared only after the early visual response, briefly in occi
 \item
   Word-off baseline starts \textasciitilde80-410 ms after the previous
   word's offset: possible offset response / anticipation in the
-  baseline; the blank-length split (Results 4) cannot separate the two.
+  baseline; the blank-length analysis (Results 4) uses one
+  trial-averaged baseline and is not affected by it.
 \item
   No ERP subtraction: evoked activity contributes to power and
   synchrony, especially occipital.
