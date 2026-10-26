@@ -50,3 +50,15 @@ env/
 *.bak
 *~
 *.tmp
+
+# LaTeX build output for the paper (Overleaf and local builds regenerate these)
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out
+paper/*.pdf
+paper/*.synctex.gz
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.xdv
