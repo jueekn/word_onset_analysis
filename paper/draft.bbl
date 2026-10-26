@@ -1,0 +1,609 @@
+\begin{thebibliography}{}
+
+\bibitem[\protect\citeauthoryear{Aertsen  \bgroup et al.\egroup
+  }{1989}]{Aertsen_1989}
+Aertsen AM, Gerstein GL, Habib MK, Palm G (1989)
+\newblock Dynamics of neuronal firing correlation: modulation of “effective
+  connectivity”.
+\newblock {\em Journal of Neurophysiology}~61:\mbox{900–917}.
+
+\bibitem[\protect\citeauthoryear{Allison  \bgroup et al.\egroup
+  }{1994}]{Allison_1994}
+Allison T, McCarthy G, Nobre A, Puce A, Belger A (1994)
+\newblock Human extrastriate visual cortex and the perception of faces, words,
+  numbers, and colors.
+\newblock {\em Cerebral Cortex}~4:\mbox{544–554}.
+
+\bibitem[\protect\citeauthoryear{Bedrosian}{1963}]{Bedrosian_1963}
+Bedrosian E (1963)
+\newblock A product theorem for hilbert transforms.
+\newblock {\em Proceedings of the IEEE}~51:\mbox{868–869}.
+
+\bibitem[\protect\citeauthoryear{Benjamini and Hochberg}{1995}]{Benjamini_1995}
+Benjamini Y, Hochberg Y (1995)
+\newblock Controlling the false discovery rate: A practical and powerful
+  approach to multiple testing.
+\newblock {\em Journal of the Royal Statistical Society Series B: Statistical
+  Methodology}~57:\mbox{289–300}.
+
+\bibitem[\protect\citeauthoryear{Benjamini \bgroup et al.\egroup
+  }{2006}]{Benjamini_2006}
+Benjamini Y, Krieger AM, Yekutieli D (2006)
+\newblock Adaptive linear step-up procedures that control the false discovery
+  rate.
+\newblock {\em Biometrika}~93:\mbox{491–507}.
+
+\bibitem[\protect\citeauthoryear{Brody}{1999}]{Brody_1999b}
+Brody CD (1999)
+\newblock Correlations without synchrony.
+\newblock {\em Neural Computation}~11:\mbox{1537–1551}.
+
+\bibitem[\protect\citeauthoryear{Bruns}{2004}]{Bruns_2004}
+Bruns A (2004)
+\newblock Fourier-, hilbert- and wavelet-based signal analysis: are they really
+  different approaches?
+\newblock {\em Journal of Neuroscience Methods}~137:\mbox{321–332}.
+
+\bibitem[\protect\citeauthoryear{Burke  \bgroup et al.\egroup
+  }{2014}]{Burke_2014a}
+Burke JF, Long NM, Zaghloul KA, Sharan AD, Sperling MR, Kahana MJ (2014)
+\newblock Human intracranial high-frequency activity maps episodic memory
+  formation in space and time.
+\newblock {\em NeuroImage}~85:\mbox{834–843}.
+
+\bibitem[\protect\citeauthoryear{Burke \bgroup et al.\egroup
+  }{2015}]{Burke_2015a}
+Burke JF, Ramayya AG, Kahana MJ (2015)
+\newblock Human intracranial high-frequency activity during memory processing:
+  neural oscillations or stochastic volatility?
+\newblock {\em Current Opinion in Neurobiology}~31:\mbox{104–110}.
+
+\bibitem[\protect\citeauthoryear{Burke  \bgroup et al.\egroup
+  }{2013}]{Burke_2013}
+Burke JF, Zaghloul KA, Jacobs J, et~al. (2013)
+\newblock Synchronous and asynchronous theta and gamma activity during episodic
+  memory formation.
+\newblock {\em The Journal of Neuroscience}~33:\mbox{292–304}.
+
+\bibitem[\protect\citeauthoryear{Cohen}{1988}]{Cohen_2013}
+Cohen J (1988)
+\newblock {\em Statistical Power Analysis for the Behavioral Sciences}
+\newblock Routledge.
+
+\bibitem[\protect\citeauthoryear{Cohen  \bgroup et al.\egroup
+  }{2000}]{Cohen_2000}
+Cohen L, Dehaene S, Naccache L, et~al. (2000)
+\newblock The visual word form area.
+\newblock {\em Brain}~123:\mbox{291–307}.
+
+\bibitem[\protect\citeauthoryear{Cole  \bgroup et al.\egroup
+  }{2019}]{Cole_2019}
+Cole MW, Ito T, Schultz D, Mill R, Chen R, Cocuzza C (2019)
+\newblock Task activations produce spurious but systematic inflation of task
+  functional connectivity estimates.
+\newblock {\em NeuroImage}~189:\mbox{1–18}.
+
+\bibitem[\protect\citeauthoryear{Colyer and Kahana}{2025}]{Colyer_2025}
+Colyer RA, Kahana MJ (2025)
+\newblock Phase consistency dynamics of memory encoding.
+\newblock {\em The Journal of Neuroscience}~45:\mbox{e2077242025}.
+
+\bibitem[\protect\citeauthoryear{Crone}{1998a}]{Crone_1998a}
+Crone N (1998a)
+\newblock Functional mapping of human sensorimotor cortex with
+  electrocorticographic spectral analysis. i. alpha and beta event- related
+  desynchronization.
+\newblock {\em Brain}~121:\mbox{2271–2299}.
+
+\bibitem[\protect\citeauthoryear{Crone}{1998b}]{Crone_1998b}
+Crone N (1998b)
+\newblock Functional mapping of human sensorimotor cortex with
+  electrocorticographic spectral analysis. ii. event-related synchronization in
+  the gamma band.
+\newblock {\em Brain}~121:\mbox{2301–2315}.
+
+\bibitem[\protect\citeauthoryear{David \bgroup et al.\egroup
+  }{2006}]{David_2006}
+David O, Kilner JM, Friston KJ (2006)
+\newblock Mechanisms of evoked and induced responses in meg/eeg.
+\newblock {\em NeuroImage}~31:\mbox{1580–1591}.
+
+\bibitem[\protect\citeauthoryear{de Cheveign{\'e} and
+  Nelken}{2019}]{de_Cheveign__2019}
+de~Cheveign{\'e} A, Nelken I (2019)
+\newblock Filters: When, why, and how (not) to use them.
+\newblock {\em Neuron}~102:\mbox{280–293}.
+
+\bibitem[\protect\citeauthoryear{Dede  \bgroup et al.\egroup
+  }{2025}]{Dede_2025}
+Dede AJO, Cross ZR, Gray SM, et~al. (2025)
+\newblock Episodic memory involves transient and sparse connectivity aligned to
+  both internal and external events.
+\newblock {\em PLOS Biology}~23:\mbox{e3003481}.
+
+\bibitem[\protect\citeauthoryear{DeHaan  \bgroup et al.\egroup
+  }{2025}]{DeHaan_2025}
+DeHaan RD, Ezzyat Y, Randazzo MJ, et~al. (2025)
+\newblock Neural components underlying successful free recall are specific to
+  episodic memory.
+\newblock {\em bioRxiv (preprint)}~.
+
+\bibitem[\protect\citeauthoryear{Dehaene and Cohen}{2011}]{Dehaene_2011}
+Dehaene S, Cohen L (2011)
+\newblock The unique role of the visual word form area in reading.
+\newblock {\em Trends in Cognitive Sciences}~15:\mbox{254–262}.
+
+\bibitem[\protect\citeauthoryear{Doherty  \bgroup et al.\egroup
+  }{2005}]{Doherty_2005}
+Doherty JR, Rao A, Mesulam MM, Nobre AC (2005)
+\newblock Synergistic effect of combined temporal and spatial expectations on
+  visual attention.
+\newblock {\em The Journal of Neuroscience}~25:\mbox{8259–8266}.
+
+\bibitem[\protect\citeauthoryear{Edwards  \bgroup et al.\egroup
+  }{2009}]{Edwards_2009}
+Edwards E, Soltani M, Kim W, et~al. (2009)
+\newblock Comparison of time–frequency responses and the event-related
+  potential to auditory speech stimuli in human cortex.
+\newblock {\em Journal of Neurophysiology}~102:\mbox{377–386}.
+
+\bibitem[\protect\citeauthoryear{Ezzyat  \bgroup et al.\egroup
+  }{2017}]{Ezzyat_2017}
+Ezzyat Y, Kragel JE, Burke JF, et~al. (2017)
+\newblock Direct brain stimulation modulates encoding states and memory
+  performance in humans.
+\newblock {\em Current Biology}~27:\mbox{1251–1258}.
+
+\bibitem[\protect\citeauthoryear{Ezzyat  \bgroup et al.\egroup
+  }{2018}]{Ezzyat_2018b}
+Ezzyat Y, Wanda PA, Levy DF, et~al. (2018)
+\newblock Closed-loop stimulation of temporal cortex rescues functional
+  networks and improves memory.
+\newblock {\em Nature Communications}~9.
+
+\bibitem[\protect\citeauthoryear{Fell  \bgroup et al.\egroup
+  }{2011}]{Fell_2011b}
+Fell J, Ludowig E, Staresina BP, et~al. (2011)
+\newblock Medial temporal theta/alpha power enhancement precedes successful
+  memory encoding: Evidence based on intracranial eeg.
+\newblock {\em The Journal of Neuroscience}~31:\mbox{5392–5397}.
+
+\bibitem[\protect\citeauthoryear{Ghuman  \bgroup et al.\egroup
+  }{2014}]{Ghuman_2014}
+Ghuman AS, Brunet NM, Li Y, et~al. (2014)
+\newblock Dynamic encoding of face information in the human fusiform gyrus.
+\newblock {\em Nature Communications}~5.
+
+\bibitem[\protect\citeauthoryear{Gramfort}{2013}]{Gramfort_2013}
+Gramfort A (2013)
+\newblock Meg and eeg data analysis with mne-python.
+\newblock {\em Frontiers in Neuroscience}~7.
+
+\bibitem[\protect\citeauthoryear{Halgren  \bgroup et al.\egroup
+  }{2002}]{Halgren_2002}
+Halgren E, Dhond RP, Christensen N, et~al. (2002)
+\newblock N400-like magnetoencephalography responses modulated by semantic
+  context, word frequency, and lexical class in sentences.
+\newblock {\em NeuroImage}~17:\mbox{1101–1116}.
+
+\bibitem[\protect\citeauthoryear{Halgren  \bgroup et al.\egroup
+  }{2006}]{Halgren_2006}
+Halgren E, Wang C, Schomer DL, et~al. (2006)
+\newblock Processing stages underlying word recognition in the anteroventral
+  temporal lobe.
+\newblock {\em NeuroImage}~30:\mbox{1401–1413}.
+
+\bibitem[\protect\citeauthoryear{Hanslmayr  \bgroup et al.\egroup
+  }{2007}]{Hanslmayr_2007}
+Hanslmayr S, Aslan A, Staudigl T, Klimesch W, Herrmann CS, B{\"a}uml KH (2007)
+\newblock Prestimulus oscillations predict visual perception performance
+  between and within subjects.
+\newblock {\em NeuroImage}~37:\mbox{1465–1473}.
+
+\bibitem[\protect\citeauthoryear{Hanslmayr \bgroup et al.\egroup
+  }{2016}]{Hanslmayr_2016}
+Hanslmayr S, Staresina BP, Bowman H (2016)
+\newblock Oscillations and episodic memory: Addressing the
+  synchronization/desynchronization conundrum.
+\newblock {\em Trends in Neurosciences}~39:\mbox{16–25}.
+
+\bibitem[\protect\citeauthoryear{Hipp  \bgroup et al.\egroup
+  }{2012}]{Hipp_2012}
+Hipp JF, Hawellek DJ, Corbetta M, Siegel M, Engel AK (2012)
+\newblock Large-scale cortical correlation structure of spontaneous oscillatory
+  activity.
+\newblock {\em Nature Neuroscience}~15:\mbox{884–890}.
+
+\bibitem[\protect\citeauthoryear{Holmes and Friston}{1998}]{Holmes_1998}
+Holmes A, Friston K (1998)
+\newblock Generalisability, random effects \&amp; population inference.
+\newblock {\em NeuroImage}~7:\mbox{S754}.
+
+\bibitem[\protect\citeauthoryear{Jensen and Mazaheri}{2010}]{Jensen_2010}
+Jensen O, Mazaheri A (2010)
+\newblock Shaping functional architecture by oscillatory alpha activity: Gating
+  by inhibition.
+\newblock {\em Frontiers in Human Neuroscience}~4.
+
+\bibitem[\protect\citeauthoryear{Kadipasaoglu  \bgroup et al.\egroup
+  }{2016}]{Kadipasaoglu_2016}
+Kadipasaoglu CM, Conner CR, Whaley ML, Baboyan VG, Tandon N (2016)
+\newblock Category-selectivity in human visual cortex follows cortical
+  topology: A grouped iceeg study.
+\newblock {\em PLOS ONE}~11:\mbox{e0157109}.
+
+\bibitem[\protect\citeauthoryear{Kiesel  \bgroup et al.\egroup
+  }{2008}]{Kiesel_2007}
+Kiesel A, Miller J, Jolic{\oe}ur P, Brisson B (2008)
+\newblock Measurement of erp latency differences: A comparison of
+  single-participant and jackknife-based scoring methods.
+\newblock {\em Psychophysiology}~45:\mbox{250–274}.
+
+\bibitem[\protect\citeauthoryear{Knuth  \bgroup et al.\egroup
+  }{2006}]{Knuth_2006}
+Knuth KH, Shah AS, Truccolo WA, Ding M, Bressler SL, Schroeder CE (2006)
+\newblock Differentially variable component analysis: Identifying multiple
+  evoked components using trial-to-trial variability.
+\newblock {\em Journal of Neurophysiology}~95:\mbox{3257–3276}.
+
+\bibitem[\protect\citeauthoryear{Kramer \bgroup et al.\egroup
+  }{2008}]{Kramer_2008}
+Kramer MA, Tort AB, Kopell NJ (2008)
+\newblock Sharp edge artifacts and spurious coupling in eeg frequency
+  comodulation measures.
+\newblock {\em Journal of Neuroscience Methods}~170:\mbox{352–357}.
+
+\bibitem[\protect\citeauthoryear{Kriegeskorte  \bgroup et al.\egroup
+  }{2009}]{Kriegeskorte_2009}
+Kriegeskorte N, Simmons WK, Bellgowan PSF, Baker CI (2009)
+\newblock Circular analysis in systems neuroscience: the dangers of double
+  dipping.
+\newblock {\em Nature Neuroscience}~12:\mbox{535–540}.
+
+\bibitem[\protect\citeauthoryear{Kucewicz  \bgroup et al.\egroup
+  }{2019}]{Kucewicz_2019}
+Kucewicz MT, Saboo K, Berry BM, et~al. (2019)
+\newblock Human verbal memory encoding is hierarchically distributed in a
+  continuous processing stream.
+\newblock {\em eneuro}~6:\mbox{ENEURO.0214–18.2018}.
+
+\bibitem[\protect\citeauthoryear{Kutas and Hillyard}{1980}]{Kutas_1980}
+Kutas M, Hillyard SA (1980)
+\newblock Reading senseless sentences: Brain potentials reflect semantic
+  incongruity.
+\newblock {\em Science}~207:\mbox{203–205}.
+
+\bibitem[\protect\citeauthoryear{Lachaux  \bgroup et al.\egroup
+  }{2005}]{Lachaux_2005}
+Lachaux JP, George N, Tallon-Baudry C, et~al. (2005)
+\newblock The many faces of the gamma band response to complex visual stimuli.
+\newblock {\em NeuroImage}~25:\mbox{491–501}.
+
+\bibitem[\protect\citeauthoryear{Lakens}{2013}]{Lakens_2013}
+Lakens D (2013)
+\newblock Calculating and reporting effect sizes to facilitate cumulative
+  science: a practical primer for t-tests and anovas.
+\newblock {\em Frontiers in Psychology}~4.
+
+\bibitem[\protect\citeauthoryear{Liesefeld}{2018}]{Liesefeld_2018}
+Liesefeld HR (2018)
+\newblock Estimating the timing of cognitive operations with meg/eeg latency
+  measures: A primer, a brief tutorial, and an implementation of various
+  methods.
+\newblock {\em Frontiers in Neuroscience}~12.
+
+\bibitem[\protect\citeauthoryear{Lima \bgroup et al.\egroup }{2011}]{Lima_2011}
+Lima B, Singer W, Neuenschwander S (2011)
+\newblock Gamma responses correlate with temporal expectation in monkey primary
+  visual cortex.
+\newblock {\em The Journal of Neuroscience}~31:\mbox{15919–15931}.
+
+\bibitem[\protect\citeauthoryear{Long \bgroup et al.\egroup }{2014}]{Long_2014}
+Long NM, Burke JF, Kahana MJ (2014)
+\newblock Subsequent memory effect in intracranial and scalp eeg.
+\newblock {\em NeuroImage}~84:\mbox{488–494}.
+
+\bibitem[\protect\citeauthoryear{Mainy  \bgroup et al.\egroup
+  }{2008}]{Mainy_2007}
+Mainy N, Jung J, Baciu M, et~al. (2008)
+\newblock Cortical dynamics of word recognition.
+\newblock {\em Human Brain Mapping}~29:\mbox{1215–1230}.
+
+\bibitem[\protect\citeauthoryear{Makeig  \bgroup et al.\egroup
+  }{2002}]{Makeig_2002}
+Makeig S, Westerfield M, Jung TP, et~al. (2002)
+\newblock Dynamic brain sources of visual evoked responses.
+\newblock {\em Science}~295:\mbox{690–694}.
+
+\bibitem[\protect\citeauthoryear{Manning  \bgroup et al.\egroup
+  }{2009}]{Manning_2009}
+Manning JR, Jacobs J, Fried I, Kahana MJ (2009)
+\newblock Broadband shifts in local field potential power spectra are
+  correlated with single-neuron spiking in humans.
+\newblock {\em The Journal of Neuroscience}~29:\mbox{13613–13620}.
+
+\bibitem[\protect\citeauthoryear{Maris \bgroup et al.\egroup
+  }{2007}]{Maris_2007a}
+Maris E, Schoffelen JM, Fries P (2007)
+\newblock Nonparametric statistical testing of coherence differences.
+\newblock {\em Journal of Neuroscience Methods}~163:\mbox{161–175}.
+
+\bibitem[\protect\citeauthoryear{Marks  \bgroup et al.\egroup
+  }{2021}]{Marks_2021}
+Marks VS, Saboo KV, Top{\c{c}}u {\c{C}}, et~al. (2021)
+\newblock Independent dynamics of low, intermediate, and high frequency
+  spectral intracranial eeg activities during human memory formation.
+\newblock {\em NeuroImage}~245:\mbox{118637}.
+
+\bibitem[\protect\citeauthoryear{Mazaheri and Jensen}{2006}]{Mazaheri_2006}
+Mazaheri A, Jensen O (2006)
+\newblock Posterior α activity is not phase-reset by visual stimuli.
+\newblock {\em Proceedings of the National Academy of
+  Sciences}~103:\mbox{2948–2952}.
+
+\bibitem[\protect\citeauthoryear{Mensen and Khatami}{2013}]{Mensen_2013}
+Mensen A, Khatami R (2013)
+\newblock Advanced eeg analysis using threshold-free cluster-enhancement and
+  non-parametric statistics.
+\newblock {\em NeuroImage}~67:\mbox{111–118}.
+
+\bibitem[\protect\citeauthoryear{Mercier  \bgroup et al.\egroup
+  }{2017}]{Mercier_2017}
+Mercier MR, Bickel S, Megevand P, et~al. (2017)
+\newblock Evaluation of cortical local field potential diffusion in
+  stereotactic electro-encephalography recordings: A glimpse on white matter
+  signal.
+\newblock {\em NeuroImage}~147:\mbox{219–232}.
+
+\bibitem[\protect\citeauthoryear{Merkow  \bgroup et al.\egroup
+  }{2014}]{Merkow_2014}
+Merkow MB, Burke JF, Stein JM, Kahana MJ (2014)
+\newblock Prestimulus theta in the human hippocampus predicts subsequent
+  recognition but not recall.
+\newblock {\em Hippocampus}~24:\mbox{1562–1569}.
+
+\bibitem[\protect\citeauthoryear{Mormann  \bgroup et al.\egroup
+  }{2008}]{Mormann_2008}
+Mormann F, Kornblith S, Quiroga RQ, et~al. (2008)
+\newblock Latency and selectivity of single neurons indicate hierarchical
+  processing in the human medial temporal lobe.
+\newblock {\em The Journal of Neuroscience}~28:\mbox{8865–8872}.
+
+\bibitem[\protect\citeauthoryear{Nichols and Holmes}{2002}]{Nichols_2001}
+Nichols TE, Holmes AP (2002)
+\newblock Nonparametric permutation tests for functional neuroimaging: A primer
+  with examples.
+\newblock {\em Human Brain Mapping}~15:\mbox{1–25}.
+
+\bibitem[\protect\citeauthoryear{Niemi and
+  N{\"a}{\"a}t{\"a}nen}{1981}]{Niemi_1981}
+Niemi P, N{\"a}{\"a}t{\"a}nen R (1981)
+\newblock Foreperiod and simple reaction time.
+\newblock {\em Psychological Bulletin}~89:\mbox{133–162}.
+
+\bibitem[\protect\citeauthoryear{Nobre \bgroup et al.\egroup
+  }{1994}]{Nobre_1994}
+Nobre AC, Allison T, McCarthy G (1994)
+\newblock Word recognition in the human inferior temporal lobe.
+\newblock {\em Nature}~372:\mbox{260–263}.
+
+\bibitem[\protect\citeauthoryear{Nobre and van Ede}{2018}]{Nobre_2017}
+Nobre AC, van Ede F (2018)
+\newblock Anticipated moments: temporal structure in attention.
+\newblock {\em Nature Reviews Neuroscience}~19:\mbox{34–48}.
+
+\bibitem[\protect\citeauthoryear{Ossand{\'o}n  \bgroup et al.\egroup
+  }{2011}]{Ossand_n_2011}
+Ossand{\'o}n T, Jerbi K, Vidal JR, et~al. (2011)
+\newblock Transient suppression of broadband gamma power in the default-mode
+  network is correlated with task complexity and subject performance.
+\newblock {\em The Journal of Neuroscience}~31:\mbox{14521–14530}.
+
+\bibitem[\protect\citeauthoryear{Palva and Palva}{2007}]{Palva_2007}
+Palva S, Palva JM (2007)
+\newblock New vistas for α-frequency band oscillations.
+\newblock {\em Trends in Neurosciences}~30:\mbox{150–158}.
+
+\bibitem[\protect\citeauthoryear{Percival and Walden}{1993}]{Percival_1993}
+Percival DB, Walden AT (1993)
+\newblock {\em Spectral Analysis for Physical Applications}
+\newblock Cambridge University Press.
+
+\bibitem[\protect\citeauthoryear{Perkel \bgroup et al.\egroup
+  }{1967}]{Perkel_1967}
+Perkel DH, Gerstein GL, Moore GP (1967)
+\newblock Neuronal spike trains and stochastic point processes.
+\newblock {\em Biophysical Journal}~7:\mbox{419–440}.
+
+\bibitem[\protect\citeauthoryear{Pfurtscheller and Lopes~da
+  Silva}{1999}]{Pfurtscheller_1999}
+Pfurtscheller G, Lopes~da Silva F (1999)
+\newblock Event-related eeg/meg synchronization and desynchronization: basic
+  principles.
+\newblock {\em Clinical Neurophysiology}~110:\mbox{1842–1857}.
+
+\bibitem[\protect\citeauthoryear{Prerau  \bgroup et al.\egroup
+  }{2017}]{Prerau_2017}
+Prerau MJ, Brown RE, Bianchi MT, Ellenbogen JM, Purdon PL (2017)
+\newblock Sleep neurophysiological dynamics through the lens of multitaper
+  spectral analysis.
+\newblock {\em Physiology}~32:\mbox{60–92}.
+
+\bibitem[\protect\citeauthoryear{Price}{2012}]{Price_2012}
+Price CJ (2012)
+\newblock A review and synthesis of the first 20years of pet and fmri studies
+  of heard speech, spoken language and reading.
+\newblock {\em NeuroImage}~62:\mbox{816–847}.
+
+\bibitem[\protect\citeauthoryear{Randazzo \bgroup et al.\egroup
+  }{2019}]{Randazzo_2019}
+Randazzo MJ, Ezzyat Y, Kahana MJ (2019)
+\newblock Spectral tilt underlies mathematical problem solving.
+\newblock {\em bioRxiv (preprint)}~.
+
+\bibitem[\protect\citeauthoryear{Rao \bgroup et al.\egroup }{2025}]{Rao_2025}
+Rao AM, DeHaan RD, Kahana MJ (2025)
+\newblock Synchronous theta networks characterize successful memory retrieval.
+\newblock {\em The Journal of Neuroscience}~45:\mbox{e1332242025}.
+
+\bibitem[\protect\citeauthoryear{Ray and Maunsell}{2011}]{Ray_2011}
+Ray S, Maunsell JHR (2011)
+\newblock Different origins of gamma rhythm and high-gamma activity in macaque
+  visual cortex.
+\newblock {\em PLoS Biology}~9:\mbox{e1000610}.
+
+\bibitem[\protect\citeauthoryear{Rubinov and Sporns}{2010}]{Rubinov_2010}
+Rubinov M, Sporns O (2010)
+\newblock Complex network measures of brain connectivity: Uses and
+  interpretations.
+\newblock {\em NeuroImage}~52:\mbox{1059–1069}.
+
+\bibitem[\protect\citeauthoryear{Sauseng  \bgroup et al.\egroup
+  }{2007}]{Sauseng_2007}
+Sauseng P, Klimesch W, Gruber W, Hanslmayr S, Freunberger R, Doppelmayr M
+  (2007)
+\newblock Are event-related potential components generated by phase resetting
+  of brain oscillations? a critical discussion.
+\newblock {\em Neuroscience}~146:\mbox{1435–1444}.
+
+\bibitem[\protect\citeauthoryear{Seabold and Perktold}{2010}]{Seabold_2010}
+Seabold S, Perktold J (2010)
+\newblock Statsmodels: Econometric and statistical modeling with python
+\newblock In {\em Proceedings of the 9th Python in Science Conference}, SciPy,
+  \mbox{p. 92–96}. SciPy.
+
+\bibitem[\protect\citeauthoryear{Sederberg  \bgroup et al.\egroup
+  }{2003}]{Sederberg_2003}
+Sederberg PB, Kahana MJ, Howard MW, Donner EJ, Madsen JR (2003)
+\newblock Theta and gamma oscillations during encoding predict subsequent
+  recall.
+\newblock {\em The Journal of Neuroscience}~23:\mbox{10809–10814}.
+
+\bibitem[\protect\citeauthoryear{Shah}{2004}]{Shah_2004}
+Shah AS (2004)
+\newblock Neural dynamics and the fundamental mechanisms of event-related brain
+  potentials.
+\newblock {\em Cerebral Cortex}~14:\mbox{476–483}.
+
+\bibitem[\protect\citeauthoryear{Slepian}{1978}]{Slepian_1978}
+Slepian D (1978)
+\newblock Prolate spheroidal wave functions, fourier analysis, and
+  uncertainty-v: The discrete case.
+\newblock {\em Bell System Technical Journal}~57:\mbox{1371–1430}.
+
+\bibitem[\protect\citeauthoryear{SMITH and NICHOLS}{2009}]{SMITH_2009}
+SMITH S, NICHOLS T (2009)
+\newblock Threshold-free cluster enhancement: Addressing problems of smoothing,
+  threshold dependence and localisation in cluster inference.
+\newblock {\em NeuroImage}~44:\mbox{83–98}.
+
+\bibitem[\protect\citeauthoryear{Solomon  \bgroup et al.\egroup
+  }{2017}]{Solomon_2017}
+Solomon EA, Kragel JE, Sperling MR, et~al. (2017)
+\newblock Widespread theta synchrony and high-frequency desynchronization
+  underlies enhanced cognition.
+\newblock {\em Nature Communications}~8.
+
+\bibitem[\protect\citeauthoryear{Solomon  \bgroup et al.\egroup
+  }{2019}]{Solomon_2019a}
+Solomon EA, Stein JM, Das S, et~al. (2019)
+\newblock Dynamic theta networks in the human medial temporal lobe support
+  episodic memory.
+\newblock {\em Current Biology}~29:\mbox{1100–1111.e4}.
+
+\bibitem[\protect\citeauthoryear{Taylor \bgroup et al.\egroup
+  }{2013}]{Taylor_2013}
+Taylor JSH, Rastle K, Davis MH (2013)
+\newblock Can cognitive models explain brain activation during word and
+  pseudoword reading? a meta-analysis of 36 neuroimaging studies.
+\newblock {\em Psychological Bulletin}~139:\mbox{766–791}.
+
+\bibitem[\protect\citeauthoryear{Thomson}{1982}]{Thomson_1982}
+Thomson D (1982)
+\newblock Spectrum estimation and harmonic analysis.
+\newblock {\em Proceedings of the IEEE}~70:\mbox{1055–1096}.
+
+\bibitem[\protect\citeauthoryear{Thorpe \bgroup et al.\egroup
+  }{1996}]{Thorpe_1996}
+Thorpe S, Fize D, Marlot C (1996)
+\newblock Speed of processing in the human visual system.
+\newblock {\em Nature}~381:\mbox{520–522}.
+
+\bibitem[\protect\citeauthoryear{Truccolo  \bgroup et al.\egroup
+  }{2002}]{Truccolo_2002}
+Truccolo WA, Ding M, Knuth KH, Nakamura R, Bressler SL (2002)
+\newblock Trial-to-trial variability of cortical evoked responses: implications
+  for the analysis of functional connectivity.
+\newblock {\em Clinical Neurophysiology}~113:\mbox{206–226}.
+
+\bibitem[\protect\citeauthoryear{van Diepen and
+  Mazaheri}{2018}]{van_Diepen_2018}
+van Diepen RM, Mazaheri A (2018)
+\newblock The caveats of observing inter-trial phase-coherence in cognitive
+  neuroscience.
+\newblock {\em Scientific Reports}~8.
+
+\bibitem[\protect\citeauthoryear{van Orden}{1987}]{van_Orden_1987}
+van Orden GC (1987)
+\newblock A rows is a rose: Spelling, sound, and reading.
+\newblock {\em Memory \&amp; Cognition}~15:\mbox{181–198}.
+
+\bibitem[\protect\citeauthoryear{VanRullen}{2011}]{VanRullen_2011}
+VanRullen R (2011)
+\newblock Four common conceptual fallacies in mapping the time course of
+  recognition.
+\newblock {\em Frontiers in Psychology}~2.
+
+\bibitem[\protect\citeauthoryear{Vidal  \bgroup et al.\egroup
+  }{2010}]{Vidal_2010}
+Vidal JR, Ossand{\'o}n T, Jerbi K, et~al. (2010)
+\newblock Category-specific visual responses: An intracranial study comparing
+  gamma, beta, alpha, and erp response selectivity.
+\newblock {\em Frontiers in Human Neuroscience}~4.
+
+\bibitem[\protect\citeauthoryear{Virtanen  \bgroup et al.\egroup
+  }{2020}]{Virtanen_2020}
+Virtanen P, Gommers R, Oliphant TE, et~al. (2020)
+\newblock Scipy 1.0: fundamental algorithms for scientific computing in python.
+\newblock {\em Nature Methods}~17:\mbox{261–272}.
+
+\bibitem[\protect\citeauthoryear{Wang \bgroup et al.\egroup }{2008}]{Wang_2008}
+Wang X, Chen Y, Ding M (2008)
+\newblock Estimating granger causality after stimulus onset: A cautionary note.
+\newblock {\em NeuroImage}~41:\mbox{767–776}.
+
+\bibitem[\protect\citeauthoryear{Weidemann and Kahana}{2021}]{Weidemann_2021}
+Weidemann CT, Kahana MJ (2021)
+\newblock Neural measures of subsequent memory reflect endogenous variability
+  in cognitive function.
+\newblock {\em Journal of Experimental Psychology: Learning, Memory, and
+  Cognition}~47:\mbox{641–651}.
+
+\bibitem[\protect\citeauthoryear{WELCH}{1947}]{WELCH_1947}
+WELCH BL (1947)
+\newblock The generalization of ‘student's' problem when several different
+  population varlances are involved.
+\newblock {\em Biometrika}~34:\mbox{28–35}.
+
+\bibitem[\protect\citeauthoryear{Widmann \bgroup et al.\egroup
+  }{2015}]{Widmann_2015}
+Widmann A, Schr{\"o}ger E, Maess B (2015)
+\newblock Digital filter design for electrophysiological data – a practical
+  approach.
+\newblock {\em Journal of Neuroscience Methods}~250:\mbox{34–46}.
+
+\bibitem[\protect\citeauthoryear{Woolnough  \bgroup et al.\egroup
+  }{2021}]{Woolnough_2020}
+Woolnough O, Donos C, Rollo PS, et~al. (2021)
+\newblock Spatiotemporal dynamics of orthographic and lexical processing in the
+  ventral visual pathway.
+\newblock {\em Nature Human Behaviour}~5:\mbox{389–398}.
+
+\bibitem[\protect\citeauthoryear{Yeung  \bgroup et al.\egroup
+  }{2004}]{Yeung_2004}
+Yeung N, Bogacz R, Holroyd CB, Cohen JD (2004)
+\newblock Detection of synchronized oscillations in the electroencephalogram:
+  An evaluation of methods.
+\newblock {\em Psychophysiology}~41:\mbox{822–832}.
+
+\end{thebibliography}

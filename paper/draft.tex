@@ -1,0 +1,659 @@
+\documentclass[10pt,twocolumn]{article}  % JNeurosci published-article look
+\usepackage{jneurosci}
+\bibliographystyle{jneurosci-etal}  % jneurosci.bst for full author lists
+\usepackage{url}
+\usepackage{amsmath}
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage{pxfonts}
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+\else  % XeTeX (tectonic): Palatino clone with Unicode support
+  \usepackage{fontspec}
+  \setmainfont{texgyrepagella}[Extension=.otf, UprightFont=*-regular, BoldFont=*-bold,
+    ItalicFont=*-italic, BoldItalicFont=*-bolditalic]
+  \setsansfont{texgyreheros}[Extension=.otf, UprightFont=*-regular, BoldFont=*-bold,
+    ItalicFont=*-italic, BoldItalicFont=*-bolditalic, Scale=MatchLowercase]
+  \usepackage{unicode-math}
+  \setmathfont{texgyrepagella-math.otf}
+\fi
+\usepackage{xcolor}
+\usepackage{setspace}
+\usepackage{lineno}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{multicol}
+\usepackage{ragged2e}
+\usepackage{etoolbox}
+\AtBeginEnvironment{itemize}{\RaggedRight}  % bullet lists left-aligned
+\setlength{\emergencystretch}{1.5em}
+\usepackage[left=0.75in,top=0.8in,right=0.75in,bottom=0.8in,columnsep=0.25in]{geometry}
+\makeatletter  
+\renewcommand\section{\@startsection{section}{1}{\z@}{-10pt plus -2pt minus -1pt}{4pt}{\raggedright\sffamily\bfseries\large}}
+\renewcommand\subsection{\@startsection{subsection}{2}{\z@}{-8pt plus -2pt minus -1pt}{2pt}{\raggedright\sffamily\bfseries\normalsize}}
+\renewcommand\subsubsection{\@startsection{subsubsection}{3}{\z@}{-6pt plus -1pt minus -1pt}{2pt}{\raggedright\sffamily\itshape\normalsize}}
+\makeatother
+\usepackage[font=footnotesize,labelfont=bf,labelsep=period,justification=justified,singlelinecheck=false]{caption}
+\usepackage[colorlinks=true, linkcolor=black, citecolor=black, urlcolor=blue]{hyperref}
+\let\citetext\relax
+\usepackage{natbib}
+\let\cite\citep
+\renewcommand{\bibfont}{\footnotesize}  % small reference list, as in the journal
+\setlength{\bibsep}{1pt}
+\renewcommand{\dbltopfraction}{0.9}  % allow tall full-width figures at the top of a page
+\renewcommand{\dblfloatpagefraction}{0.8}
+\raggedbottom  % no vertical stretching to fill columns
+\renewcommand{\bibsection}{\section*{References}}
+\makeatletter  % JNeurosci title block: left-aligned, spans both columns
+\renewcommand{\maketitle}{\twocolumn[{\begin{flushleft}{\LARGE\bfseries\@title\par}\vspace{8pt}%
+  {\large\bfseries\@author\par}\vspace{3pt}%
+  {\small Department of Psychology, University of Pennsylvania, Philadelphia, Pennsylvania\par}\end{flushleft}\vspace{10pt}%
+  \ifdefined\abstracttext{\small\bfseries\noindent\abstracttext\par}\vspace{16pt}\fi}]}
+\makeatother
+
+\newcommand{\cut}{\textcolor{red}{\textbf{\,[C]}}}  
+\newcommand{\new}[1]{\textcolor{blue}{#1}}  
+\newcommand{\panel}[3]{% \panel{label}{width}{file}
+  \begin{minipage}[t]{#2\linewidth}\vspace{0pt}\textbf{#1}\par\vspace{4pt}\includegraphics[width=\linewidth]{#3}\end{minipage}}
+\newcommand{\panelc}[3]{
+  \begin{minipage}[c]{#2\linewidth}\textbf{#1}\par\vspace{4pt}\includegraphics[width=\linewidth]{#3}\end{minipage}}
+\providecommand{\tightlist}{\setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+
+\title{Neural correlates of word stimulus response in human iEEG}
+\author{Juee Naik, Riley DeHaan(?), Michael Kahana}
+\date{}
+
+\begin{document}
+\newcommand{\abstracttext}{Intracranial studies of free recall mostly ask how activity during 
+word presentation predicts later memory, while the response to the word itself has received less attention. 
+Work on visual word processing with scalp EEG, MEG and fMRI describes a progression from visual to 
+language and memory regions, but these methods cannot resolve local activity in both space and time.
+Previous intracranial studies have typically recorded from tens of patients with coverage concentrated 
+in the ventral visual stream. Here we map the word-onset response across the brain in 362 neurosurgical 
+patients performing delayed free recall, comparing each word with the blank screen that preceded it. 
+The response was largest in occipital cortex, where alpha (8--13 Hz) power fell and high-gamma 
+(70--150 Hz) power rose, and the same signature of engagement appeared, more weakly, in limbic 
+and hippocampal regions. Frontal cortex instead showed increased low-frequency and decreased beta power,
+ consistent with suppression. High-gamma responses began in lateral occipital cortex (${\sim}$120 ms) 
+ and moved forward, reaching orbitofrontal cortex last (${\sim}$300 ms), while alpha synchrony with 
+ the rest of the brain increased most in occipital cortex. The occipital response was larger when 
+ the word was more expected, after longer waits, and the response weakly predicted later recall, 
+ from ${\sim}$200 ms onward and most persistently in frontal cortex. Together, these results show how 
+ the response to a word unfolds across the brain, from early visual engagement to later frontal 
+ involvement, and provide a baseline for interpreting cognitive effects measured during word presentation.} 
+\maketitle
+
+
+\section*{Introduction}\label{introduction}
+
+\subsection*{The word-onset response in free recall}\label{intro-word-onset}
+
+Most intracranial EEG (iEEG) studies of free recall contrast words that are later recalled with words 
+that are forgotten (the subsequent memory effect, SME), or study the retrieval period. 
+As both conditions contain a word, this contrast measures how responses differ with later memory, 
+but cancels out the response to the word itself. Only a few studies have examined the word-onset response directly. \citet{Kucewicz_2019} showed that high-gamma (HG) activity after word onset moves from visual cortex to the medial temporal lobe (MTL) and then to prefrontal cortex, and \citet{Marks_2021} found that theta, alpha/beta and gamma activity each spread across regions on their own timelines during word encoding.
+
+\subsection*{High gamma and alpha as markers of cortical engagement (cut/reduce?)}\label{intro-hg-alpha}
+
+Broadband HG (70--150 Hz) is widely used as a measure of local population spiking \citep{Manning_2009,Ray_2011}. 
+At stimulus onset, alpha and beta power decrease \citep[event-related desynchronization;][]{Pfurtscheller_1999}; 
+together, an alpha decrease and an HG increase mark a region engaged by a stimulus. 
+Conversely, alpha increases in task-irrelevant regions are thought to mean suppression \citep{Jensen_2010}, 
+so the same two measures can separate regions that a stimulus engages from regions it suppresses.
+
+\subsection*{Timing of visual word processing (most imp.)}\label{intro-timing}
+
+Reading a word progresses in stages: visual features are extracted within about 100 ms \citep{Thorpe_1996}, 
+the letter string is recognised as a word at about 200 ms \citep{Cohen_2000}, its sound is activated 
+automatically \citep{van_Orden_1987}, and its meaning is integrated with context by about 400 ms 
+\citep{Kutas_1980}. These stages imply a reading network that runs from occipital cortex through left 
+fusiform gyrus, which contains the visual word form area \citep[VWFA;][]{Cohen_2000,Dehaene_2011}, to 
+temporal, supramarginal and inferior frontal cortex \citep{Price_2012,Taylor_2013}, with posterior 
+responses to letter strings preceding more anterior responses to lexical status \citep{Nobre_1994,Allison_1994}. 
+Much of this picture comes from scalp EEG, MEG, and fMRI, which resolve the order in which these stages 
+occur but not precisely when and where, while iEEG records local activity with both 
+millisecond and millimetre precision \citep{Parvizi_2018}. However, most intracranial studies of reading 
+record from tens of patients with sparse, clinically determined coverage and focus on the ventral stream, 
+and so the order in which regions across the whole brain respond to a word has not been measured within one 
+large dataset.
+
+\subsection*{Synchrony, expectation and memory}\label{intro-sync-expect-memory}
+
+Beyond local activity, word onset may change how regions synchronize. Alpha phase synchrony is thought 
+to coordinate distant regions \citep{Palva_2007}, and in free recall, low-frequency synchrony between regions 
+increases during successful encoding and retrieval \citep{Solomon_2017,Rao_2025}. The response may also 
+depend on when the word is expected: the blank before each word varies in length, and the longer it lasts, 
+the more expected the word becomes \citep{Nobre_2017}. Finally, spectral features recorded while a word 
+is studied predict whether it will be recalled \citep{Ezzyat_2017}, and comparing recalled with forgotten 
+words region by region, HFA predicting later recall appears first in visual, fusiform and medial 
+temporal regions and later in left inferior frontal, posterior parietal and ventrolateral temporal 
+cortex \citep{Burke_2014a}. These approaches either pool features across the brain and the whole word 
+period, or test each region and time point for a difference in mean activity. How well each region's 
+single-trial response predicts recall, and when that prediction arises, has not been measured with 
+classifiers.
+
+\subsection*{The present study (change/delete heading)}\label{intro-present}
+
+Here we characterize the word-onset response in 362 neurosurgical patients performing delayed free recall, 
+contrasting each word with the blank screen before it. We ask (1) which regions respond, and in what order;
+(2) how regions synchronize, using phase and envelope connectivity; (3) whether the response depends 
+on how long the subject waited for the word; (4) whether, where and when single-trial responses 
+predict later recall; and (5) whether each subject's response is reliable across sessions.
+
+\section*{Methods}\label{methods}
+
+\subsection*{Data and cohort}\label{data-and-cohort}
+
+\begin{itemize}
+\tightlist
+\item
+  OpenNeuro BIDS releases of the RAM / Penn free-recall data (FR1,
+  catFR1) and pyFR, bipolar montage. OpenNeuro ds004789 (FR1), ds004809
+  (catFR1), ds004865 (pyFR).
+\item
+  362 subjects, 1009 sessions: FR1 232 subj / 466 sess, catFR1 212 /
+  465, pyFR 38 / 78.
+\item
+  Bipolar channels whose contacts are \textgreater{} 20 mm apart, and
+  flat channels are dropped.
+\item
+  Exclusions: missing / \textless{} 499 Hz sampling rate, denylist /
+  manual, mains-harmonic peak \textgreater{} 5× its neighbours at a
+  non-notched frequency (9 sessions, all 100 Hz peaks at 60 Hz sites).
+\item
+  Contrast: \textbf{word on} (0--600 ms after word onset) vs
+  \textbf{word off} (−700 to −100 ms, the blank screen before the same
+  word). Words on screen 1600 s; blank between words
+  \textasciitilde750-1250 ms.
+\end{itemize}
+
+\subsection*{Preprocessing}\label{preprocessing}
+
+\begin{itemize}
+\tightlist
+\item
+  Word-off and word-on clips loaded separately per word, each with 500
+  ms of real data buffer on both sides.
+\item
+  Resampled to 500 Hz, notch 60 Hz + 120 Hz harmonic (4th-order
+  Butterworth, ±2 Hz); buffer cropped before every estimate. \citep{Widmann_2015,de_Cheveign__2019,Gramfort_2013,Virtanen_2020}
+\end{itemize}
+
+\subsection*{Electrode localization}\label{electrode-localization}
+
+\begin{itemize}
+\tightlist
+\item
+  Bipolar pairs labelled by lab localization default (depth: volumetric;
+  grid/strip: surface). (Desikan et al.~2006; Fischl et al.~2002, 2004;
+  Avants et al.~2008; Wang et al.~2013; Yushkevich et al.~2015; Azarion
+  et al.~2014 (check); bipolar: Mercier et al.~2022; Li et al.~2018)
+\item
+  Depth pairs with no volumetric label in the BIDS release: label recovered from the RAM
+  imaging pipeline's label files (pair file, or the midpoint contact for skip pairs; white
+  matter / ventricles stay unlabelled); the 13\% without a recoverable label get the majority
+  label of expert-labelled depth pairs of other subjects within 5 mm (MNI).
+\item
+  12 Burke ROIs: frontal, temporal, parietal, occipital, limbic,
+  hippocampus × hemisphere; sub regions = anatomical labels within them.
+  \citep{Burke_2013}
+\end{itemize}
+
+\subsection*{Power}\label{power}
+
+\begin{itemize}
+\tightlist
+\item
+  Alpha (8--13 Hz) and 5--150 Hz spectrum: multitaper, 2 Hz bandwidth,
+  600 ms windows; spectrum in 11 log-spaced bins (50, 60, 100, 120 Hz
+  $\pm$ 2 Hz excluded). \citep{Thomson_1982,Slepian_1978,Percival_1993,Prerau_2017}
+\item
+  High gamma (70--150 Hz): Hilbert in 8 × 10 Hz sub-bands, each divided
+  by its word-off mean, averaged (broadband, every frequency weighted
+  equally), as HFA is better described as a broadband signal than as an oscillation \citep{Burke_2015a}. \citep{Edwards_2009,Bruns_2004,Manning_2009,Ray_2011} \textbf{(check Edwards et al.\ 2009)}
+\item
+  Per electrode: Cohen's d of per-trial power, word on vs word off.
+  \citep{Cohen_2013,Lakens_2013}
+\end{itemize}
+
+\subsection*{High-gamma latency}\label{high-gamma-latency}
+
+\begin{itemize}
+\tightlist
+\item
+  Responsive electrodes: per-trial high-gamma power word on
+  \textgreater{} word off (one-tailed Welch t test, BH-FDR within
+  session): 4950 of 122,339 electrode-sessions, 299 subjects. \citep{WELCH_1947,Benjamini_1995}; on selecting electrodes and measuring them in the same data, see \citet{Kriegeskorte_2009}
+\item
+  Latency: trial-mean envelope minus word-off mean, 30 ms smoothing,
+  first time it reaches half its peak within 0--800 ms (half-maximum).
+  \citep{Kiesel_2007,Liesefeld_2018}; on filter smearing of onsets, see \citet{VanRullen_2011}
+\item
+  Subject median per region → mean ± SEM across subjects; 12 ROIs and
+  subregions (hemispheres pooled).
+\end{itemize}
+
+\subsection*{Synchrony}\label{synchrony}
+
+\begin{itemize}
+\tightlist
+\item
+  Alpha: ciPLV (MNE \texttt{spectral\_connectivity\_epochs}, multitaper,
+  2 Hz bandwidth). (Bruña et al.~2018; Nolte et al.~2004;
+  MNE-Connectivity (Zenodo))
+\item
+  High gamma: AEC-c (70--110 Hz band-pass + Hilbert,
+  \texttt{envelope\_correlation}, pairwise orthogonalized, signed, mean
+  over trials); 70--110 Hz so the envelope stays below the band
+  (Bedrosian). \citep{Hipp_2012,Bedrosian_1963}
+\item
+  Pairs sharing a contact excluded. \citep{Mercier_2017} Per electrode:
+  mean on − off change over all partners \citep{Rao_2025}.
+\item
+  Synchrony is treated as a secondary analysis: an evoked response shared across regions can raise phase and envelope coupling without any interaction between them (see Discussion).
+\end{itemize}
+
+\subsection*{Time-resolved network
+(epochs)}\label{time-resolved-network-epochs}
+
+\begin{itemize}
+\tightlist
+\item
+  9 overlapping 200 ms epochs every 100 ms, 0--1000 ms (stops before the
+  word's offset response at 1600 ms), each minus the mean of three 200
+  ms word-off epochs.
+\item
+  Region pairs with $\geq$ 100 subjects. Hub (Rao): a region's mean change
+  over its connections; t across subjects; two-stage FDR
+  (Benjamini--Krieger--Yekutieli) over region × epoch. \citep{Benjamini_2006,Rubinov_2010}
+\item
+  Edges: each significant hub's 5 strongest connections (\textbar mean
+  change\textbar), either sign; width $\propto$ \textbar t\textbar{} (\citealp{Solomon_2017} style).
+\end{itemize}
+
+\subsection*{\texorpdfstring{Mixed-effects models (R lme4 / emmeans;
+\texttt{mixed\_models.R})}{Mixed-effects models (R lme4 / emmeans; mixed\_models.R)}}\label{mixed-effects-models-r-lme4-emmeans-mixed_models.r}
+
+\begin{itemize}
+\tightlist
+\item
+  Latency: latency\_ms \textasciitilde{} lobe + (1\textbar sub) +
+  (1\textbar sub:lobe) + (1\textbar sub:region), one row per responsive
+  electrode; all 15 lobe pairs, Holm.
+\item
+  Power: cohens\_d \textasciitilde{} lobe × band + (1 +
+  band\textbar sub) + (1\textbar sub:lobe) + (1\textbar sub:lobe:band) +
+  (1\textbar sub:region) + (1\textbar sub:label); lobe × band
+  interaction contrast per lobe pair, Holm.
+\end{itemize}
+
+\subsection*{Anticipation}\label{anticipation}
+
+\begin{itemize}
+\tightlist
+\item
+  Responsive electrodes (as latency); trials split at the session's
+  median blank length; peak (0--800 ms) of the trial-mean high-gamma
+  response after long minus short waits; subject mean per ROI,
+  one-sample t, BH-FDR over ROIs.
+\end{itemize}
+
+\subsection*{Recall prediction (encoding contrast: recalled vs not
+recalled)}\label{recall-prediction-encoding-contrast-recalled-vs-not-recalled}
+
+\begin{itemize}
+\tightlist
+\item
+  High-gamma response (as latency) in 100 ms windows, 0--1000 ms,
+  z-scored within session; per subject × lobe ($\geq$ 5 electrodes) × window:
+  L2 logistic regression \citep[C = 7.2e-4,][]{Ezzyat_2017}, balanced
+  class weights, leave-one-session-out (single-session subjects:
+  leave-one-list-out); AUC of pooled held-out predictions.
+\item
+  Across subjects: one-sided t of AUC \textgreater{} 0.5, BH-FDR over
+  lobe × window; permutation chance (\textasciitilde0.49) reported only.
+\end{itemize}
+
+\subsection*{Reliability}\label{reliability}
+
+\begin{itemize}
+\tightlist
+\item
+  Subjects' sessions split at random into two halves ($\geq$ 2 sessions per
+  half; riley-thesis rules); per half, d (power) or node strength
+  (synchrony) averaged per anatomical region; test-retest = Pearson r
+  across the subject's regions between halves.
+\end{itemize}
+
+\subsection*{Statistics}\label{statistics}
+
+\begin{itemize}
+\tightlist
+\item
+  Sessions averaged per electrode, electrodes per subject × region ($\geq$ 1
+  electrode); one-sample t vs 0 across subjects; BH-FDR within each
+  figure / band; $\geq$ 30 subjects per region. \citep{Holmes_1998,Benjamini_1995,Seabold_2010}
+\end{itemize}
+
+\section*{Results}\label{results}
+
+\subsection*{1. Power changes at word
+onset}\label{power-changes-at-word-onset}
+
+\begin{figure*}[!tp]
+\centering
+\panel{A}{0.8}{img/fig1_power.png}\\[6pt]
+\panel{B}{0.7}{img/fig2b_occipital.png}
+\caption{Power changes at word onset (word on vs.\ word off). (A) Cohen's d of alpha (8--13 Hz, top) and high-gamma (70--150 Hz, bottom) power per region; mean $\pm$ SEM across subjects; numbers: subjects; stars: BH-FDR. (B) The strongest region, occipital cortex, by subregion: t across subjects per frequency for the four occipital subregions with the most subjects (hemispheres pooled); stars: significant (TFCE, family-wise $p<.05$).}
+\label{fig:power}
+\end{figure*}
+
+\begin{itemize}
+\tightlist
+\item
+  Alpha: decrease in occipital (L −0.13, R −0.10 d), smaller decreases
+  in hippocampus (L −0.016, R −0.025), R limbic (−0.023) and R temporal
+  (−0.017); increase in frontal (L +0.031, R +0.023) and L parietal (+0.024).
+\item
+  High gamma: large increase in occipital (L +0.40, R +0.29 d); smaller
+  increases in limbic (+0.03--0.04), hippocampus (+0.03--0.05), L temporal
+  and L parietal (+0.02); no change in frontal.
+\item
+  Occipital subregions (hemispheres pooled; the 4 with most subjects):
+  fusiform (221), lateral occipital (100), lingual (89), cuneus (37).
+  Fusiform, lateral occipital, lingual: alpha/beta decrease and gamma increase
+  ($\geq$37--51 Hz), the same pattern as occipital cortex as a whole; fusiform strongest
+  (t $\approx$ −7.8 at 11 Hz, +8.7 at 69 Hz); lateral occipital also a 6 Hz increase;
+  cuneus weakest (gamma at 51--69 Hz only). TFCE, family-wise p
+  \textless{} .05. \citep{SMITH_2009,Mensen_2013,Nichols_2001}
+\end{itemize}
+
+\subsubsection*{Spectral profile}\label{spectral-profile}
+
+\begin{figure*}[!tp]
+\centering
+\panel{A}{1}{img/fig2a_spectrum.png}\\[8pt]
+\panel{B}{0.66}{img/fig1b_power_mixed.png}
+\caption{Spectral profile of the word-onset response. (A) t across subjects per region and frequency (5--150 Hz, log-spaced bins; 50, 60, 100, 120 Hz excluded); outlines: significant runs (TFCE, family-wise $p<.05$). (B) Mixed-effects lobe $\times$ band interaction: how much the alpha-vs-high-gamma pattern differs between each pair of lobes ($|d|$); stars: Holm-corrected $p$.}
+\label{fig:spectrum}
+\end{figure*}
+
+\begin{itemize}
+\tightlist
+\item
+  Frontal: theta/low-alpha increase (t up to 11.7 at 6 Hz) with beta decrease (t
+  to −13.4 at 27 Hz), and a small high-gamma increase at 129 Hz (t 3.8).
+\item
+  Occipital: alpha--beta decrease (11 Hz t $\approx$ −7.6), broadband increase $\geq$
+  37 Hz (t up to 8.7).
+\item
+  Limbic / hippocampus: mild alpha decrease, gamma increase.
+\end{itemize}
+
+\subsubsection*{Mixed model (lobe × band)}\label{mixed-model-lobe-band}
+
+\begin{itemize}
+\tightlist
+\item
+  Does the alpha-vs-high-gamma pattern differ between lobes (lobe × band
+  interaction)? 10 of 15 pairs differ (Holm).
+\item
+  Occipital differs from every other lobe (\textbar d\textbar{}
+  0.41--0.50); frontal from temporal, limbic and hippocampus
+  (0.07--0.09); parietal from limbic and hippocampus.
+\item
+  Not different: frontal vs parietal (p = .053), parietal vs temporal (p = .050),
+  limbic vs temporal, hippocampus vs limbic, hippocampus vs temporal.
+\end{itemize}
+
+\subsection*{2. Order of activation}\label{order-of-activation}
+
+\begin{figure*}[!tp]
+\centering
+\panelc{A}{0.6}{img/fig4b_latency_fine.png}\hfill\panelc{B}{0.38}{img/fig4c_latency_mixed.png}
+\caption{Order of high-gamma responses after word onset. (A) Half-max latency per anatomical subregion (left; mean $\pm$ SEM across subjects; n: subjects) and the average high-gamma response over time, as a fraction of its peak (right). (B) Estimated latency per lobe from a mixed-effects model (mean $\pm$ SE); brackets: neighbouring lobes in the latency order (Holm over all 15 pairs).}
+\label{fig:latency}
+\end{figure*}
+
+\begin{itemize}
+\tightlist
+\item
+  Posterior → anterior: R occipital 132 ms, L occipital 156 → limbic
+  (\textasciitilde164--166), R temporal 171, R parietal 177 → L hippocampus
+  201, L temporal 203, R hippocampus 210 → R frontal 222, L parietal 227 →
+  L frontal 245 ms.
+\item
+  Subregions ($\geq$ 30 subjects): lateral occipital 123 → fusiform 156, lingual 158 →
+  parahippocampal 168, superior parietal 175 → inferior / middle temporal 183 / 195,
+  hippocampus 203, superior temporal 209 → middle frontal 213, supramarginal 228,
+  precentral 229, inferior frontal 238 → orbitofrontal 316 ms.
+\item
+  Early regions: sharp peak \textasciitilde150 ms; hippocampus / insula
+  / frontal: broad peaks \textasciitilde350--550 ms.
+\end{itemize}
+
+\subsubsection*{Mixed model (latency per
+lobe)}\label{mixed-model-latency-per-lobe}
+
+
+\begin{itemize}
+\tightlist
+\item
+  Estimated latency: occipital 150 → limbic 170 → temporal 193 →
+  hippocampus 209 $\approx$ parietal 210 → frontal 238 ms.
+\item
+  Neighbouring steps (brackets): only parietal \textless{} frontal (p = .024);
+  occipital--limbic (p = .14), limbic--temporal (p = .10), temporal--hippocampus
+  (p = .38), hippocampus--parietal (p = .93) not separable.
+\item
+  All 15 pairs (CSV): 9 differ (Holm p \textless{} .05), e.g. occipital before temporal,
+  parietal, hippocampus and frontal; frontal after all but hippocampus (p = .10, the least
+  precise lobe: 67 subjects). Posterior → anterior holds across two or more steps, not
+  every neighbouring step.
+\end{itemize}
+
+\subsection*{3. Synchrony}\label{synchrony-1}
+
+\begin{figure*}[!tp]
+\centering
+\panel{A}{0.85}{img/fig5_synchrony.png}\\[6pt]
+\panel{B}{1}{img/fig6c_epochs_alpha.png}
+\caption{Synchrony at word onset. (A) Change in alpha ciPLV (top) and high-gamma AEC-c (bottom) per region, word on vs.\ off: each electrode's mean change over all partners, averaged per subject; mean $\pm$ SEM across subjects; stars: BH-FDR. (B) Time-resolved alpha ciPLV network in 200 ms windows. Red nodes: hubs, regions whose mean change over their connections differs from zero (two-stage FDR over regions $\times$ windows); lines: each hub's five strongest connections (red: synchronized, blue: desynchronized; width $\propto |t|$).}
+\label{fig:synchrony}
+\end{figure*}
+
+\begin{itemize}
+\tightlist
+\item
+  Alpha ciPLV increases in 9 / 12 ROIs (not L / R hippocampus, R limbic), about twice
+  as much in occipital (\textasciitilde0.0015--0.0016) as elsewhere
+  (\textasciitilde0.0003--0.0009).
+\item
+  High-gamma AEC-c: no significant change in any ROI.
+\end{itemize}
+
+\subsubsection*{Time-resolved network}\label{time-resolved-network}
+
+
+\begin{itemize}
+\tightlist
+\item
+  Alpha: 69 hub $\times$ window cells, all positive. Occipital hubs in the
+  first four windows (0--500 ms, both hemispheres) and once at 500--700 ms; frontal,
+  limbic and temporal hubs from the first window onward; parietal hubs
+  from the 100--300 ms window onward, in both hemispheres from 200 ms; hippocampus at 100--400
+  ms. Fine regions (8 cells): L fusiform 0--400 ms, then L middle temporal 400--1000 ms.
+\item
+  High gamma (not shown): 2 hubs (L occipital 0--200 ms, L limbic
+  200--400 ms).
+\end{itemize}
+
+\subsection*{4. Anticipation (blank length before the
+word)}\label{anticipation-blank-length-before-the-word}
+
+\begin{figure*}[!tp]
+\centering
+\includegraphics[width=1\linewidth]{img/fig9_anticipation.png}
+\caption{High-gamma response peak after long minus short waits (median split of the blank before each word), responsive electrodes only; mean $\pm$ SEM across subjects; stars: BH-FDR.}
+\end{figure*}
+
+\begin{itemize}
+\tightlist
+\item
+  Occipital high-gamma peak larger after long than short waits (L
+  +0.072, q = .022; R +0.049, q = .029); no other ROI significant.
+\item
+  Consistent with temporal expectation boosting visual responses \citep[][monkey V1]{Lima_2011,Nobre_2017}, but a shorter blank
+  also leaves less time for the previous word's offset response to decay
+  (baseline).
+\end{itemize}
+
+\subsection*{5. Recall prediction over the response (encoding
+contrast)}\label{recall-prediction-over-the-response-encoding-contrast}
+
+\begin{figure*}[!tp]
+\centering
+\includegraphics[width=1\linewidth]{img/fig7_recall_time.png}
+\caption{Recall prediction from the high-gamma response (encoding contrast: recalled vs.\ not recalled). AUC per lobe and 100 ms window, mean $\pm$ SEM across subjects; dashed line: 0.5; stars: AUC $>0.5$, BH-FDR over lobe $\times$ window.}
+\end{figure*}
+
+\begin{itemize}
+\tightlist
+\item
+  No lobe predicts recall before 200 ms (first significant window:
+  occipital 200--300 ms; frontal from 300 ms).
+\item
+  Frontal: sustained 300--1000 ms, highest at 800--900 ms (AUC 0.525).
+\item
+  Occipital: 200--700 ms only (peak 0.519 at 500--600 ms); temporal
+  400--900 ms; parietal 300--500 and 600--800 ms; hippocampus 500--600 ms;
+  limbic 600--700 ms.
+\item
+  AUCs are low ($\leq$ 0.525) because each classifier uses one lobe's high
+  gamma in one window. Same direction as Burke, Long et al.~2014
+  (encoding contrast: early posterior, late frontal HFA SME).
+\end{itemize}
+
+\subsection*{6. Reliability across
+sessions}\label{reliability-across-sessions}
+
+\begin{figure*}[!tp]
+\centering
+\includegraphics[width=1\linewidth]{img/fig8_reliability.png}
+\caption{Session-to-session reliability: per subject, Pearson r across regions between two random halves of the subject's sessions, for power (left) and synchrony node strength (right); dashed lines: medians.}
+\end{figure*}
+
+\begin{itemize}
+\tightlist
+\item
+  85 subjects with $\geq$ 2 sessions per half. Power maps repeat: median r
+  0.67 (alpha), 0.81 (high gamma). Synchrony maps much less: 0.19 (alpha
+  ciPLV), 0.14 (high-gamma AEC-c).
+\end{itemize}
+
+\section*{Discussion}\label{discussion}
+
+\subsection*{Power}\label{disc-power}
+
+The occipital alpha decrease and HG increase match the activation response first described in sensorimotor cortex \citep{Crone_1998a,Crone_1998b} and in visual cortex \citep{Lachaux_2005}, including for pseudowords and consonant strings, where the electrodes selective in each band overlapped little \citep{Vidal_2010}. The same low-frequency decrease and HFA increase marks successful encoding \citep{Sederberg_2003,Long_2014}, and this broadband tilt also appears outside memory, during arithmetic \citep{Randazzo_2019}, where it predicts response speed, mainly in frontal regions \citep{DeHaan_2025}. The frontal low-frequency increase and beta decrease, without a frontal HG increase, fit active suppression of cortex not needed for the task \citep{Jensen_2010}; HG similarly decreases during tasks in default-mode regions \citep{Ossand_n_2011}.
+
+\subsection*{Timing}\label{disc-timing}
+
+Our latencies agree with smaller iEEG studies. Gamma activity begins at about 150 ms in basal temporal cortex, reaches the VWFA at about 200 ms, and reaches superior temporal and Broca's areas after 400 ms \citep{Mainy_2007}; word-selective ventral temporal electrodes respond at about 150 ms \citep{Kadipasaoglu_2016}; and the effects of word properties move anteriorly along the ventral stream, with feedback to posterior regions at 250--500 ms \citep{Woolnough_2020}. Beyond the ventral stream, MEG shows responses proceeding from temporal cortex to Broca's area and finally to orbitofrontal cortex at about 370 ms \citep{Halgren_2002}, the same order as ours with orbitofrontal cortex last, and MTL neurons respond in the same order as our MTL regions but later, at about 270--400 ms \citep{Mormann_2008}, as expected for selective single-neuron responses compared with population HG. The sharp early and broad late responses we observe are consistent with feedforward input followed by feedback \citep{Halgren_2006,Ghuman_2014}.
+
+\subsection*{Synchrony}\label{disc-synchrony}
+
+Alpha power can fall while alpha synchrony between regions rises \citep{Hanslmayr_2016}, the combination we observe in occipital cortex. The absence of HG envelope coupling is consistent with HFA being local and asynchronous: regions with gamma increases during successful encoding lose global synchrony \citep{Burke_2013}. Synchrony measured at stimulus onset is, however, harder to interpret than power: an evoked response shared across regions can raise phase and envelope coupling without any interaction between them, and subtracting the average evoked response does not fully remove it, because its amplitude and latency vary across trials \citep{Truccolo_2002,David_2006}.
+
+\subsection*{Expectation}\label{disc-expectation}
+
+Temporally expected events evoke larger visual responses: in monkey V1, gamma increases and alpha decreases when a stimulus is expected \citep{Lima_2011}, and expectation speeds and enhances visual processing in humans \citep{Doherty_2005}. The larger occipital response after longer waits fits this account, but a shorter blank also leaves less time for the previous word's offset response to decay, which could raise the baseline (Limitations).
+
+\subsection*{Recall prediction}\label{disc-recall}
+
+Recall prediction appeared only after the early visual response, briefly in occipital cortex and persistently in frontal cortex, in the same direction as the early posterior and late frontal HFA effects found by comparing recalled with forgotten words \citep{Burke_2014a}. These classifiers may partly track general fluctuations in brain state rather than encoding of the item \citep{Weidemann_2021}.
+
+\subsection*{Limitations}\label{limitations-discussion}
+
+\begin{itemize}
+\tightlist
+\item
+  Word-off baseline starts \textasciitilde80-410 ms after the previous
+  word's offset: possible offset response / anticipation in the
+  baseline; the blank-length split (Results 4) cannot separate the two.
+\item
+  No ERP subtraction: evoked activity contributes to power and
+  synchrony, especially occipital.
+\item
+  Neighbour-transferred labels (\textasciitilde11\% / 21\% disagreement
+  in LOSO) only for the 13\% of unlabelled depth pairs the imaging-pipeline label files
+  lack.
+\item
+  High-gamma phase metrics avoided (broadband HFA has no meaningful
+  phase); AEC-c null is consistent with high gamma being local and
+  asynchronous \citep{Solomon_2017,Solomon_2019a}.
+\item
+  Multiple comparisons corrected within figures, not across.
+\end{itemize}
+
+\subsection*{Stimulus-locked activity in
+connectivity (cut?)}\label{stimulus-locked-activity-in-connectivity}
+
+\begin{itemize}
+\tightlist
+\item
+  Subtracting the average ERP leaves a residual because amplitude and
+  latency vary across trials: \citealp{Truccolo_2002,Wang_2008,Knuth_2006}.
+\item
+  Evoked and induced activity can't be cleanly separated: \citealp{David_2006,Shah_2004}. Supports Mike's / Riley's position.
+\item
+  Is alpha phase reset? For: \citealp{Makeig_2002,Hanslmayr_2007}.
+  Against: \citealp{Mazaheri_2006}. Hard to tell apart: \citealp{Yeung_2004,Sauseng_2007}
+\item
+  Task-evoked activity inflates connectivity: \citealp{Cole_2019,van_Diepen_2018,Kramer_2008} 
+\item
+  Alternatives to subtraction:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Matched condition contrast with a label-shuffle null: \citealp{Solomon_2017,Maris_2007a}.
+  \item
+    Trial-shuffled (shift-predictor) surrogates: \citealp{Perkel_1967,Aertsen_1989,Brody_1999b}.
+  \item
+    Connectivity aligned to internal HFA peaks: \citealp{Dede_2025}.
+  \item
+    Phase consistency on the same data: \citealp{Colyer_2025}.
+  \end{itemize}
+\end{itemize}
+
+\onecolumn  % new page, all pending figures printed first
+\makeatletter  % LaTeX keeps the last figure page's reduced column height; reset it
+\global\@colht\textheight \global\@colroom\textheight \global\vsize\textheight
+\makeatother
+\renewcommand{\bibsection}{}
+\begin{multicols}{2}[\section*{References}]  % references in their own two-column block
+\bibliography{refs}
+\end{multicols}
+
+\onecolumn  % supplementary in one column so the heading stays with its figures
+\section*{Supplementary}\label{supplementary}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\linewidth]{img/figS1_power_subjects.png}
+\caption{Power change per region, subject distributions.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.8\linewidth]{img/figS2_synchrony_subjects.png}
+\caption{Synchrony change per region, subject distributions.}
+\end{figure}
+
+
+
+
+
+\end{document}

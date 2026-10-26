@@ -2,10 +2,351 @@
 
 Project-level change log for `phase_visualization`. Newest entries first.
 
-This repo is not under git, so entries before 2026-08-17 were not recorded as
-they happened and are not reconstructable from history. Anything earlier than
-the first entry below is undocumented; add entries going forward rather than
-trying to backfill.
+Entries before 2026-08-17 predate git and are not reconstructable; anything
+earlier than the last entry below is undocumented.
+
+---
+
+## 2026-10-12 — PAC removed (PI decision)
+
+Theta-gamma PAC (compute.py, plot_boxplots, plot_epoch_network, fc.compute_pac,
+bands.low, pactools) removed with its results and figures. Trial-shuffled
+surrogates reproduced the whole word-onset increase (stimulus-locked, not
+within-trial coupling).
+
+---
+
+## 2026-09-30 — word onset, multitaper only: large cut
+
+Outputs checked unchanged on a recomputed session (power, d, time bins, PPC:
+max difference 0); cohort unchanged (716/1019 recomputed recall checks match).
+
+- Removed: Morlet everywhere (cwt_morlet mode, `--fc-mode`, cwt_* config,
+  wavelet.py, data_check's Morlet phase check, which never excluded a session);
+  AEC/AEC-c and GC/GC-TR (metrics now coh/plv/ppc/ciplv/pli/wpli/pac); the
+  en/rm/voc/ri/en_all/rm_all contrasts (`--beh`; only word_on events are written,
+  but load_events.recall_matching_ok keeps the cohort rule); mirror buffer;
+  compare_distance_controls.py, plot_phase_conn_distance*.py,
+  burke_roi_connectivity.py, visualize_phase_connectivity.ipynb; cstat.py,
+  matrix_operations.py, figure_io.py; ~40 dead fc/helper/misc functions and the
+  CFG_FLOW_VERIFY pins; unused bands (theta, narrow_*, theta_6_12).
+- Long et al. options are no longer flags: `--t-unit`, `--combine`,
+  `--min-responsive-per-region`, `--responsive-alpha`, `--responsive-only`
+  come from `longetal_params` (new key `t_unit: sample`); p < 1e-8 is fixed.
+  Also removed `--tfce-perm` (TFCE), `--time-bin-ms`, `--mt-window-ms` (config),
+  `--fine-top-n` (argument, default 15), `--fc-root`.
+- Power time course only for gamma bands (fmin >= 30 Hz).
+- New: `roi_synchrony_distance_*` (on - off synchrony per distance bin per ROI);
+  fc.bin_stats / fc.roi_curve_figure shared by it and the power time course.
+- Synchrony compute: one EEG load per window (the extra union load is gone).
+- prepare_sessions flags: `--subjects`, `--n-subjects`, `--workers`,
+  `--setup-only` (was 11 flags; setup runs when the listing is missing).
+- Simulations: simulate_eeg.py rewritten for the two high-gamma processes
+  (hg_power, hg_ppc; ~1600 legacy config lines dropped, the broken AEC process
+  removed); seed = CRC of the real clip, so reruns are reproducible (was
+  Python's per-process hash). Snakefile recovery sweeps now run on the
+  high-gamma run (were on the first run, alpha, so recovery.png came out empty).
+- Deleted all smokescreen outputs.
+
+## 2026-09-30 — contrast-only figures, raw synchrony
+
+- Power, synchrony and power-synchrony draw only word on - word off: one figure
+  per analysis (a row per band plotted into that directory,
+  fc.band_contrast_figure) in its own figure dir. Removed the lo/hi panels and
+  measures (z_lo/z_hi, sync_lo/sync_hi, lo/hi power-sync r), `--measures`,
+  `--conds`, `--style`, fc.roi_bar_panel, fc.cond_labels, plot_band_contrasts.py
+  and figures/band_contrasts/. Synchrony compute writes only fc_mats/diff/.
+- Synchrony is raw PPC by default (whole-brain changes show); `--zscore` restores
+  the per-distance-bin z-score. Power-synchrony still z-scores.
+
+## 2026-09-30 — longetal replication closed
+
+Final longetal settings (config `longetal_params`): FR1, English only, monopolar
++ CAR, Desikan-Killiany -> Long subregions, 8-band Hilbert high gamma at 100 Hz,
+blank -750-0 vs word 0-1600 ms, words averaged over sessions, uncorrected
+per-timepoint t at p<1e-8. Reproduces Long's 25.3% (ours 28.6%) and her
+per-region |t|, latencies and % enhanced outside the atlas-mismatched regions
+(cuneus, lingual, medial frontal). A per-trial / autocorrelation-corrected test
+gives ~3%. Open, not pursued: Talairach labels, per-band z-scoring.
+
+## 2026-09-29 — longetal figure names; Long latency / % enhanced figure
+
+- Hilbert responsiveness outputs now say which t-test they used:
+  `_pertimepoint` (Long's, uncorrected) / `_pertrial` (was `_samples` / none).
+  Juee file names unchanged.
+- word_averaged_rows also returns Long's latency (sample of the absolute max of
+  the average word response, z-scored to the blank) and its sign; new
+  `long_peaks_*.png/csv`: latency and % enhanced of responsive electrodes per
+  subregion, ours (mean ± SEM) vs Long's values (`LONG_PEAKS`: paper text for
+  occipital, read off thesis Figs 2.6A/C otherwise).
+- helper.bids_reader passes `device='ieeg'` (bidsreader only infers it for R*
+  subjects, so every pyFR TJ*/UP* session failed the data check).
+- run_streamed.sh: retry loop variable made local (it reset the batch index).
+
+## 2026-09-28 — Juee full run: alpha + high gamma, contrast figures, streamed data
+
+- config `runs`: alpha added next to high_gamma (word_on, multitaper, ppc).
+- Snakefile: synchrony now waits for power (power -> synchrony ->
+  power-synchrony). Juee figures drop the word-on / word-off panels
+  (`--measures cohens_d`, `--measures sync_diff`, new
+  build_power_synchrony `--conds diff`); longetal figures unchanged. New rule
+  `band_contrasts` -> plot_band_contrasts.py: one figure per analysis
+  (power, synchrony, power-synchrony), alpha row + high-gamma row, word on -
+  word off, paired t via fc.roi_stats (one-sample t on the within-subject
+  contrast, BH-FDR over ROIs) -> figures/band_contrasts/.
+- run_streamed.sh: bipolar FR1+catFR1+pyFR is ~680 GB (205 GB free), so per
+  batch of subjects: download -> prepare -> power, synchrony compute -> delete
+  the batch's bipolar EEG; then snakemake plots from the cache. Resumable
+  (logs/stream_done.txt); run under `caffeinate -is`.
+
+## 2026-09-28 — longetal: CAR everywhere, English only; t-unit diagnosis
+
+- longetal `depth_reference: car` (PI's reading) and new `english_only: true`
+  (data_check records `english` from the WORD stim_file; FR1 has 13 Spanish
+  sessions / 6 subjects). Full rerun: 304 sessions, 147 subjects, 13,080
+  electrodes; 28.6% responsive per sample, 2.6% per trial (~1 h awake; the
+  earlier 11 h was Mac sleep).
+- Diagnostic (scratchpad, read-only): envelope autocorrelation inflates the
+  per-sample t (variance inflation ~18 blank / 23 word); corrected per-sample
+  2.7% ≈ per trial 2.6%. Long's mean |t| (MOG 39.4, fusiform 10.7) matches our
+  uncorrected per-sample (40.8, 10.0), so her 25.3% is most likely uncorrected.
+  8 vs 1 band: same per trial, ~1.7x larger per-sample t (8 narrow-band
+  envelopes are ~3x more autocorrelated). Null simulation: 0.0% per trial,
+  3.2% per sample false positives at p<1e-8.
+
+## 2026-09-25 — longetal settings chosen from pilot; full recompute
+
+- Pilot (12 subjects, % responsive per sample vs CAR baseline 15.9%):
+  `hg_bands 8` 26.2%, `include_first_word` 19.7%, `include_incomplete_sessions`
+  16.8%, `baseline full_isi` 11.2%; bipolar depths 17.3% (earlier pilot).
+- longetal now: `depth_reference: bipolar`, `hg_bands: 8`,
+  `include_incomplete_sessions: true`, `include_first_word: true`,
+  `baseline: fixed`. All previous longetal results (full, smoke, simulations,
+  pilots) deleted and regenerated.
+- Full recompute (311 sessions, 149 subjects, 11,399 electrodes; ~11 h, run with
+  `CML_DATA_SOURCE=local`): 28.4% responsive per sample, 3.5% per trial (Long
+  25.3%). Occipital highest (MOG 77%, lingual 52%, fusiform 39%). Simulations:
+  hg_null 0.0%, recovery tracks identity.
+- Fixes: 8-band envelope cast to float64 before resampling; full_isi mask
+  broadcast over channels; helper.get_eeg sample-rate check uses a 1e-9
+  relative tolerance (R1006P_FR1_1 failed on float rounding only).
+
+## 2026-09-25 — Scratch and downloads moved out of the repo
+
+- `paths.scratch_dir` → `~/scratch/word_onset_analysis/scratch` (sibling
+  `scratch.smokescreen`, `scratch.longetal`, ...); new `paths.bids_cache` →
+  `~/scratch/word_onset_analysis/bids_data`, exported as `CML_BIDS_CACHE` by
+  project_paths. Existing folders were moved, not recomputed. Figures stay in
+  the repo.
+- longetal `atlases: [ind.region]`: Desikan–Killiany (surface) labels for every
+  contact, as Long did. Depths previously used stein → wb (volumetric), which
+  labels many depth contacts "Cerebral White Matter" (dropped); DK gives the
+  nearest cortical label.
+- longetal `depth_reference: car | bipolar`: `bipolar` pairs adjacent contacts
+  on each depth lead and keeps the common average for grids/strips only
+  (get_eeg builds contact differences; data_check drops a pair if either
+  contact is flat). Diagnostic on depth-only subjects: CAR suppresses depth
+  responses, within-lead bipolar recovers them. Juee (default) path verified
+  unchanged. Being piloted on 12 subjects before the full recompute.
+- longetal settings for choices Long's text leaves open (defaults = current
+  behaviour): `hg_bands` (1 = one 70–150 band-pass; 8 = mean amplitude over 8
+  log-spaced Gaussian bands, frequency-domain Hilbert, Mesgarani-lab style),
+  `baseline` (fixed pre_win; `full_isi` = each trial's whole blank from the
+  previous word's offset, pre samples outside it set to NaN and skipped),
+  `include_incomplete_sessions` (all sessions of subjects with ≥1 complete
+  one), `include_first_word` (keep serial position 1). Piloted one at a time.
+- Convention: "juee flags" = the default methods (bipolar, all experiments,
+  multitaper, own windows/stats); their results are on hold and never
+  overwritten. longetal results are wiped and regenerated on every method
+  change. Full-cohort longetal now: 262 sessions / 150 subjects; responsive at
+  p<1e-8: 2.7% (per trial), 13.2% (per sample), vs Long 25.3%.
+
+---
+
+## 2026-09-24 — longetal: Long et al. 2020 replication
+
+`snakemake [all|simulations] --config longetal=true` (settings in config
+`longetal_params:`; `WOA_LONGETAL` in project_paths; outputs `*.longetal`).
+Default runs are unchanged.
+
+- FR1 only; complete sessions only (≥300 WORD events, rule `incomplete_session`).
+- Monopolar contacts (one "pair" per contact, distance 0; ECOG/SEEG channels
+  only) + common average reference per sample over the kept contacts, applied
+  after any simulated EEG so simulations see it too.
+- No resample; `--fc-mode hilbert`: band-pass 70–150, Hilbert amplitude at the
+  native rate, 500 ms buffer trimmed, envelope → 100 Hz, mean per window (or
+  50 ms bins). Pickles store amplitude (`measure: amplitude`); change_dB and
+  recovery use 20·log10.
+- Windows: blank −750–0 ms vs word 0–1600 ms (not length-equalized).
+- Only word_on events required. Responsiveness figure keeps regions with ≥50
+  responsive electrodes (CSV keeps all). Power only, no synchrony.
+- `exclude_lobes: [limbic, hippocampus, subcortical]` (Long excluded limbic and
+  sublobar electrodes): those ROIs map to None under longetal.
+- `--t-unit {trial,sample}` (plot stage): Long doesn't say whether the
+  responsiveness t-test used trial means or every envelope sample. Hilbert
+  pickles now also store `cohens_d_samples` / `n_{lo,hi}_samples`. Smoke:
+  6.6% responsive per trial vs 19.3% per sample (Long 25.3%).
+- `--combine {d_mean,word_average}` (longetal default word_average): Long
+  averaged each word over repeated sessions before testing. Hilbert pickles
+  store per-event envelopes (`env_lo`/`env_hi`, float32) and words (`items`);
+  `word_averaged_rows` averages per word within subject (labels present in all
+  sessions), then d across words or samples. `get_eeg` now labels each epoch
+  with its position in the input events (was 0..n-1), so dropped events keep
+  their identity. Smoke: 23.1% responsive (word_average, sample) vs Long 25.3%.
+- `long_regions.csv`: approximate map from our region names to Long's 16
+  subregions (hemispheres pooled); used for longetal `--fine-labels`.
+  `exclude_regions: [posterior cingulate gyrus]` (limbic in her atlas).
+- `get_eeg` drops events whose clip isn't fully inside the recording before
+  epoching (MNE raised instead; truncated OpenNeuro EDFs, e.g. R1156D, R1161E).
+
+---
+
+## 2026-09-24 — Recovery curves
+
+- `sweeps:` in `config/simulation_config.yaml` expand (simulate_eeg loader) to
+  one tag per planted value: power gain 1–4 (0–12 dB) and frontal PPC 0–0.99,
+  each with and without pink noise. `snakemake simulations` runs them
+  compute-only and `plot_recovery.py` draws measured vs planted →
+  `<figures>/simulations/recovery.png`.
+- Smoke result: noise-free power on the identity line; noisy power below it
+  (pink noise shares the band); PPC slightly below identity mid-range (≈0.46 at
+  0.5) with or without noise; non-target electrodes 0 throughout.
+
+---
+
+## 2026-09-23 — Snakefile, smokescreen, simulations, no log power
+
+- **Snakefile** runs prepare → ROI power + ROI synchrony → power-synchrony for
+  each config `runs:` entry. `--config smokescreen=true` = first 3 subjects,
+  outputs under `*.smokescreen` (`WOA_SMOKESCREEN` in project_paths).
+  `profiles/default` sets the greedy scheduler (default solver is x86-only).
+- **`snakemake simulations`**: `--simulation-tag` on all build scripts; EEG is
+  replaced by a `config/simulation_config.yaml` generator, pickles go to
+  `<scratch>/sim/<tag>`, figures to `<figures>/simulations/<tag>`. New tags:
+  `hg_null`, `hg_power_frontal` (70-150 Hz gain after onset, frontal only),
+  `hg_ppc_frontal` (110 Hz phase coupling after onset, frontal only).
+  Smoke result: effects recovered in frontal only (power d ≈ +5.8, synchrony
+  +1.0), null ≈ 0 everywhere — after the buffer fix below.
+- **`real_data_buffer_ms` 50 → 500, and build_roi_power now uses it** (it loaded
+  0 ms for multitaper, ~45 ms for Morlet). The 4 Hz-wide 100/120/150 Hz notches
+  ring for a few hundred ms; with the windows 0–50 ms from the clip edges, null
+  power read d ≈ -0.08 in every ROI. Changes every prepost result.
+- All simulation code moved from `helper.py` to `simulate_eeg.py`.
+- **Power is no longer log-transformed** (PI): Cohen's d on raw band power.
+  Pickle keys `log10_lo/hi` → `pow_lo/hi`, so old pickles recompute.
+- `fc.run_sessions` writes `<scratch>/logs/<stage>_errors.log`, one capped line
+  per failed session, overwritten each run.
+
+---
+
+## 2026-09-21 — OpenNeuro / BIDS data; no cluster dependency
+
+The pipeline no longer needs rhino. Data comes from CML's public BIDS datasets
+on OpenNeuro through `bidsreader` (the BIDS counterpart of cmlreaders) and
+`cml_data.py` (S3 listing / download / cache, copied verbatim from
+COGS4290_DataMemoryBrainsSolutions `grader-autograder`); parallelism is a local
+process pool (`--workers N`) instead of cmldask/SLURM. Verified end to end on
+R1111M FR1 (OpenNeuro `ds004789`): prepare_sessions → build_roi_power →
+build_roi_synchrony → build_power_synchrony, single- and multi-worker.
+
+### Session key
+
+`(sub, exp, sess)`. BIDS has no localization/montage, so `loc`/`mon` are gone
+from `ftag`, `get_dfrow`, `sid` tuples, `sess_list_df*`, `excluded_sessions.csv`,
+`unrecoverable_sessions.csv` and the exclusion logs. Old pickles / session
+lists are not readable by the new code.
+
+### Data loading (`helper.py`)
+
+- `bids_reader(dfrow)` → `CMLBIDSReader` for the session, fetching its files on
+  first use; `prefetch_bids(dfrows)` fetches a list up front (used before any
+  multi-worker run so workers never download).
+- `get_eeg` epochs the bipolar recording with `mne.Epochs` on the events'
+  `eegoffset` (= BIDS `sample`) and returns the same `(event, channel, time)`
+  PTSA TimeSeries as before, in microvolts with time in ms, channels in
+  `get_pairs` order. Repeated onsets (WORD + its PRE_WORD copy) are epoched
+  once and expanded. Events whose clip would run off the recording are dropped
+  from both the EEG and the mask (reported), where cmlreaders asserted.
+- `load_pairs_table(reader)` builds the pairs table from
+  `load_combined_channels(acquisition='bipolar')` in the column vocabulary the
+  pipeline reads: `label`, `contact_label_1/2`, `type_1/2` (D/G/S from the BIDS
+  `description`), `mni.x/y/z` (pair centroid, MNI152NLin6ASym), `distance`,
+  `stein.region` / `wb.region` / `ind.region`, `hemisphere`.
+- **A pair takes contact 1's atlas label, or contact 2's when contact 1 has
+  none.** cmlreaders' pairs.json looked the atlas up at the pair midpoint;
+  BIDS has no pair-level lookup, so pairs straddling two regions can be
+  labelled differently from the cmlreaders pipeline. Checked on R1111M FR1
+  ses-0 against the cmlreaders test fixtures (2026-09-22): identical 141 pairs
+  and per-contact labels (100/100), identical WORD onsets (288/288); Burke ROI
+  agrees for 129/141 pairs, fine region for 110/141. The misses are the
+  midpoint-vs-contact rule plus main's grid cascade taking `dk` where BIDS
+  takes `ind`. Monopolar contacts carry the same labels in both, so a
+  monopolar analysis regionalizes identically.
+- Regionalization cascades trimmed to the three atlases BIDS carries:
+  depths `stein → wb`, grid/strip `stein → ind`; `n/a` is a missing-label
+  sentinel. The localization-table merge is gone.
+- Removed: the cmlreaders loader + NFS retry, the legacy PTSA/`TalReader`
+  path (`/data/eeg`), `get_localization`, `coerce_unhashable_event_fields`,
+  `eeg_data_source` plumbing in the simulation hooks.
+
+### Session preparation
+
+- `data_check.py` rewritten: the session list is every (sub, exp, sess)
+  OpenNeuro lists for FR1/catFR1/pyFR (`cml_data.session_dataframe`); the
+  per-session check loads the pairs table and one WORD-locked clip through the
+  production loader, drops flat pairs by scanning the recording, checks the
+  phase path, writes `electrode_information/pairs/<ftag>_pairs.json`. Gone:
+  the hard-coded 284-row cohort list, the curated `channels_to_drop` table
+  (pairs ARE the recording's channels now), the `.mat`/`/protocols` readers,
+  the mstime/eegoffset consistency check (BIDS `sample` is derived from onset).
+- `load_events.py` and `match_events.py` (the stage-2 event writer this repo
+  imported but did not contain) are ported from fc_methods_comparison_cml
+  `riley-thesis`. `MatchedEvents.load_events` adapts BIDS events to the CML
+  schema (`type`=trial_type, `mstime`=onset·1000, `eegoffset`=sample,
+  `rectime`=response_time·1000, `trial`=list, one constant `eegfile`). The
+  per-session `R1171M` unix-mstime fix was dropped (BIDS onsets are
+  recording-relative); the cmlreaders `correct_retrieval_offsets` /
+  `sort_eegfiles` corrections are assumed applied by the BIDS conversion.
+- `prepare_sessions.py`: `--workers N`, `--subjects ...`; the new-experiment
+  cohort (`--newexps`, ICatFR1/IFR1/RepFR1, `presentation_times.py`,
+  `RepFR1_session_presentation_times.csv`, `newexps_overrides`) is removed.
+
+### Dispatch
+
+`fc.run_sessions(fn, items, desc, workers=1, ...)` (process pool) replaces
+`run_sessions_local` / `run_sessions_cluster`; `run_compute_stage` and
+`prepare_sessions` use it. `dask_client.py`, `cluster.py`, `scripts/env.sh`
+and every `--local/--n-workers/--mem/--walltime/--cluster-log-dir/--cluster`
+flag are gone; `--workers N` everywhere.
+
+### Geometry
+
+Every contact is in one space, so `pair_xyz_lead(dfrow)` → `(xyz, lead)` from
+`mni.*`, and `pair_distance_mask` no longer takes `is_depth` /
+`drop_cross_type` (the flag is removed from all scripts). The cmlreaders
+contacts-table MNI cache and the duplicate geometry code in
+`plot_phase_conn_distance.py` are deleted.
+
+### Config
+
+`config.yaml` / `project_paths.py` reduced to what this repo reads:
+`paths.{scratch_dir, exclusion_counts, unrecoverable_sessions_csv}`, bands,
+behavior lists, signal-processing constants, `computation_metrics`. Removed:
+`python_env_path`, `cluster`, `compute_profiles`, `smokescreen*`,
+`newexps_overrides`, `case_study`, the thesis results/intermediate path tree,
+`seed_offset`, `behaviors:` per-beh block, and the corresponding constants.
+Dependencies are pinned in `requirements.txt` (ptsa and bidsreader from
+GitHub).
+
+### Known gaps
+
+- OpenNeuro coverage vs the rhino cohort (2026-09-21): FR1 149/153 subjects,
+  catFR1 31/33, pyFR 42/80. The conversion fix is on rhino, not yet released.
+- `ri` events fall below the 10-event threshold on many sessions (unchanged
+  behaviour; `ri` is not a required behavior).
+- `visualize_phase_connectivity.ipynb` still builds `loc`/`mon` dfrows.
+- The `aec_envelope` simulation DGP imports `fc_aec_dgp`, which this repo
+  never contained (it lives in fc_methods_comparison_cml `sim/`).
 
 ---
 
