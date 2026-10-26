@@ -25,10 +25,10 @@
 \usepackage{multicol}
 \usepackage{ragged2e}
 \usepackage{etoolbox}
-\AtBeginEnvironment{itemize}{\RaggedRight}  % bullet lists left-aligned: no stretched gaps in narrow columns
+\AtBeginEnvironment{itemize}{\RaggedRight}  % bullet lists left-aligned
 \setlength{\emergencystretch}{1.5em}
 \usepackage[left=0.75in,top=0.8in,right=0.75in,bottom=0.8in,columnsep=0.25in]{geometry}
-\makeatletter  % JNeurosci headings: bold sans (LaTeX's own sectioning; titlesec broke columns after \clearpage)
+\makeatletter  
 \renewcommand\section{\@startsection{section}{1}{\z@}{-10pt plus -2pt minus -1pt}{4pt}{\raggedright\sffamily\bfseries\large}}
 \renewcommand\subsection{\@startsection{subsection}{2}{\z@}{-8pt plus -2pt minus -1pt}{2pt}{\raggedright\sffamily\bfseries\normalsize}}
 \renewcommand\subsubsection{\@startsection{subsubsection}{3}{\z@}{-6pt plus -1pt minus -1pt}{2pt}{\raggedright\sffamily\itshape\normalsize}}
@@ -51,25 +51,25 @@
   \ifdefined\abstracttext{\small\bfseries\noindent\abstracttext\par}\vspace{16pt}\fi}]}
 \makeatother
 
-\newcommand{\cut}{\textcolor{red}{\textbf{\,[C]}}}  % can cut
-\newcommand{\new}[1]{\textcolor{blue}{#1}}  % new text
+\newcommand{\cut}{\textcolor{red}{\textbf{\,[C]}}}  
+\newcommand{\new}[1]{\textcolor{blue}{#1}}  
 \newcommand{\panel}[3]{% \panel{label}{width}{file}
   \begin{minipage}[t]{#2\linewidth}\vspace{0pt}\textbf{#1}\par\vspace{4pt}\includegraphics[width=\linewidth]{#3}\end{minipage}}
-\newcommand{\panelc}[3]{% vertically centred version
+\newcommand{\panelc}[3]{
   \begin{minipage}[c]{#2\linewidth}\textbf{#1}\par\vspace{4pt}\includegraphics[width=\linewidth]{#3}\end{minipage}}
 \providecommand{\tightlist}{\setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
 
 
 \title{Neural correlates of word stimulus response in human iEEG}
-\author{Juee Naik, Michael J. Kahana}
+\author{Juee Naik, Riley DeHaan(?), Michael Kahana}
 \date{}
 
 \begin{document}
 \newcommand{\abstracttext}{Intracranial studies of free recall mostly ask how activity during 
 word presentation predicts later memory, while the response to the word itself has received less attention. 
 Work on visual word processing with scalp EEG, MEG and fMRI describes a progression from visual to 
-language and memory regions, but these methods cannot resolve local activity in both space and time, 
-and intracranial studies have typically recorded tens of patients with coverage concentrated 
+language and memory regions, but these methods cannot resolve local activity in both space and time.
+Previous intracranial studies have typically recorded from tens of patients with coverage concentrated 
 in the ventral visual stream. Here we map the word-onset response across the brain in 362 neurosurgical 
 patients performing delayed free recall, comparing each word with the blank screen that preceded it. 
 The response was largest in occipital cortex, where alpha (8--13 Hz) power fell and high-gamma 
@@ -78,35 +78,68 @@ and hippocampal regions. Frontal cortex instead showed increased low-frequency a
  consistent with suppression. High-gamma responses began in lateral occipital cortex (${\sim}$120 ms) 
  and moved forward, reaching orbitofrontal cortex last (${\sim}$300 ms), while alpha synchrony with 
  the rest of the brain increased most in occipital cortex. The occipital response was larger when 
- the word was more expected, after longer waits, and the response predicted later recall only weakly, 
+ the word was more expected, after longer waits, and the response weakly predicted later recall, 
  from ${\sim}$200 ms onward and most persistently in frontal cortex. Together, these results show how 
  the response to a word unfolds across the brain, from early visual engagement to later frontal 
- involvement, and provide a baseline for interpreting memory effects measured during word presentation.}  % bold, full-width abstract under the title (JNeurosci)
+ involvement, and provide a baseline for interpreting cognitive effects measured during word presentation.} 
 \maketitle
-
 
 
 \section*{Introduction}\label{introduction}
 
 \subsection*{The word-onset response in free recall}\label{intro-word-onset}
 
-Most intracranial EEG (iEEG) studies of free recall contrast words that are later recalled with words that are forgotten (the subsequent memory effect, SME), or study the retrieval period. As both conditions contain a word, this contrast measures how responses differ with later memory, but cancels out the response to the word itself. Only a few studies have examined the word-onset response directly. \citet{Kucewicz_2019} showed that high-gamma (HG) activity after word onset moves from visual cortex to the medial temporal lobe (MTL) and then to prefrontal cortex, and \citet{Marks_2021} found that theta, alpha/beta and gamma activity each spread across regions on their own timelines during word encoding.
+Most intracranial EEG (iEEG) studies of free recall contrast words that are later recalled with words 
+that are forgotten (the subsequent memory effect, SME), or study the retrieval period. 
+As both conditions contain a word, this contrast measures how responses differ with later memory, 
+but cancels out the response to the word itself. Only a few studies have examined the word-onset response directly. \citet{Kucewicz_2019} showed that high-gamma (HG) activity after word onset moves from visual cortex to the medial temporal lobe (MTL) and then to prefrontal cortex, and \citet{Marks_2021} found that theta, alpha/beta and gamma activity each spread across regions on their own timelines during word encoding.
 
-\subsection*{High gamma and alpha as markers of cortical engagement}\label{intro-hg-alpha}
+\subsection*{High gamma and alpha as markers of cortical engagement (cut/reduce?)}\label{intro-hg-alpha}
 
-Broadband HG (70--150 Hz) is widely used as a measure of local population spiking \citep{Manning_2009,Ray_2011}. At stimulus onset, alpha and beta power decrease \citep[event-related desynchronization;][]{Pfurtscheller_1999}, which is thought to release cortex from alpha-mediated inhibition \citep{Jensen_2010}; together, an alpha decrease and an HG increase mark a region engaged by a stimulus. Conversely, alpha increases in task-irrelevant cortex are thought to actively suppress it \citep{Jensen_2010}, so the same two measures can separate regions that a word recruits from regions it suppresses.
+Broadband HG (70--150 Hz) is widely used as a measure of local population spiking \citep{Manning_2009,Ray_2011}. 
+At stimulus onset, alpha and beta power decrease \citep[event-related desynchronization;][]{Pfurtscheller_1999}; 
+together, an alpha decrease and an HG increase mark a region engaged by a stimulus. 
+Conversely, alpha increases in task-irrelevant regions are thought to mean suppression \citep{Jensen_2010}, 
+so the same two measures can separate regions that a stimulus engages from regions it suppresses.
 
-\subsection*{Timing of visual word processing}\label{intro-timing}
+\subsection*{Timing of visual word processing (most imp.)}\label{intro-timing}
 
-Reading a word unfolds in stages: visual features are extracted within about 100 ms \citep{Thorpe_1996}, the letter string is recognised as a word at about 200 ms \citep{Cohen_2000}, its sound is activated automatically \citep{van_Orden_1987}, and its meaning is integrated with context at about 400 ms \citep{Kutas_1980}. These stages map onto a reading network that runs from occipital cortex through left fusiform gyrus, which contains the visual word form area \citep[VWFA;][]{Cohen_2000,Dehaene_2011}, to temporal, supramarginal and inferior frontal cortex \citep{Price_2012,Taylor_2013}, with posterior responses to letter strings preceding more anterior responses to lexical status \citep{Nobre_1994,Allison_1994}. Much of this picture comes from scalp EEG and MEG, which resolve when these stages occur but not precisely where, and from fMRI, which resolves where but not when; iEEG records local activity with both millisecond and millimetre precision \citep{Parvizi_2018}. However, most intracranial studies of reading record from tens of patients with sparse, clinically determined coverage and focus on the ventral stream, so the order in which regions across the whole brain respond to a word has not been measured within one large dataset.
+Reading a word progresses in stages: visual features are extracted within about 100 ms \citep{Thorpe_1996}, 
+the letter string is recognised as a word at about 200 ms \citep{Cohen_2000}, its sound is activated 
+automatically \citep{van_Orden_1987}, and its meaning is integrated with context by about 400 ms 
+\citep{Kutas_1980}. These stages imply a reading network that runs from occipital cortex through left 
+fusiform gyrus, which contains the visual word form area \citep[VWFA;][]{Cohen_2000,Dehaene_2011}, to 
+temporal, supramarginal and inferior frontal cortex \citep{Price_2012,Taylor_2013}, with posterior 
+responses to letter strings preceding more anterior responses to lexical status \citep{Nobre_1994,Allison_1994}. 
+Much of this picture comes from scalp EEG, MEG, and fMRI, which resolve the order in which these stages 
+occur but not precisely when and where, while iEEG records local activity with both 
+millisecond and millimetre precision \citep{Parvizi_2018}. However, most intracranial studies of reading 
+record from tens of patients with sparse, clinically determined coverage and focus on the ventral stream, 
+and so the order in which regions across the whole brain respond to a word has not been measured within one 
+large dataset.
 
 \subsection*{Synchrony, expectation and memory}\label{intro-sync-expect-memory}
 
-Beyond local activity, word onset may change how regions synchronize: alpha phase synchrony is thought to coordinate distant regions \citep{Palva_2007}, and in free recall, theta synchrony between regions increases during successful encoding and retrieval \citep{Solomon_2017,Rao_2025}. The response may also depend on when the word is expected: the blank before each word varies in length, and the longer it lasts, the more expected the word becomes \citep{Nobre_2017}. Finally, spectral features recorded while a word is studied predict whether it will be recalled \citep{Ezzyat_2017}, and comparing recalled with forgotten words region by region, HFA predicting later recall appears first in visual, fusiform and medial temporal regions and later in left inferior frontal, posterior parietal and ventrolateral temporal cortex \citep{Burke_2014a}. These approaches either pool features across the brain and the whole word period, or test each region and time point for a difference in mean activity; how well each region's single-trial response predicts recall, and when that prediction arises, has not been measured with classifiers.
+Beyond local activity, word onset may change how regions synchronize. Alpha phase synchrony is thought 
+to coordinate distant regions \citep{Palva_2007}, and in free recall, low-frequency synchrony between regions 
+increases during successful encoding and retrieval \citep{Solomon_2017,Rao_2025}. The response may also 
+depend on when the word is expected: the blank before each word varies in length, and the longer it lasts, 
+the more expected the word becomes \citep{Nobre_2017}. Finally, spectral features recorded while a word 
+is studied predict whether it will be recalled \citep{Ezzyat_2017}, and comparing recalled with forgotten 
+words region by region, HFA predicting later recall appears first in visual, fusiform and medial 
+temporal regions and later in left inferior frontal, posterior parietal and ventrolateral temporal 
+cortex \citep{Burke_2014a}. These approaches either pool features across the brain and the whole word 
+period, or test each region and time point for a difference in mean activity. How well each region's 
+single-trial response predicts recall, and when that prediction arises, has not been measured with 
+classifiers.
 
-\subsection*{The present study}\label{intro-present}
+\subsection*{The present study (change/delete heading)}\label{intro-present}
 
-Here we characterize the word-onset response in 362 patients performing delayed free recall, contrasting each word with the blank screen before it. We ask (1) which regions respond, using alpha and HG power and the full spectrum; (2) in what order regions respond, using HG latency; (3) how regions synchronize, using alpha phase and HG envelope coupling; (4) whether the response depends on how long the participant waited for the word; (5) whether, where and when single-trial responses predict later recall; and (6) whether each patient's response is reliable across sessions.
+Here we characterize the word-onset response in 362 neurosurgical patients performing delayed free recall, 
+contrasting each word with the blank screen before it. We ask (1) which regions respond, and in what order;
+(2) how regions synchronize, using phase and envelope connectivity; (3) whether the response depends 
+on how long the subject waited for the word; (4) whether, where and when single-trial responses 
+predict later recall; and (5) whether each subject's response is reliable across sessions.
 
 \section*{Methods}\label{methods}
 
@@ -565,7 +598,7 @@ Recall prediction appeared only after the early visual response, briefly in occi
 \end{itemize}
 
 \subsection*{Stimulus-locked activity in
-connectivity}\label{stimulus-locked-activity-in-connectivity}
+connectivity (cut?)}\label{stimulus-locked-activity-in-connectivity}
 
 \begin{itemize}
 \tightlist
@@ -573,12 +606,12 @@ connectivity}\label{stimulus-locked-activity-in-connectivity}
   Subtracting the average ERP leaves a residual because amplitude and
   latency vary across trials: \citealp{Truccolo_2002,Wang_2008,Knuth_2006}.
 \item
-  Evoked and induced activity can't be cleanly separated: \citealp{David_2006,Shah_2004}. This supports the PI's position.
+  Evoked and induced activity can't be cleanly separated: \citealp{David_2006,Shah_2004}. Supports Mike's / Riley's position.
 \item
   Is alpha phase reset? For: \citealp{Makeig_2002,Hanslmayr_2007}.
-  Against: \citealp{Mazaheri_2006}. Hard to tell apart: \citealp{Yeung_2004,Sauseng_2007}.
+  Against: \citealp{Mazaheri_2006}. Hard to tell apart: \citealp{Yeung_2004,Sauseng_2007}
 \item
-  Task-evoked activity inflates connectivity: \citealp{Cole_2019,van_Diepen_2018,Kramer_2008} (sharp transients).
+  Task-evoked activity inflates connectivity: \citealp{Cole_2019,van_Diepen_2018,Kramer_2008} 
 \item
   Alternatives to subtraction:
 

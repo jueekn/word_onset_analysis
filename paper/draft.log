@@ -783,25 +783,25 @@ LaTeX Info: Redefining \nameref on input line 67.
 \openout3 = `draft.out'.
 
 LaTeX Font Info:    Font shape `TU/texgyrepagella-math.otf(2)/m/n' will be
-(Font)              scaled to size 9.00096pt on input line 69.
+(Font)              scaled to size 9.00096pt on input line 85.
 LaTeX Font Info:    Font shape `TU/texgyrepagella-math.otf(2)/m/n' will be
-(Font)              scaled to size 6.00064pt on input line 69.
+(Font)              scaled to size 6.00064pt on input line 85.
 LaTeX Font Info:    Font shape `TU/texgyrepagella-math.otf(2)/m/n' will be
-(Font)              scaled to size 5.00053pt on input line 69.
+(Font)              scaled to size 5.00053pt on input line 85.
 LaTeX Font Info:    Font shape `TU/texgyrepagella-math.otf(3)/m/n' will be
-(Font)              scaled to size 8.99904pt on input line 69.
+(Font)              scaled to size 8.99904pt on input line 85.
 LaTeX Font Info:    Font shape `TU/texgyrepagella-math.otf(3)/m/n' will be
-(Font)              scaled to size 5.99936pt on input line 69.
+(Font)              scaled to size 5.99936pt on input line 85.
 LaTeX Font Info:    Font shape `TU/texgyrepagella-math.otf(3)/m/n' will be
-(Font)              scaled to size 4.99947pt on input line 69.
+(Font)              scaled to size 4.99947pt on input line 85.
 LaTeX Font Info:    Font shape `TU/texgyreheros(0)/m/n' will be
-(Font)              scaled to size 8.95035pt on input line 73.
+(Font)              scaled to size 8.95035pt on input line 88.
 LaTeX Font Info:    Font shape `TU/texgyreheros(0)/b/n' will be
-(Font)              scaled to size 8.68515pt on input line 73.
+(Font)              scaled to size 8.68515pt on input line 88.
 LaTeX Font Info:    Font shape `TU/texgyreheros(0)/b/n' will be
-(Font)              scaled to size 10.42218pt on input line 73.
+(Font)              scaled to size 10.42218pt on input line 88.
 
-Underfull \hbox (badness 1354) in paragraph at lines 77--78
+Underfull \hbox (badness 1354) in paragraph at lines 92--96
 \TU/texgyrepagella(0)/m/n/10 forgotten (the subsequent memory effect, SME), or
  []
 
@@ -810,32 +810,32 @@ Underfull \hbox (badness 1354) in paragraph at lines 77--78
 
 ]
 LaTeX Font Info:    Font shape `TU/texgyrepagella-math.otf(2)/m/n' will be
-(Font)              scaled to size 10.00107pt on input line 161.
+(Font)              scaled to size 10.00107pt on input line 210.
 LaTeX Font Info:    Font shape `TU/texgyrepagella-math.otf(2)/m/n' will be
-(Font)              scaled to size 7.40077pt on input line 161.
+(Font)              scaled to size 7.40077pt on input line 210.
 LaTeX Font Info:    Font shape `TU/texgyrepagella-math.otf(2)/m/n' will be
-(Font)              scaled to size 5.50058pt on input line 161.
+(Font)              scaled to size 5.50058pt on input line 210.
 LaTeX Font Info:    Font shape `TU/texgyrepagella-math.otf(3)/m/n' will be
-(Font)              scaled to size 9.99893pt on input line 161.
+(Font)              scaled to size 9.99893pt on input line 210.
 LaTeX Font Info:    Font shape `TU/texgyrepagella-math.otf(3)/m/n' will be
-(Font)              scaled to size 7.3992pt on input line 161.
+(Font)              scaled to size 7.3992pt on input line 210.
 LaTeX Font Info:    Font shape `TU/texgyrepagella-math.otf(3)/m/n' will be
-(Font)              scaled to size 5.4994pt on input line 161.
+(Font)              scaled to size 5.4994pt on input line 210.
 
-Underfull \hbox (badness 10000) in paragraph at lines 193--197
+Underfull \hbox (badness 10000) in paragraph at lines 242--246
 []\TU/texgyrepagella(0)/m/n/10 Alpha: ciPLV (MNE 
  []
 
 [2]
 LaTeX Font Info:    Font shape `TU/lmtt/bx/n' in size <10> not available
-(Font)              Font shape `TU/lmtt/b/n' tried instead on input line 227.
+(Font)              Font shape `TU/lmtt/b/n' tried instead on input line 276.
 
-Underfull \hbox (badness 1460) in paragraph at lines 232--236
+Underfull \hbox (badness 1460) in paragraph at lines 281--285
 []\TU/texgyrepagella(0)/m/n/10 Latency: latency_ms ~ lobe + (1|sub) + 
  []
 
 
-Underfull \hbox (badness 1910) in paragraph at lines 236--240
+Underfull \hbox (badness 1910) in paragraph at lines 285--289
 []\TU/texgyrepagella(0)/m/n/10 Power: cohens_d ~ lobe × band + (1 + 
  []
 
@@ -844,11 +844,11 @@ File: img/fig1_power.png Graphic file (type bmp)
 File: img/fig2b_occipital.png Graphic file (type bmp)
 <img/fig2b_occipital.png>
 LaTeX Font Info:    Font shape `TU/texgyrepagella-math.otf(2)/m/n' will be
-(Font)              scaled to size 8.00085pt on input line 299.
+(Font)              scaled to size 8.00085pt on input line 348.
 LaTeX Font Info:    Font shape `TU/texgyrepagella-math.otf(3)/m/n' will be
-(Font)              scaled to size 7.99915pt on input line 299.
+(Font)              scaled to size 7.99915pt on input line 348.
 LaTeX Font Info:    Font shape `TU/texgyreheros(0)/m/it' will be
-(Font)              scaled to size 8.95035pt on input line 323.
+(Font)              scaled to size 8.95035pt on input line 372.
 File: img/fig2a_spectrum.png Graphic file (type bmp)
 <img/fig2a_spectrum.png>
 File: img/fig1b_power_mixed.png Graphic file (type bmp)
@@ -870,13 +870,13 @@ File: img/fig7_recall_time.png Graphic file (type bmp)
 File: img/fig8_reliability.png Graphic file (type bmp)
 <img/fig8_reliability.png>
  [8]
-Underfull \hbox (badness 1852) in paragraph at lines 514--515
+Underfull \hbox (badness 1852) in paragraph at lines 563--564
 \TU/texgyrepagella(0)/m/n/10 and the effects of word properties move anteriorly
 
  []
 
 
-Underfull \hbox (badness 2261) in paragraph at lines 522--523
+Underfull \hbox (badness 2261) in paragraph at lines 571--572
 \TU/texgyrepagella(0)/m/n/10 Temporally expected events evoke larger visual re-
 
  []
@@ -925,4 +925,4 @@ File: img/figS2_synchrony_subjects.png Graphic file (type bmp)
 Package rerunfilecheck Info: File `draft.out' has not changed.
 (rerunfilecheck)             Checksum: D41D8CD98F00B204E9800998ECF8427E;0.
  )
-Output written on draft.xdv (13 pages, 452768 bytes).
+Output written on draft.xdv (13 pages, 451132 bytes).
