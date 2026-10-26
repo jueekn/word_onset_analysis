@@ -4,13 +4,9 @@ Word-onset spectral power and phase connectivity in human intracranial EEG,
 across 12 ROIs (used in Burke et. al. 2013), from the Penn Computational Memory Lab free-recall
 datasets (FR1 / catFR1 / pyFR).
 
-The core contrast is **`word_on`**: high-frequency activity while a word is on
+The contrast used is **`word_on`**: activity while a word is on
 the screen (0–600 ms after onset) versus the blank inter-stimulus interval
-before it (−700 to −100 ms), for the same trials. It extends Long et al. (2020),
-*Feed-forward, feed-back, and distributed feature representation during visual
-word recognition*, to a larger electrode sample with bipolar re-referencing, and
-adds phase-connectivity analyses.
-
+before it (−700 to −100 ms), for the same events. 
 ---
 
 ## Requirements
@@ -37,7 +33,7 @@ Not every rhino session is on OpenNeuro yet (as of 2026-09: FR1 149/153 of the
 original subjects, catFR1 31/33, pyFR 42/80). The session list is whatever
 OpenNeuro lists, so the cohort grows as the release is updated.
 
-## How it runs
+## To run
 
 ```bash
 snakemake --cores 8                               # full run (config.yaml `runs`: alpha ciPLV + high-gamma AEC-c)
@@ -46,18 +42,9 @@ snakemake simulations --cores 4                   # validity checks -> figures/s
 # add --config longetal=true for the Long et al. 2020 replication (power only) -> *.longetal
 ```
 
-or by hand:
-
-```bash
-python prepare_sessions.py --n-subjects 3 --workers 4   # session list, data check, events
-python compute.py --workers 4                            # power + synchrony, one load per session
-python plot_boxplots.py; python plot_spectrum.py; python plot_case_studies.py
-python plot_timecourse.py; python plot_epoch_network.py; python plot_latency.py
-```
-
 `prepare_sessions.py` writes the session list and per-session artifacts under
 `config.yaml paths.scratch_dir` (default `~/scratch/word_onset_analysis/scratch`,
-outside the repo; smokescreen / longetal runs use sibling `scratch.*` folders).
+outside the repo; smokescreen runs use `scratch.*` folders).
 `--subjects` / `--n-subjects` restrict it. Sessions whose 100/120/150 Hz mains
 harmonics exceed 5x their neighbours are excluded (`max_line_harmonic_ratio`).
 
@@ -77,19 +64,9 @@ whole real pipeline.
 
 Each plot stage redraws one figure per analysis with a row per band already
 plotted into its directory (alpha, high gamma), paired t per ROI, BH-FDR.
-
-| directory | figure | |
-|---|---|---|
-| `burke_roi_power/` | `roi_power_word_on.png` | Cohen's *d* of power per ROI |
-| | `power_spectrum_word_on_rois.png` / `_occipital.png` | t per ROI x log-spaced frequency bin (5–100 Hz); occipital subregions |
-| | `power_timecourse_word_on_high_gamma_multitaper_50ms.png` | *d* vs latency per ROI — **gamma only** |
-| `burke_roi_synchrony/` | `roi_synchrony_word_on.png` | on − off synchrony per ROI (alpha ciPLV, high-gamma AEC-c), each electrode's mean over all partners |
-| | `roi_synchrony_epochs_word_on.png` / `_fine_` | 200 ms epoch network: hubs (region pairs with >= 100 subjects), top-5 edges per hub |
-| `simulations/` | `recovery.png`, `<tag>/…` | validity checks (config/simulation_config.yaml) |
-
 ---
 
-## Key defaults
+## Defaults
 
 | parameter | value | note |
 |---|---|---|
@@ -131,6 +108,3 @@ exclusion_log.py            event/session exclusion counts
 misc.py  project_paths.py  ptsa_patches.py   pickles, config constants, PTSA numpy patch
 config/config.yaml          all tunable parameters
 ```
-
-`region_translator.csv` maps atlas labels → region; `region_to_burke_lobe.csv`
-maps region → one of the 12 ROIs.
