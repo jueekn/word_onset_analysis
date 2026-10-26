@@ -62,7 +62,7 @@
 
 
 \title{Neural correlates of word stimulus response in human iEEG}
-\author{Juee Naik, Riley DeHaan(?), Michael Kahana}
+\author{Juee Naik, (Riley DeHaan), Michael Kahana}
 \date{}
 
 \begin{document}
@@ -145,41 +145,16 @@ predict later recall; and (5) whether each subject's response is reliable across
 \section*{Methods}\label{methods}
 
 \subsection*{Data and cohort}\label{data-and-cohort}
-
-\begin{itemize}
-\tightlist
-\item
-  OpenNeuro BIDS releases of the RAM / Penn free-recall data (FR1,
-  catFR1) and pyFR, bipolar montage. OpenNeuro ds004789 (FR1), ds004809
-  (catFR1), ds004865 (pyFR).
-\item
-  362 subjects, 1009 sessions: FR1 232 subj / 466 sess, catFR1 212 /
-  465, pyFR 38 / 78.
-\item
-  Bipolar channels whose contacts are \textgreater{} 20 mm apart, and
-  flat channels are dropped.
-\item
-  Exclusions: missing / \textless{} 499 Hz sampling rate, denylist /
-  manual, mains-harmonic peak \textgreater{} 5× its neighbours at a
-  non-notched frequency (9 sessions, all 100 Hz peaks at 60 Hz sites).
-\item
-  Contrast: \textbf{word on} (0--600 ms after word onset) vs
-  \textbf{word off} (−700 to −100 ms, the blank screen before the same
-  word). Words on screen 1600 s; blank between words
-  \textasciitilde750-1250 ms.
-\end{itemize}
+362 subjects from the RAM / Penn free-recall data (FR1,
+catFR1) and pyFR, bipolar montage. OpenNeuro ds004789 (FR1): 232 subjects, ds004809 (catFR1): 212 subjects, and ds004865 (pyFR): 38 subjects. Bipolar channels whose contacts are \textgreater{} 20 mm apart and flat channels are dropped. Excluded sessions include those with missing / \textless{} 499 Hz sampling rate, or mains-harmonic peak \textgreater{} 5× its neighbours at a
+non-notched frequency (9 sessions, all 100 Hz peaks at 60 Hz sites). 
+(Hospitals list:)
 
 \subsection*{Preprocessing}\label{preprocessing}
 
-\begin{itemize}
-\tightlist
-\item
-  Word-off and word-on clips loaded separately per word, each with 500
-  ms of real data buffer on both sides.
-\item
-  Resampled to 500 Hz, notch 60 Hz + 120 Hz harmonic (4th-order
-  Butterworth, ±2 Hz); buffer cropped before every estimate. \citep{Widmann_2015,de_Cheveign__2019,Gramfort_2013,Virtanen_2020}
-\end{itemize}
+The windows used are "word on" (0--600 ms after word onset) contrasted against "word off" (−700 to −100 ms, the blank screen before the same word). Words are on screen for a total of 1600 s, while the blank between words ranges from \textasciitilde750-1250 ms.
+Word-off and word-on clips were loaded separately per word, each with a 500
+ms buffer on both sides. The data was then resampled to 500 Hz, notched at 60 Hz and its 120 Hz harmonic to remove line noise (4th-order Butterworth filter, ±2 Hz width), and the buffer was clipped before further analyses.
 
 \subsection*{Electrode localization}\label{electrode-localization}
 
