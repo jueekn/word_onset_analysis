@@ -145,16 +145,13 @@ predict later recall; and (5) whether each subject's response is reliable across
 \section*{Methods}\label{methods}
 
 \subsection*{Data and cohort}\label{data-and-cohort}
-362 subjects from the RAM / Penn free-recall data (FR1,
-catFR1) and pyFR, bipolar montage. OpenNeuro ds004789 (FR1): 232 subjects, ds004809 (catFR1): 212 subjects, and ds004865 (pyFR): 38 subjects. Bipolar channels whose contacts are \textgreater{} 20 mm apart and flat channels are dropped. Excluded sessions include those with missing / \textless{} 499 Hz sampling rate, or mains-harmonic peak \textgreater{} 5× its neighbours at a
-non-notched frequency (9 sessions, all 100 Hz peaks at 60 Hz sites). 
+We analyzed intracranial EEG (iEEG) recordings collected from 362 neurosurgical patients with pharmacoresistant epilepsy (x males, y females) who completed a delayed free-recall memory task while implanted with intracranial electrodes for clinical seizure monitoring (OpenNeuro datasets: ds004789 (FR1), ds004809 (catFR1), and ds004865 (pyFR)). Subjects studied lists of words, completed a brief arithmetic distractor task (self-paced, of the form A + B + C = ??), and then attempted aloud recall during a retrieval period lasting 30 or 45 seconds. A full session of the task consisted of 12 or 25 trials, where each trial presented 12 or 15 words. Data were contributed by a multi-site collaboration (including hospitals in the United States and Germany), with electrode type and placement determined solely by clinical considerations and with local institutional review board approval and informed consent obtained at each site. EEG was recorded at site-specific sampling rates (200-2000 Hz) and synchronized with behavioral events using hardware pulses or online timing messages.
 (Hospitals list:)
 
 \subsection*{Preprocessing}\label{preprocessing}
 
-The windows used are "word on" (0--600 ms after word onset) contrasted against "word off" (−700 to −100 ms, the blank screen before the same word). Words are on screen for a total of 1600 s, while the blank between words ranges from \textasciitilde750-1250 ms.
-Word-off and word-on clips were loaded separately per word, each with a 500
-ms buffer on both sides. The data was then resampled to 500 Hz, notched at 60 Hz and its 120 Hz harmonic to remove line noise (4th-order Butterworth filter, ±2 Hz width), and the buffer was clipped before further analyses.
+Words are on screen for a total of 1600 s, while the blank between words ranges from \textasciitilde750-1250 ms. The windows used for most analyses are "word on" (0--600 ms after word onset) contrasted against "word off" (−700 to −100 ms, the blank screen before the same word). Word-off and word-on clips were loaded separately per word, each with a 500 ms buffer on both sides to mitigate edge artifacts. The data was then resampled to 500 Hz, notched at 60 Hz and its 120 Hz harmonic to remove line noise (4th-order Butterworth filter, ±2 Hz width), and the buffers were clipped before further analyses.
+Bipolar channels whose contacts are \textgreater{} 20 mm apart and flat channels were dropped. Sessions with missing / \textless{} 499 Hz sampling rate, or mains-harmonic peak \textgreater{} 5× its neighbours at a non-notched frequency (9 sessions) were dropped. 
 
 \subsection*{Electrode localization}\label{electrode-localization}
 
