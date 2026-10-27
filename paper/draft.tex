@@ -145,67 +145,42 @@ predict later recall; and (5) whether each subject's response is reliable across
 \section*{Methods}\label{methods}
 
 \subsection*{Data and cohort}\label{data-and-cohort}
-We analyzed intracranial EEG (iEEG) recordings collected from 362 neurosurgical patients with pharmacoresistant epilepsy (x males, y females) who completed a delayed free-recall memory task while implanted with intracranial electrodes for clinical seizure monitoring (OpenNeuro datasets: ds004789 (FR1), ds004809 (catFR1), and ds004865 (pyFR)). Subjects studied lists of words, completed a brief arithmetic distractor task (self-paced, of the form A + B + C = ??), and then attempted aloud recall during a retrieval period lasting 30 or 45 seconds. A full session of the task consisted of 12 or 25 trials, where each trial presented 12 or 15 words. Data were contributed by a multi-site collaboration (including hospitals in the United States and Germany), with electrode type and placement determined solely by clinical considerations and with local institutional review board approval and informed consent obtained at each site. EEG was recorded at site-specific sampling rates (200-2000 Hz) and synchronized with behavioral events using hardware pulses or online timing messages.
-(Hospitals list:)
+We analyzed intracranial EEG (iEEG) recordings from 362 patients with pharmacoresistant epilepsy (x males, y females) who completed a delayed free-recall task while implanted with electrodes for clinical seizure monitoring. On each trial, subjects studied a list of words, completed an arithmetic distractor task (20--25 s of problems of the form ``$A + B + C = ??$'', with $A$, $B$ and $C$ drawn from the integers 1--9), and then recalled aloud as many words as they could during a 30 s retrieval period (45 s in a variant of the task). Lists were drawn from a pool of common English nouns; in catFR1, each list was built from words in a small number of semantic categories. A countdown preceded each list. Each word stayed on screen for 1600 ms and was followed by a blank screen of 750--1000 ms (800--1200 ms in the variant). A session consisted of 12 trials of 12 words (25 trials of 15 words in the variant). Data were collected as part of a multi-site collaboration at Columbia University Medical Center (New York, NY), Dartmouth-Hitchcock Medical Center (Lebanon, NH), Emory University Hospital (Atlanta, GA), the Hospital of the University of Pennsylvania (Philadelphia, PA), the Mayo Clinic (Rochester, MN), the National Institutes of Health (Bethesda, MD), the University of Colorado Anschutz Medical Campus (Aurora, CO), the University of Texas Health Science Center at San Antonio (San Antonio, TX), the University of Texas Southwestern Medical Center (Dallas, TX), and Thomas Jefferson University Hospital (Philadelphia, PA). Electrode type and placement were determined solely by clinical needs. Each site's institutional review board approved the protocol, and all patients gave informed consent. EEG was recorded at site-specific sampling rates (200--2000 Hz) and aligned to behavioral events using hardware synchronization pulses or online timing messages.
+
+\subsection*{Events and analysis windows}\label{events}
+We compared a ``word on'' window ($0$ to $-700$ ms after word onset) with a ``word off'' window ($-700$ to $-100$ ms, the blank screen before the same word), so that each pair of windows came from the same trial. The word-off window ends 100 ms before onset, and because the shortest blank is 750 ms, it starts at least 50 ms after the previous word left the screen. Both windows are 600 ms long, so spectral estimates have the same resolution and bias in each. We excluded the first word of each list, as it follows the countdown rather than a blank screen. After exclusions, X $\pm$ Y (mean $\pm$ SD across subjects) word events per session remained.
 
 \subsection*{Preprocessing}\label{preprocessing}
+Recordings were re-referenced to a bipolar montage by subtracting the signals of adjacent contacts \citep{Mercier_2022,Li_2018}. Word-on and word-off clips were loaded separately for each word, each extended by 500 ms of real (not mirrored) data on both sides to absorb filter edge artifacts. Clips were resampled to 500 Hz and filtered for line noise with 4th-order Butterworth band-stop filters ($\pm$2 Hz) at the mains frequency (60 Hz). To give every subject the same passband within the high-gamma range, we also notched the 100, 120 and 150 Hz harmonics in all recordings. The buffers were then removed before any further analysis.
 
-Words are on screen for a total of 1600 s, while the blank between words ranges from \textasciitilde750-1250 ms. The windows used for most analyses are "word on" (0--600 ms after word onset) contrasted against "word off" (−700 to −100 ms, the blank screen before the same word). Word-off and word-on clips were loaded separately per word, each with a 500 ms buffer on both sides to mitigate edge artifacts. The data was then resampled to 500 Hz, notched at 60 Hz and its 120 Hz harmonic to remove line noise (4th-order Butterworth filter, ±2 Hz width), and the buffers were clipped before further analyses.
-Bipolar channels whose contacts are \textgreater{} 20 mm apart and flat channels were dropped. Sessions with missing / \textless{} 499 Hz sampling rate, or mains-harmonic peak \textgreater{} 5× its neighbours at a non-notched frequency (9 sessions) were dropped. 
+We excluded bipolar pairs whose contacts were more than 20 mm apart and channels with flat signals. We excluded whole sessions with a missing or sub-500 Hz sampling rate, because after resampling to 500 Hz the 250 Hz Nyquist limit must sit well above the 70--150 Hz high-gamma band. We also excluded sessions with residual line noise, defined as a spectral peak at a non-notched mains harmonic more than five times the power at neighbouring frequencies (9 sessions). 
 
 \subsection*{Electrode localization}\label{electrode-localization}
-
-\begin{itemize}
-\tightlist
-\item
-  Bipolar pairs labelled by lab localization default (depth: volumetric;
-  grid/strip: surface). (Desikan et al.~2006; Fischl et al.~2002, 2004;
-  Avants et al.~2008; Wang et al.~2013; Yushkevich et al.~2015; Azarion
-  et al.~2014 (check); bipolar: Mercier et al.~2022; Li et al.~2018)
-\item
-  Depth pairs with no volumetric label in the BIDS release: label recovered from the RAM
-  imaging pipeline's label files (pair file, or the midpoint contact for skip pairs; white
-  matter / ventricles stay unlabelled); the 13\% without a recoverable label get the majority
-  label of expert-labelled depth pairs of other subjects within 5 mm (MNI).
-\item
-  12 Burke ROIs: frontal, temporal, parietal, occipital, limbic,
-  hippocampus × hemisphere; sub regions = anatomical labels within them.
-  \citep{Burke_2013}
-\end{itemize}
+Electrode contacts were localized with the lab's standard pipeline. Each patient's pre-implant T1-weighted MRI was segmented and parcellated with FreeSurfer \citep{Fischl_2002,Fischl_2004,Desikan_2006}, and the post-implant CT was co-registered to it [ANTs: add Avants et al.\ 2008 to refs.bib]. Contacts were identified manually and assigned anatomical labels automatically \citep{Dykstra_2012}; a subset of labels was reviewed by neuroradiologists. Where a T2-weighted MRI was available, medial temporal lobe subregions were labelled automatically \citep{Yushkevich_2014}. Each bipolar pair took the label at the midpoint of its two contacts, from volumetric labels for depth electrodes and surface labels for grid and strip electrodes \citep{Azarion_2014}. For pairs whose label was missing from the standard database, we recovered it from the imaging pipeline's own label files: either the pair's own midpoint label or, when the two contacts skipped a contact, that intermediate contact's label. We grouped labels into 12 regions of interest: frontal, temporal, parietal, occipital and limbic cortex (excluding the hippocampus), plus the hippocampus, each split by hemisphere \citep{Burke_2013}. Supplementary Table (ADD) lists the mapping from anatomical labels to regions.
 
 \subsection*{Power}\label{power}
-
-\begin{itemize}
-\tightlist
-\item
-  Alpha (8--13 Hz) and 5--150 Hz spectrum: multitaper, 2 Hz bandwidth,
-  600 ms windows; spectrum in 11 log-spaced bins (50, 60, 100, 120 Hz
-  $\pm$ 2 Hz excluded). \citep{Thomson_1982,Slepian_1978,Percival_1993,Prerau_2017}
-\item
-  High gamma (70--150 Hz): Hilbert in 8 × 10 Hz sub-bands, each divided
-  by its word-off mean, averaged (broadband, every frequency weighted
-  equally), as HFA is better described as a broadband signal than as an oscillation \citep{Burke_2015a}. \citep{Edwards_2009,Bruns_2004,Manning_2009,Ray_2011} \textbf{(check Edwards et al.\ 2009)}
-\item
-  Per electrode: Cohen's d of per-trial power, word on vs word off.
-  \citep{Cohen_2013,Lakens_2013}
-\end{itemize}
+Alpha (8--13 Hz) and 5--150 Hz spectrum: multitaper, 2 Hz bandwidth,
+600 ms windows; spectrum in 11 log-spaced bins (50, 60, 100, 120 Hz
+$\pm$ 2 Hz excluded). \citep{Thomson_1982,Slepian_1978,Percival_1993,Prerau_2017}
+High gamma (70--150 Hz): Hilbert in 8 × 10 Hz sub-bands, each divided
+by its word-off mean, averaged (broadband, every frequency weighted
+equally), as HFA is better described as a broadband signal than as an oscillation \citep{Burke_2015a}. \citep{Edwards_2009,Bruns_2004,Manning_2009,Ray_2011} \textbf{(check Edwards et al.\ 2009)}
+Per electrode: Cohen's d of per-trial power, word on vs word off.
+\citep{Cohen_2013,Lakens_2013}
 
 \subsection*{High-gamma latency}\label{high-gamma-latency}
 
-\begin{itemize}
-\tightlist
-\item
   Responsive electrodes: per-trial high-gamma power word on
   \textgreater{} word off (one-tailed Welch t test, BH-FDR within
   session): 4950 of 122,339 electrode-sessions, 299 subjects. \citep{WELCH_1947,Benjamini_1995}; on selecting electrodes and measuring them in the same data, see \citet{Kriegeskorte_2009}
-\item
+
   Latency: trial-mean envelope minus word-off mean, 30 ms smoothing,
   first time it reaches half its peak within 0--800 ms (half-maximum).
   \citep{Kiesel_2007,Liesefeld_2018}; on filter smearing of onsets, see \citet{VanRullen_2011}
-\item
+
   Subject median per region → mean ± SEM across subjects; 12 ROIs and
   subregions (hemispheres pooled).
-\end{itemize}
+
 
 \subsection*{Synchrony}\label{synchrony}
 
