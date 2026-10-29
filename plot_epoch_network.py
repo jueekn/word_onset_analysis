@@ -3,8 +3,9 @@ Solomon et al. 2017 style), alpha ciPLV and high-gamma AEC-c rows, 200 ms epochs
 
 Per subject and region pair, the mean per-epoch change (epoch minus the mean of
 three word-off epochs; compute.py) over the pair's electrode pairs. Hubs: a
-region's mean change over its connections with >= MIN_SUBJECTS_PAIR subjects,
-one-sample t across subjects, two-stage FDR over regions x epochs; edges: each
+region's mean change over its connections minus that over all other connections
+(pairs with >= MIN_SUBJECTS_PAIR subjects), one-sample t across subjects, BH-FDR
+over regions x epochs; edges: each
 hub's top-5 connections (fc.epoch_network_figure). 12 ROIs, and the fine
 anatomical regions within them.
 -> figures/burke_roi_synchrony/roi_synchrony_epochs_(fine_)word_on.png
@@ -55,14 +56,20 @@ def epoch_table(save_root: str, band: str, metric: str, lobe_of: dict, n_session
 
 
 def hubs(etbl: pd.DataFrame) -> pd.DataFrame:
-    """Region's mean change over its connections with >= MIN_SUBJECTS_PAIR subjects;
-    t across subjects, two-stage FDR over regions x epochs."""
+    """Region's mean change over its connections minus the mean change over all other
+    connections (pairs with >= MIN_SUBJECTS_PAIR subjects), per subject x epoch: the region
+    stands out from the network, not merely changes with it; t across subjects, BH-FDR over
+    regions x epochs."""
     n_pair = etbl.groupby("roi")["sub"].nunique()
     htbl = etbl[etbl["roi"].isin(n_pair.index[n_pair >= fc.MIN_SUBJECTS_PAIR])]
     ab = htbl["roi"].str.split("|", expand=True)
-    long = pd.concat([htbl.assign(roi=ab[0]), htbl[ab[0] != ab[1]].assign(roi=ab[1])])
-    return fc.bin_stats(long.groupby(["sub", "roi", "epoch_ms"], as_index=False)["sync_diff"].mean(),
-                        "epoch_ms", "sync_diff", fdr="fdr_tsbky")
+    rel = []
+    for r in sorted(set(ab[0]) | set(ab[1])):
+        inv = (ab[0] == r) | (ab[1] == r)
+        d = (htbl[inv].groupby(["sub", "epoch_ms"])["sync_diff"].mean()
+             - htbl[~inv].groupby(["sub", "epoch_ms"])["sync_diff"].mean())
+        rel.append(d.dropna().reset_index().assign(roi=r))
+    return fc.bin_stats(pd.concat(rel), "epoch_ms", "sync_diff")
 
 
 def network_csvs(save_root, band, metric, path, lobe_of, n_sessions, fine, tag) -> None:

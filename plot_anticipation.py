@@ -7,7 +7,7 @@ trial-mean high-gamma envelope minus the (common) word-off mean. Long - short pe
 electrode -> subject mean per ROI -> mean +/- SEM, one-sample t vs 0, BH-FDR over
 ROIs (fc.roi_stats).
 -> figures/latency/hg_anticipation_word_on.png (peak change per ROI)
-   figures/latency/wait_times_word_on.png (blank durations, dashed line at the median)
+   figures/latency/wait_times_word_on.png (blank durations; central 95% of the session medians shaded, overall median dashed)
 
     python plot_anticipation.py [--simulation-tag TAG]
 """
@@ -31,13 +31,14 @@ BEH = "word_on"
 def main() -> None:
     args, save_root = fc.plot_args(__doc__, join("figures", "latency"))
     lobe_of = fc.load_burke_maps()
-    rows, waits = [], []
+    rows, waits, medians = [], [], []
     for f in tqdm(fc.session_files(power_dir(save_root, BEH, "high_gamma"), "_power.pkl", args.n_sessions),
                   desc="sessions"):
         p = fc.load_pickle(str(f))
         x, t = response(p)
         blank = np.asarray(p["blank_ms_hi"], float)
         waits.append(blank[np.isfinite(blank)])
+        medians.append(np.nanmedian(blank))
         long, short = blank > np.nanmedian(blank), blank < np.nanmedian(blank)
         roi = fc.roi_of_reg_full(p["reg_full"], lobe_of)
         for c in np.flatnonzero(responsive(p)):
@@ -66,7 +67,10 @@ def main() -> None:
     lo, hi = np.percentile(w, [0.1, 99.9])   # a few pauses of several seconds would stretch the axis
     # bins of one 60 Hz screen frame: word timing is frame-locked, finer bins alias
     ax.hist(w[(w >= lo) & (w <= hi)], bins=np.arange(lo, hi + 1000 / 60, 1000 / 60), color="0.6", edgecolor="white", lw=0.3)
-    ax.axvline(np.median(w), color="black", ls="--", lw=1.5, label=f"median {np.median(w):.0f} ms")
+    lo95, hi95 = np.percentile(medians, [2.5, 97.5])
+    ax.axvspan(lo95, hi95, color="tab:red", alpha=0.25, lw=0, zorder=3,
+               label=f"95% of session\nmedians ({lo95:.0f}–{hi95:.0f} ms)")
+    ax.axvline(np.median(w), color="tab:red", ls="--", lw=1, zorder=4, label=f"overall median ({np.median(w):.0f} ms)")
     ax.set_xlabel("Blank before the word (ms)", fontsize=12)
     ax.set_ylabel("Words", fontsize=12)
     ax.legend(frameon=False, fontsize=10)

@@ -24,6 +24,8 @@
 \graphicspath{{img/}{paper/img/}}  % figures found whether compiled from paper/ or the repo root (Overleaf)
 \usepackage{float}
 \usepackage{multicol}
+\usepackage{tikz}
+\usetikzlibrary{decorations.pathreplacing}
 \usepackage{ragged2e}
 \usepackage{etoolbox}
 \AtBeginEnvironment{itemize}{\RaggedRight}  % bullet lists left-aligned
@@ -66,7 +68,7 @@
 \date{}
 
 \begin{document}
-\newcommand{\abstracttext}{Intracranial studies of free recall mostly ask how activity during 
+\newcommand{\abstracttext}{Studies of free recall mostly ask how activity during 
 word presentation predicts later memory, while the response to the word itself has received less attention. 
 Work on visual word processing with scalp EEG, MEG and fMRI describes a progression from visual to 
 language and memory regions, but these methods cannot resolve local activity in both space and time.
@@ -81,7 +83,7 @@ and hippocampal regions. Frontal cortex instead showed increased low-frequency a
  the rest of the brain increased most in occipital cortex. The occipital response was larger when 
  the word was more expected, after longer waits, and the response weakly predicted later recall, 
  from ${\sim}$200 ms onward and most persistently in frontal cortex. Together, these results show how 
- the response to a word unfolds across the brain, from early visual engagement to later frontal 
+ the response to a word evolves across the brain, from early visual engagement to later frontal 
  involvement, and provide a baseline for interpreting cognitive effects measured during word presentation.} 
 \maketitle
 
@@ -131,7 +133,7 @@ words region by region, HFA predicting later recall appears first in visual, fus
 temporal regions and later in left inferior frontal, posterior parietal and ventrolateral temporal 
 cortex \citep{Burke_2014a}. These approaches either pool features across the brain and the whole word 
 period, or test each region and time point for a difference in mean activity. How well each region's 
-single-trial response predicts recall, and when that prediction arises, has not been measured with 
+single-event response predicts recall, and when that prediction arises, has not been measured with 
 classifiers.
 
 \subsection*{The present study }\label{intro-present}
@@ -139,7 +141,7 @@ classifiers.
 Here we characterize the word-onset response in 362 neurosurgical patients performing delayed free recall, 
 contrasting each word with the blank screen before it. We ask (1) which regions respond, and in what order;
 (2) how regions synchronize, using phase and envelope connectivity; (3) whether the response depends 
-on how long the subject waited for the word; (4) whether, where and when single-trial responses 
+on how long the subject waited for the word; (4) whether, where and when single-event responses
 predict later recall; and (5) whether each subject's response is reliable across sessions.
 
 \section*{Methods}\label{methods}
@@ -148,7 +150,48 @@ predict later recall; and (5) whether each subject's response is reliable across
 We analyzed intracranial EEG (iEEG) recordings from 362 patients with pharmacoresistant epilepsy (x males, y females) who completed a delayed free-recall task while implanted with electrodes for clinical seizure monitoring. On each trial, subjects studied a list of words, completed an arithmetic distractor task (20--25 s of problems of the form ``$A + B + C = ??$'', with $A$, $B$ and $C$ drawn from the integers 1--9), and then recalled aloud as many words as they could during a 30 s retrieval period (45 s in a variant of the task). Lists were drawn from a pool of common English nouns; in catFR1, each list was built from words in a small number of semantic categories. A countdown preceded each list. Each word stayed on screen for 1600 ms and was followed by a blank screen of 750--1000 ms (800--1200 ms in the variant). A session consisted of 12 trials of 12 words (25 trials of 15 words in the variant). Data were collected as part of a multi-site collaboration at Columbia University Medical Center (New York, NY), Dartmouth-Hitchcock Medical Center (Lebanon, NH), Emory University Hospital (Atlanta, GA), the Hospital of the University of Pennsylvania (Philadelphia, PA), the Mayo Clinic (Rochester, MN), the National Institutes of Health (Bethesda, MD), the University of Colorado Anschutz Medical Campus (Aurora, CO), the University of Texas Health Science Center at San Antonio (San Antonio, TX), the University of Texas Southwestern Medical Center (Dallas, TX), and Thomas Jefferson University Hospital (Philadelphia, PA). Electrode type and placement were determined solely by clinical needs. Each site's institutional review board approved the protocol, and all patients gave informed consent. EEG was recorded at site-specific sampling rates (200--2000 Hz) and aligned to behavioral events using hardware synchronization pulses or online timing messages.
 
 \subsection*{Events and analysis windows}\label{events}
-We compared a ``word on'' window ($0$ to $-700$ ms after word onset) with a ``word off'' window ($-700$ to $-100$ ms, the blank screen before the same word), so that each pair of windows came from the same trial. The word-off window ends 100 ms before onset, and because the shortest blank is 750 ms, it starts at least 50 ms after the previous word left the screen. Both windows are 600 ms long, so spectral estimates have the same resolution and bias in each. We excluded the first word of each list, as it follows the countdown rather than a blank screen. After exclusions, X $\pm$ Y (mean $\pm$ SD across subjects) word events per session remained.
+We compared a ``word on'' window (0--600 ms after word onset) with a ``word off'' window ($-700$ to $-100$ ms, the blank screen before the same word), so that each pair of windows came from the same word presentation. The word-off window ends 100 ms before onset, and because the shortest blank is 750 ms, it starts at least 50 ms after the previous word left the screen. Both windows are 600 ms long, so spectral estimates have the same resolution and bias in each. We excluded the first word of each list, as it follows the countdown rather than a blank screen. After exclusions, X $\pm$ Y (mean $\pm$ SD across subjects) word events per session remained.
+
+\begin{figure*}[!tp]
+\centering
+\begin{minipage}{\linewidth}\textbf{A}\par\vspace{4pt}\centering
+\resizebox{\linewidth}{!}{%
+\begin{tikzpicture}[font=\sffamily\small,
+  box/.style={minimum height=1.1cm, inner sep=1pt, align=center, rounded corners=2pt},
+  word/.style={box, fill=black!85, text=white}, blank/.style={box, fill=black!8, text=black!70},
+  win/.style={minimum height=0.55cm, align=center, font=\sffamily\scriptsize}]
+  % one list: countdown, words with blanks, distractor, recall (x in cm)
+  \node[box, fill=black!25, minimum width=1.6cm] at (0.8,0) {3, 2, 1\\[-1pt]\scriptsize countdown};
+  \node[word, minimum width=2.2cm] at (2.9,0) {\textbf{CHAIR}\\[-1pt]\scriptsize 1600 ms};
+  \node[blank, minimum width=1.4cm] at (4.9,0) {blank};
+  \node[word, minimum width=2.2cm] at (6.9,0) {\textbf{RIVER}\\[-1pt]\scriptsize 1600 ms};
+  \node[blank, minimum width=1.4cm] at (8.9,0) {blank};
+  \node at (10.2,0) {\Large\dots};
+  \node[box, fill=black!45, text=white, minimum width=2.8cm] at (12.2,0) {$7+3+5=\,?$\\[-1pt]\scriptsize distractor, 20--25 s};
+  \node[box, draw=black!40, minimum width=3.2cm] at (15.4,0) {Free recall\\[-1pt]\scriptsize 30--45 s};
+  \node[red!70!black, font=\sffamily\scriptsize] at (2.9,0.8) {first word excluded};
+  \draw[decorate, decoration={brace, amplitude=5pt}] (0,1.1) -- (10.6,1.1)
+    node[midway, above=5pt] {Encoding: 12 or 15 words per list};
+  \draw[decorate, decoration={brace, amplitude=5pt}] (10.8,1.1) -- (17,1.1)
+    node[midway, above=5pt] {Distractor and retrieval};
+  % zoom on one blank + word: x = 8 + 0.0065 t (t in ms from word onset)
+  \draw[densely dashed, black!50] (4.2,-0.55) -- (2.475,-2.2) (8.0,-0.55) -- (14.5,-2.2);
+  \fill[black!8] (2.475,-2.2) rectangle (8,-2.65);
+  \fill[black!85] (8,-2.2) rectangle (14.5,-2.65);
+  \node[text=black!70, font=\sffamily\scriptsize] at (5.24,-2.425) {blank};
+  \node[text=white, font=\sffamily\scriptsize] at (11.25,-2.425) {\textbf{RIVER}};
+  \node[win, fill={rgb,255:red,232;green,180;blue,160}, minimum width=3.9cm] at (5.4,-3.1) {\textbf{Word off}};
+  \node[win, fill={rgb,255:red,168;green,230;blue,184}, minimum width=3.9cm] at (9.95,-3.1) {\textbf{Word on}};
+  \draw[->] (2.3,-3.55) -- (14.8,-3.55) node[right, font=\sffamily\scriptsize] {ms};
+  \foreach \t in {-700,-100,0,600,1000}
+    \draw (8+0.0065*\t,-3.5) -- (8+0.0065*\t,-3.6) node[below, font=\sffamily\scriptsize] {\t};
+  \draw[black!60] (8,-2.2) -- (8,-3.55);
+\end{tikzpicture}}
+\end{minipage}\\[8pt]
+\panelc{B}{0.6}{img/fig1b_coverage.png}\hfill\panelc{C}{0.38}{img/fig1c_example.png}
+\caption{Task and analysis. (A) Free-recall task. Each list began with a countdown, followed by 12 or 15 words, each shown for 1600 ms and separated by a 750--1000 ms blank screen (800--1200 ms in the variant), then an arithmetic distractor and aloud recall. Each word's response (word on, 0--600 ms) was compared with the blank screen before it (word off, $-700$ to $-100$ ms). The first word of each list follows the countdown and was excluded. (B) Every analyzed bipolar pair at its MNI location, coloured by region of interest (hemispheres pooled); subjects and electrodes per region in the legend. (C) High-gamma power at an example occipital electrode, divided by its word-off mean (mean and 95\% CI across word events), with the half-maximum latency marked.}
+\label{fig:study}
+\end{figure*}
 
 \subsection*{Preprocessing}\label{preprocessing}
 Recordings were re-referenced to a bipolar montage by subtracting the signals of adjacent contacts \citep{Mercier_2022,Li_2018}. Word-on and word-off clips were loaded separately for each word, each extended by 500 ms of real (not mirrored) data on both sides to absorb filter edge artifacts. Clips were resampled to 500 Hz and filtered for line noise with 4th-order Butterworth band-stop filters ($\pm$2 Hz) at the mains frequency (60 Hz). To give every subject the same passband within the high-gamma range, we also notched the 100, 120 and 150 Hz harmonics in all recordings. The buffers were then removed before any further analysis.
@@ -156,22 +199,22 @@ Recordings were re-referenced to a bipolar montage by subtracting the signals of
 We excluded bipolar pairs whose contacts were more than 20 mm apart and channels with flat signals. We excluded whole sessions with a missing or sub-500 Hz sampling rate, because after resampling to 500 Hz the 250 Hz Nyquist limit must sit well above the 70--150 Hz high-gamma band. We also excluded sessions with residual line noise, defined as a spectral peak at a non-notched mains harmonic more than five times the power at neighbouring frequencies (9 sessions). 
 
 \subsection*{Electrode localization}\label{electrode-localization}
-Electrode contacts were localized with the lab's standard pipeline. Each patient's pre-implant T1-weighted MRI was segmented and parcellated with FreeSurfer \citep{Fischl_2002,Fischl_2004,Desikan_2006}, and the post-implant CT was co-registered to it [ANTs: add Avants et al.\ 2008 to refs.bib]. Contacts were identified manually and assigned anatomical labels automatically \citep{Dykstra_2012}; a subset of labels was reviewed by neuroradiologists. Where a T2-weighted MRI was available, medial temporal lobe subregions were labelled automatically \citep{Yushkevich_2014}. Each bipolar pair took the label at the midpoint of its two contacts, from volumetric labels for depth electrodes and surface labels for grid and strip electrodes \citep{Azarion_2014}. For pairs whose label was missing from the standard database, we recovered it from the imaging pipeline's own label files: either the pair's own midpoint label or, when the two contacts skipped a contact, that intermediate contact's label. We grouped labels into 12 regions of interest: frontal, temporal, parietal, occipital and limbic cortex (excluding the hippocampus), plus the hippocampus, each split by hemisphere \citep{Burke_2013}. Supplementary Table (ADD) lists the mapping from anatomical labels to regions.
+Electrode contacts were localized with the lab's standard pipeline. Each patient's pre-implant T1-weighted MRI was segmented and parcellated with FreeSurfer \citep{Fischl_2002,Fischl_2004,Desikan_2006}, and the post-implant CT was co-registered to it using Advanced Normalization Tools \citep{Avants_2008}. Contacts were identified manually and assigned anatomical labels automatically \citep{Dykstra_2012}; a subset of labels was reviewed by neuroradiologists. Where a T2-weighted MRI was available, medial temporal lobe subregions were labelled automatically \citep{Yushkevich_2014}. Each bipolar pair took the label at the midpoint of its two contacts, from volumetric labels for depth electrodes and surface labels for grid and strip electrodes \citep{Azarion_2014}. For pairs whose label was missing from the standard database, we recovered it from the imaging pipeline's own label files: either the pair's own midpoint label or, when the two contacts skipped a contact, that intermediate contact's label. We grouped labels into 12 regions of interest: frontal, temporal, parietal, occipital and limbic cortex (excluding the hippocampus), plus the hippocampus, each split by hemisphere \citep{Burke_2013}. Supplementary Table (ADD) lists the mapping from anatomical labels to regions.
 
 \subsection*{Power computation}\label{power}
-We estimated alpha (8--13 Hz) power, and the power spectrum from 5--150 Hz, with multitaper spectral estimation \citep{Thomson_1982,Slepian_1978,Percival_1993,Prerau_2017}, using a 2 Hz bandwidth over each 600 ms window. For the spectrum, power was averaged into 11 log-spaced frequency bins, leaving out $\pm$2 Hz around 50, 60, 100 and 120 Hz. We estimated high-gamma (70--150 Hz) power by band-pass filtering each clip into eight 10 Hz sub-bands and taking the squared magnitude of the Hilbert transform in each. Each sub-band was divided by its mean over all word-off trials for that electrode, and the normalized sub-bands were then averaged. Every frequency in the band therefore carries equal weight, which suits high-frequency activity as a broadband signal rather than an oscillation \citep{Burke_2015a,Edwards_2009,Bruns_2004,Manning_2009,Ray_2011}. For each electrode and band, we summarized the word-on versus word-off change as Cohen's $d$ of per-trial power, averaged over each window \citep{Cohen_2013,Lakens_2013}.
+We estimated alpha (8--13 Hz) power, and the power spectrum from 5--150 Hz, with multitaper spectral estimation \citep{Thomson_1982,Slepian_1978,Percival_1993,Prerau_2017}, using a 2 Hz bandwidth over each 600 ms window. For the spectrum, power was averaged into 11 log-spaced frequency bins, leaving out $\pm$2 Hz around 50, 60, 100 and 120 Hz. We estimated high-gamma (70--150 Hz) power by band-pass filtering each clip into eight 10 Hz sub-bands and taking the squared magnitude of the Hilbert transform in each. Each sub-band was divided by its mean over all word-off events for that electrode, and the normalized sub-bands were then averaged. Every frequency in the band therefore carries equal weight, which suits high-frequency activity as a broadband signal rather than an oscillation \citep{Burke_2015a,Edwards_2009,Bruns_2004,Manning_2009,Ray_2011}. For each electrode and band, we summarized the word-on versus word-off change as Cohen's $d$ of per-event power, averaged over each window \citep{Cohen_2013,Lakens_2013}.
 
 \subsection*{High-gamma latency}\label{high-gamma-latency}
-We measured latency only at electrodes with a reliable high-gamma response, defined as per-event word-on power greater than word-off power (one-tailed Welch's $t$ test, Benjamini-Hochberg FDR correction within each session; \citealp{WELCH_1947,Benjamini_1995}). This criterion selected 4950 of 122,339 electrode-sessions from 299 subjects. Because electrodes are selected and measured in the same data \citep{Kriegeskorte_2009}, the selection uses mean power, whereas latency comes from the response's normalized time course, so selection does not determine latency. For each electrode, we subtracted the word-off mean from the trial-averaged high-gamma envelope and smoothed it with a 30 ms boxcar. Latency was defined as the first time the curve reached half its peak within 0--800 ms (half-maximum latency; \citealp{Kiesel_2007,Liesefeld_2018}). Electrodes whose peak was not positive were excluded. Half-maximum latency is less affected than onset latency by the temporal smearing that filtering introduces \citep{VanRullen_2011}. We took each subject's median latency per region and report the mean $\pm$ SEM across subjects for the 12 regions and their anatomical subregions, pooling hemispheres.
+We measured latency only at electrodes with a reliable high-gamma response, defined as per-event word-on power greater than word-off power (one-tailed Welch's $t$ test, Benjamini-Hochberg FDR correction within each session; \citealp{WELCH_1947,Benjamini_1995}). This criterion selected 4950 of 122,339 electrode-sessions from 299 subjects. Because electrodes are selected and measured in the same data \citep{Kriegeskorte_2009}, the selection uses mean power, whereas latency comes from the response's normalized time course, so selection does not determine latency. For each electrode, we subtracted the word-off mean from the high-gamma envelope averaged over word events and smoothed it with a 30 ms boxcar. Latency was defined as the first time the curve reached half its peak within 0--800 ms (half-maximum latency; \citealp{Kiesel_2007,Liesefeld_2018}). Electrodes whose peak was not positive were excluded. Half-maximum latency is less affected than onset latency by the temporal smearing that filtering introduces \citep{VanRullen_2011}. We took each subject's median latency per region and report the mean $\pm$ SEM across subjects for the 12 regions and their anatomical subregions, pooling hemispheres.
 
 \subsection*{Synchrony}\label{synchrony}
-We measured alpha connectivity with the corrected imaginary phase-locking value (ciPLV), using multitaper spectral estimation with a 2 Hz bandwidth in MNE-Connectivity \citep{Gramfort_2013}. The ciPLV ignores zero-lag coupling and is therefore insensitive to volume conduction (\citealp{Nolte_2004}; Bru\~na et al., 2018). We measured high-gamma connectivity with the corrected amplitude envelope correlation (AEC-c; \citealp{Hipp_2012}, also insensitive to volume conduction): signals were band-passed at 70--110 Hz, their Hilbert envelopes were pairwise orthogonalized and correlated, and the correlations were averaged over events. Limiting the band to 70--110 Hz keeps the envelope's spectrum below the carrier frequencies, so the Hilbert envelope is well defined \citep{Bedrosian_1963}. Pairs of bipolar channels that shared a contact were excluded \citep{Mercier_2017}. For each electrode, we averaged the word-on minus word-off change in synchrony over all its partners, giving that electrode's node strength / synchrony \citep{Rao_2025}. We treat synchrony as a secondary analysis, as an evoked response common to several regions can raise phase and envelope coupling without any interaction between them (see Discussion).
+We measured alpha connectivity with the corrected imaginary phase-locking value (ciPLV), using multitaper spectral estimation with a 2 Hz bandwidth in MNE-Connectivity \citep{Gramfort_2013}. The ciPLV ignores zero-lag coupling and is therefore insensitive to volume conduction \citep{Nolte_2004,Bruna_2018}. We measured high-gamma connectivity with the corrected amplitude envelope correlation (AEC-c; \citealp{Hipp_2012}, also insensitive to volume conduction): signals were band-passed at 70--110 Hz, their Hilbert envelopes were pairwise orthogonalized and correlated, and the correlations were averaged over events. Limiting the band to 70--110 Hz keeps the envelope's spectrum below the carrier frequencies, so the Hilbert envelope is well defined \citep{Bedrosian_1963}. Pairs of bipolar channels that shared a contact were excluded \citep{Mercier_2017}. For each electrode, we averaged the word-on minus word-off change in synchrony over all its partners, giving that electrode's node strength / synchrony \citep{Rao_2025}. We treat synchrony as a secondary analysis, as an evoked response common to several regions can raise phase and envelope coupling without any interaction between them (see Discussion).
 
 \subsubsection*{Time-resolved network}\label{time-resolved-network}
-To follow how the alpha network develops over time, we computed synchrony in nine overlapping 200 ms epochs starting every 100 ms from 0--1000 ms after word onset. This range ends well before the response to the word's offset at 1600 ms. From each epoch we subtracted the mean of three 200 ms word-off epochs. We analyzed only region-connections recorded in at least 100 subjects. A region's hub score here is defined by its mean change in synchrony with all of its connections, tested against zero across subjects with a $t$ test. We controlled the FDR over regions $\times$ epochs with the two-stage Benjamini-Krieger-Yekutieli procedure \citep{Benjamini_2006,Rubinov_2010}. For display, we plotted each significant hub's five strongest connections (by absolute mean change, of either sign), with line width proportional to $|t|$ \citep{Solomon_2017, Rao_2025}.
+To follow how the alpha network develops over time, we computed synchrony in nine overlapping 200 ms epochs starting every 100 ms from 0--1000 ms after word onset. This range ends well before the response to the word's offset at 1600 ms. From each epoch we subtracted the mean of three 200 ms word-off epochs. We analyzed only region-connections recorded in at least 100 subjects. Because word onset changes synchrony across the whole network, a region's mean change over its connections would differ from zero merely by sharing in that change. We therefore defined a hub as a region that stands out from the network \citep{Sporns_2014,Rubinov_2010}: for each subject and epoch, its hub score is its mean change in synchrony over all of its connections minus the mean change over all connections that do not involve it. Hub scores were tested against zero across subjects with a $t$ test, Benjamini-Hochberg corrected over regions $\times$ epochs. For display, we plotted each significant hub's five strongest connections (by absolute mean change, of either sign), with line width proportional to $|t|$ \citep{Solomon_2017, Rao_2025}.
 
 \subsection*{Mixed-effects models}\label{mixed-effects-models}
-To compare lobes while accounting for multiple electrodes per subject, we fit linear mixed-effects models in R with lme4 and tested contrasts with emmeans [add Bates et al.\ 2015 and Lenth to refs.bib]. Latency, with one row per responsive electrode, was modeled as
+To compare lobes while accounting for multiple electrodes per subject, we fit linear mixed-effects models in R with lme4 and tested contrasts with emmeans \citep{Bates_2015,Lenth_2025}. Latency, with one row per responsive electrode, was modeled as
 \begin{align*}
 \text{latency} \sim{} & \text{lobe} + (1\,|\,\text{sub}) + (1\,|\,\text{sub}{:}\text{lobe})\\
 & + (1\,|\,\text{sub}{:}\text{region}),
@@ -185,13 +228,13 @@ d \sim{} & \text{lobe} \times \text{band} + (1 + \text{band}\,|\,\text{sub})\\
 and for each pair of lobes we tested the lobe $\times$ band interaction contrast, Holm-corrected.
 
 \subsection*{Anticipation}\label{anticipation}
-To test whether the response depends on how long subjects waited for the word, we used the same responsive electrodes as in the latency analysis and split each session's trials at its median blank length. For each electrode, we expressed the trial-averaged high-gamma response after long and after short blanks relative to the same baseline, the electrode's word-off mean over all trials. A difference between groups therefore cannot come from a difference in their baselines. The effect was the peak response (0--800 ms) after long blanks minus the peak after short blanks. We averaged effects per subject and region and tested them against zero with one-sample $t$ tests, Benjamini-Hochberg corrected across regions.
+To test whether the response depends on how long subjects waited for the word, we used the same responsive electrodes as in the latency analysis and split each session's word events at its median blank length. For each electrode, we expressed the high-gamma response, averaged over word events, after long and after short blanks relative to the same baseline, the electrode's word-off mean over all events. A difference between groups therefore cannot come from a difference in their baselines. The effect was the peak response (0--800 ms) after long blanks minus the peak after short blanks. We averaged effects per subject and region and tested them against zero with one-sample $t$ tests, Benjamini-Hochberg corrected across regions.
 
 \subsection*{Recall prediction}\label{recall-prediction}
 To test when and where the word-onset response predicts later recall (encoding contrast: recalled vs.\ not recalled words), we averaged the high-gamma response (computed as for latency) in 100 ms windows from 0--1000 ms and z-scored it within each session. For every subject, lobe (at least 5 electrodes) and window, we trained an L2-regularized logistic regression with the penalty used by \citet[$C = 7.2\times10^{-4}$;][]{Ezzyat_2017} and balanced class weights. Models were cross-validated by leaving out one session at a time, or one list at a time for subjects with a single session. Performance was the area under the ROC curve (AUC) of the pooled held-out predictions. Across subjects, we tested AUC $> 0.5$ with one-sided $t$ tests, Benjamini-Hochberg corrected over lobes $\times$ windows. We also computed chance AUC by permutation (about 0.493); it is computed as a reference but was not used in the tests.
 
 \subsection*{Reliability}\label{reliability}
-To estimate test-retest reliability, we randomly divided each subject's sessions into two halves of at least two sessions each. Within each half, we averaged Cohen's $d$ (power) or node strength (overall connectivity) per anatomical region. Reliability was the Pearson correlation between the two halves across that subject's regions.
+To estimate test-retest reliability, we randomly divided each subject's sessions into two halves of at least two sessions each. Within each half, we averaged Cohen's $d$ (power) or hub strength (each electrode's mean change in synchrony over all its connections, as in Fig.~5A) per anatomical region. Reliability was the Pearson correlation between the two halves across that subject's regions. To ask which lobes' network results replicate across patients (replicability, as opposed to the within-subject reliability above), we pooled hemispheres and took each lobe's profile: its change in synchrony on each connection to the six lobes (itself included) in each of the nine epochs of the time-resolved network. We split the subjects 1000 times into two disjoint random halves of 127 subjects each, the same size for every lobe, and correlated the two halves' mean profiles (Pearson $r$).
 
 \subsection*{Statistics}\label{statistics}
 Unless stated otherwise, the subject was the unit of analysis. Values were averaged over sessions for each electrode and then over electrodes for each subject and region. Each region was tested against zero with a one-sample $t$ test across subjects, analyzing only regions recorded in at least 30 subjects. Benjamini-Hochberg FDR correction was applied within each figure and band \citep{Holmes_1998,Benjamini_1995,Seabold_2010}.
@@ -273,7 +316,7 @@ onset}\label{power-changes-at-word-onset}
 \begin{figure*}[!tp]
 \centering
 \panelc{A}{0.6}{img/fig4b_latency_fine.png}\hfill\panelc{B}{0.38}{img/fig4c_latency_mixed.png}
-\caption{Order of high-gamma responses after word onset. (A) Half-max latency per anatomical subregion (left; mean $\pm$ SEM across subjects; n: subjects) and the average high-gamma response over time, as a fraction of its peak (right). (B) Estimated latency per lobe from a mixed-effects model (mean $\pm$ SE); brackets: neighbouring lobes in the latency order (Holm over all 15 pairs).}
+\caption{Order of high-gamma responses after word onset. (A) Half-max latency per anatomical subregion (left; mean $\pm$ SEM across subjects; n: subjects) and the average high-gamma response over time, as a fraction of its peak (right; shading: 95\% CI across subjects). (B) Estimated latency per lobe from a mixed-effects model (mean $\pm$ SE); brackets: neighbouring lobes in the latency order (Holm over all 15 pairs).}
 \label{fig:latency}
 \end{figure*}
 
@@ -320,7 +363,7 @@ lobe)}\label{mixed-model-latency-per-lobe}
 \centering
 \panel{A}{0.85}{img/fig5_synchrony.png}\\[6pt]
 \panel{B}{1}{img/fig6c_epochs_alpha.png}
-\caption{Synchrony at word onset. (A) Change in alpha ciPLV (top) and high-gamma AEC-c (bottom) per region, word on vs.\ off: each electrode's mean change over all partners, averaged per subject; mean $\pm$ SEM across subjects; stars: BH-FDR. (B) Time-resolved alpha ciPLV network in 200 ms windows. Red nodes: hubs, regions whose mean change over their connections differs from zero (two-stage FDR over regions $\times$ windows); lines: each hub's five strongest connections (red: synchronized, blue: desynchronized; width $\propto |t|$).}
+\caption{Synchrony at word onset. (A) Change in alpha ciPLV (top) and high-gamma AEC-c (bottom) per region, word on vs.\ off: each electrode's mean change over all partners, averaged per subject; mean $\pm$ SEM across subjects; stars: BH-FDR. (B) Time-resolved alpha ciPLV network in 200 ms windows. Red (blue) nodes: hubs, regions whose mean change over their connections is larger (smaller) than that of the rest of the network (BH-FDR over regions $\times$ windows); lines: each hub's five strongest connections (red: synchronized, blue: desynchronized; width $\propto |t|$).}
 \label{fig:synchrony}
 \end{figure*}
 
@@ -340,14 +383,16 @@ lobe)}\label{mixed-model-latency-per-lobe}
 \begin{itemize}
 \tightlist
 \item
-  Alpha: 69 hub $\times$ window cells, all positive. Occipital hubs in the
-  first four windows (0--500 ms, both hemispheres) and once at 500--700 ms; frontal,
-  limbic and temporal hubs from the first window onward; parietal hubs
-  from the 100--300 ms window onward, in both hemispheres from 200 ms; hippocampus at 100--400
-  ms. Fine regions (8 cells): L fusiform 0--400 ms, then L middle temporal 400--1000 ms.
+  Alpha: 13 hub $\times$ window cells. Above the network: occipital at
+  0--300 ms (R 0--400 ms), the earliest windows only. Below the network: L
+  hippocampus at 100--600 ms and 700--900 ms, L temporal at 0--300 ms, R temporal
+  at 100--300 ms. Fine regions: L hippocampus 200--400 ms (below).
 \item
-  High gamma (not shown): 2 hubs (L occipital 0--200 ms, L limbic
-  200--400 ms).
+  The network as a whole: mean change over all connections positive in every
+  window (alpha, $t$ = 3.3--7.5); the old vs-zero hub test mostly reflected this.
+\item
+  High gamma (not shown): no ROI hubs; fine regions: R inferior frontal gyrus
+  100--300 ms (above).
 \end{itemize}
 
 \subsection*{4. Anticipation (blank length before the
@@ -356,7 +401,7 @@ word)}\label{anticipation-blank-length-before-the-word}
 \begin{figure*}[!tp]
 \centering
 \panelc{A}{0.36}{img/fig9a_wait_times.png}\hfill\panelc{B}{0.62}{img/fig9_anticipation.png}
-\caption{Temporal expectation. (A) Duration of the blank before each word, all words; dashed line: median. Trials are split at each session's own median. (B) High-gamma response peak after long minus short waits, responsive electrodes only, both measured against the same trial-averaged word-off baseline; mean $\pm$ SEM across subjects; stars: BH-FDR.}
+\caption{Temporal expectation. (A) Duration of the blank before each word, all words; shaded: central 95\% of the session medians; dashed: overall median; events are split at each session's own median. (B) High-gamma response peak after long minus short waits, responsive electrodes only, both measured against the same word-off baseline, averaged over all events; mean $\pm$ SEM across subjects; stars: BH-FDR.}
 \end{figure*}
 
 \begin{itemize}
@@ -365,7 +410,7 @@ word)}\label{anticipation-blank-length-before-the-word}
   Occipital high-gamma peak larger after long than short waits (L
   +0.072, q = .022; R +0.049, q = .029); no other ROI significant.
 \item
-  Both groups share one trial-averaged baseline, so the difference is
+  Both groups share one baseline, averaged over all events, so the difference is
   not a baseline shift. Consistent with temporal expectation boosting
   visual responses \citep[][monkey V1]{Lima_2011,Nobre_2017}; after short
   waits the response may also have recovered less from the previous word.
@@ -403,7 +448,7 @@ sessions}\label{reliability-across-sessions}
 \begin{figure*}[!tp]
 \centering
 \includegraphics[width=1\linewidth]{img/fig8_reliability.png}
-\caption{Session-to-session reliability: per subject, Pearson r across regions between two random halves of the subject's sessions, for power (left) and synchrony node strength (right); dashed lines: medians.}
+\caption{Session-to-session reliability: per subject, Pearson r across regions between two random halves of the subject's sessions, for power (left) and synchrony hub strength (middle); dashed lines: medians. (Right) Replicability across subjects of each lobe's connectivity profile: its change on each connection $\times$ window, hemispheres pooled, correlated between two disjoint halves of the subjects (127 each); box plots over 1000 splits (whiskers: 1.5 IQR; outliers not shown).}
 \end{figure*}
 
 \begin{itemize}
@@ -412,6 +457,15 @@ sessions}\label{reliability-across-sessions}
   85 subjects with $\geq$ 2 sessions per half. Power maps repeat: median r
   0.67 (alpha), 0.81 (high gamma). Synchrony maps much less: 0.19 (alpha
   ciPLV), 0.14 (high-gamma AEC-c).
+\item
+  Replicability across patients (127 subjects per half): occipital's profile
+  replicates (median alpha r = 0.90, high gamma 0.80), every other lobe weakly (alpha
+  \textasciitilde0.3--0.4, high gamma \textasciitilde0.1--0.2). Occipital stays at 0.89 with each
+  window's mean removed, so its pattern over connections, not only a shared time course, replicates.
+\item
+  Outside occipital, replicability comes largely from the lobe's connection with occipital
+  (alpha, without it: limbic 0.43 $\to$ 0.17, hippocampus 0.32 $\to$ 0.03; frontal 0.28, parietal
+  0.35, temporal 0.22 hold up weakly).
 \end{itemize}
 
 \section*{Discussion}\label{discussion}
@@ -420,7 +474,7 @@ The occipital alpha decrease and HG increase match the activation response first
 
 Our latencies agree with smaller iEEG studies. Gamma activity begins at about 150 ms in basal temporal cortex, reaches the VWFA at about 200 ms, and reaches superior temporal and Broca's areas after 400 ms \citep{Mainy_2007}; word-selective ventral temporal electrodes respond at about 150 ms \citep{Kadipasaoglu_2016}; and the effects of word properties move anteriorly along the ventral stream, with feedback to posterior regions at 250--500 ms \citep{Woolnough_2020}. Beyond the ventral stream, MEG shows responses proceeding from temporal cortex to Broca's area and finally to orbitofrontal cortex at about 370 ms \citep{Halgren_2002}, the same order we find. The sharp early and broad late responses we observe are consistent with feedforward input followed by feedback \citep{Halgren_2006,Ghuman_2014}.
 
-While we observe a substantial decrease in alpha power in the occipital cortex, its alpha synchrony with other regions rises, consistent with \citep{Hanslmayr_2016}. Synchrony measured at stimulus onset is, however, harder to interpret than power: an evoked response shared across regions can raise phase and envelope coupling without any interaction between them, and cannot be cleanly separated from cognitive effects \citealp{David_2006,Shah_2004}. Subtracting the average evoked response does not fully remove it, because its amplitude and latency vary across trials \citep{Truccolo_2002,David_2006}. The absence of HG envelope coupling is consistent with HFA being local and asynchronous; studies of memory show that regions with gamma increases during successful encoding lose global synchrony \citep{Burke_2013}. 
+While we observe a substantial decrease in alpha power in the occipital cortex, its alpha synchrony with other regions rises, consistent with \citep{Hanslmayr_2016}. Synchrony measured at stimulus onset is, however, harder to interpret than power: an evoked response shared across regions can raise phase and envelope coupling without any interaction between them, and cannot be cleanly separated from cognitive effects \citealp{David_2006,Shah_2004}. Subtracting the average evoked response does not fully remove it, because its amplitude and latency vary across word presentations \citep{Truccolo_2002,David_2006}. The absence of HG envelope coupling is consistent with HFA being local and asynchronous; studies of memory show that regions with gamma increases during successful encoding lose global synchrony \citep{Burke_2013}. 
   %Alternatives to subtraction:
   %Matched condition contrast with a label-shuffle null: \citealp{Solomon_2017,Maris_2007a}.
   %Trial-shuffled (shift-predictor) surrogates: ��Perkel_1967,Aertsen_1989,Brody_1999b.
@@ -429,7 +483,7 @@ While we observe a substantial decrease in alpha power in the occipital cortex, 
 
 \subsection*{Expectation}\label{disc-expectation}
 
-Temporally expected events evoke larger visual responses: in monkey V1, gamma increases and alpha decreases when a stimulus is expected \citep{Lima_2011}, and expectation speeds and enhances visual processing in humans \citep{Doherty_2005}. The larger occipital response after longer waits fits this account. Because long- and short-wait trials were measured against the same trial-averaged baseline, the effect cannot come from a raised baseline after short waits; an alternative is that the visual response recovers less from the previous word when the interval is short.
+Temporally expected events evoke larger visual responses: in monkey V1, gamma increases and alpha decreases when a stimulus is expected \citep{Lima_2011}, and expectation speeds and enhances visual processing in humans \citep{Doherty_2005}. The larger occipital response after longer waits fits this account. Because long- and short-wait events were measured against the same baseline, averaged over all events, the effect cannot come from a raised baseline after short waits; an alternative is that the visual response recovers less from the previous word when the interval is short.
 
 \subsection*{Recall prediction}\label{disc-recall}
 
@@ -443,7 +497,7 @@ Recall prediction appeared only after the early visual response, briefly in occi
   Word-off baseline starts \textasciitilde80-410 ms after the previous
   word's offset: possible offset response / anticipation in the
   baseline; the blank-length analysis (Results 4) uses one
-  trial-averaged baseline and is not affected by it.
+  baseline averaged over all events and is not affected by it.
 \item
   Evoked and induced activity 
 \item

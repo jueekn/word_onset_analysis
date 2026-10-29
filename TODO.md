@@ -11,6 +11,12 @@
   Currently `subtract_erp: false`. Also covers the early high-gamma AEC-c hubs (0–200 ms,
   within-region pairs), which may be a shared stimulus-locked envelope rise.
 
+## Paper: references to check
+- Edwards et al. 2009: confirm it supports "high gamma is broadband, not an oscillation" (Power Methods).
+- Azarion et al. 2014: confirm it is the right citation for volumetric (depth) vs surface (grid/strip) labels.
+- Lenth_2025 (emmeans): cited as R package v1.10.3 (installed version); update the year/version if re-run.
+- Supplementary table (ADD): anatomical label -> 12-region mapping (region_to_burke_lobe.csv).
+
 ## Reliability (final analysis of the paper, per PI)
 - Done (2026-10-14, plot_reliability.py): test-retest as riley-thesis
   compute_retest_reliability.py (random session halves, >= 2 sessions per half, >= 10 regions,

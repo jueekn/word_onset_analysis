@@ -3,6 +3,8 @@
 # draft.md renders in the VS Code preview and on GitHub. Rerun after replotting.
 cd "${0:A:h}/.."
 typeset -A F=(
+  fig1b_coverage             study/coverage.png
+  fig1c_example              study/example_response.png
   fig1_power                 burke_roi_power/roi_power_word_on_sem.png
   fig1b_power_mixed          burke_roi_power/roi_power_word_on_mixed.png
   fig2a_spectrum             burke_roi_power/power_spectrum_word_on_rois.png

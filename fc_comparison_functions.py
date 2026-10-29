@@ -825,8 +825,8 @@ def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,
     """Rao et al. 2025 / Solomon et al. 2017 style network per EPOCHS window
     (columns) for each band with `<stem>_hubs.csv` (rows; band_stems).
 
-    Hubs: regions whose mean on - off change over all their connections differs
-    from 0 across subjects (two-stage BKY FDR over regions x epochs, as Rao);
+    Hubs: regions whose mean on - off change over their connections differs from
+    that over all other connections across subjects (BH-FDR over regions x epochs);
     red node = positive hub, blue = negative, grey = not a hub. Edges: each hub's
     `top_n` strongest connections of either sign (ranked by |mean change|, as
     Rao), from region pairs with >= MIN_SUBJECTS_PAIR subjects; red =
