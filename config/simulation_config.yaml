@@ -98,6 +98,23 @@ leak_frontal:          # zero-lag common source on frontal channels after onset
   pinknoise_amplitude: 10
   pinknoise_exponent: 1
 
+sync_equal:            # null 2 (Riley): alpha phase coupling + shared high-gamma envelope in every lobe,
+  data_generating_process: [osc_lag, hg_envelope]   # equal before and after onset -> no change anywhere
+  target_lobes: [frontal, temporal, parietal, occipital, limbic, hippocampus]
+  global_ppc: 0.01
+  target_ppc0: 0.5
+  target_ppc1: 0.5
+  phase_lag: 1.5708
+  oscillation_frequency: 10
+  osc_amplitude: 20
+  band: [70, 110]
+  env_hz: 4
+  env_depth: 0.5
+  hg_amplitude: 10
+  equal_conditions: true
+  pinknoise_amplitude: 10
+  pinknoise_exponent: 1
+
 # Recovery sweeps (-> <figures>/simulations/recovery.png): each value becomes its
 # own tag `<sweep>_<value>` with every key in `keys` set to that value.
 sweeps:

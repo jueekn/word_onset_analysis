@@ -35,7 +35,7 @@ def latency() -> None:
     e = pd.read_csv(fc.table_path(f"{LAT}_lobes.csv")).sort_values("emmean").reset_index(drop=True)
     pr = pd.read_csv(fc.table_path(f"{LAT}_pairs.csv"))
     pos = {lb: i for i, lb in enumerate(e["lobe"])}
-    fig, ax = plt.subplots(figsize=(6, 4.5))
+    fig, ax = plt.subplots(figsize=(4.5, 4))
     ax.bar(e.index, e["emmean"], yerr=e["SE"], capsize=4, edgecolor="0.15",
            color=[fc.LOBE_COLORS[lb] for lb in e["lobe"]])
     pval = {tuple(sorted(pos[x] for x in c.split(" - "))): p for c, p in zip(pr["contrast"], pr["p.value"])}
@@ -43,11 +43,13 @@ def latency() -> None:
     for a in range(len(e) - 1):   # neighbours in the latency order
         y = max(top[a], top[a + 1]) + pad
         ax.plot([a + 0.05, a + 0.05, a + 0.95, a + 0.95], [y - pad * 0.4, y, y, y - pad * 0.4], color="0.2", lw=1)
-        ax.annotate(fc.stars(pval[(a, a + 1)]) or "n.s.", (a + 0.5, y), ha="center", va="bottom", fontsize=10)
-    ax.set_xticks(e.index, [lb.capitalize() for lb in e["lobe"]], rotation=30, ha="right", fontsize=11)
+        ax.annotate(fc.stars(pval[(a, a + 1)]) or "n.s.", (a + 0.5, y), ha="center", va="bottom", fontsize=12)
+    ax.set_xticks(e.index, [lb.capitalize() for lb in e["lobe"]], rotation=30, ha="right", fontsize=13)
     for lab, lb in zip(ax.get_xticklabels(), e["lobe"]):
         lab.set_color(fc.LOBE_COLORS[lb])
-    ax.set_ylabel("High-gamma half-max latency (ms)", fontsize=12)
+        lab.set_fontweight("bold")
+    ax.tick_params(axis="y", labelsize=12)
+    ax.set_ylabel("Half-max latency (ms)", fontsize=13)
     ax.spines[["top", "right"]].set_visible(False)
     save(fig, LAT)
 

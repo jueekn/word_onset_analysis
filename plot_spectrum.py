@@ -1,13 +1,12 @@
-"""plot_spectrum.py -- t of word on vs off power per Burke ROI x log-spaced frequency bin.
+"""plot_spectrum.py -- word on vs off power per Burke ROI x log-spaced frequency bin.
 
 Per electrode the Cohen's d of multitaper power in 11 log-spaced bins (5-150 Hz,
 mains 50/60/100/120 +/- 2 Hz left out; compute.py); sessions averaged per electrode, electrodes
-per subject and ROI; one-sample t vs 0 across subjects per cell. Significance by
-threshold-free cluster enhancement along frequency (TFCE, E=0.5, H=2) with
-sign-flip permutations of whole subjects and max-statistic family-wise correction
-over all ROI x bin cells (as Rao et al. 2025 / Ezzyat et al. 2017; rows are not
-adjacent). Outlines mark runs of cells with p_FWE < .05.
+per subject and ROI. As DeHaan et al. 2025: one-sample t vs 0 across subjects per cell (colour),
+BH-FDR over all ROI x bin cells (q < .05); outlines enclose connected significant cells.
 -> figures/burke_roi_power/power_spectrum_word_on_rois.png
+Also per anatomical subregion (hemispheres pooled, >= MIN_SUBJECTS_ROI subjects), rows grouped
+by lobe, FDR over all subregion x bin cells -> power_spectrum_word_on_fine.png (supplement)
 
     python plot_spectrum.py [--simulation-tag TAG]
 """
@@ -53,99 +52,84 @@ def bin_t(d: pd.DataFrame, col: str, min_electrodes: int) -> pd.DataFrame:
     return fc.bin_stats(subject_table(d, col, min_electrodes), "freq_hz", "d")
 
 
-def nan_t(Y: np.ndarray) -> np.ndarray:
-    """One-sample t over subjects (axis 0), ignoring NaN; NaN where < MIN_SUBJECTS_ROI subjects."""
-    n = np.isfinite(Y).sum(0)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        t = np.nanmean(Y, 0) / (np.nanstd(Y, 0, ddof=1) / np.sqrt(n))
-    return np.where(n >= fc.MIN_SUBJECTS_ROI, t, np.nan)
-
-
-def tfce_rows(T: np.ndarray, E: float = 0.5, H: float = 2.0, dh: float = 0.1) -> np.ndarray:
-    """TFCE along the last axis (frequency) of each row, positive and negative separately:
-    sum over thresholds h of extent(h)^E * h^H * dh, extent = contiguous run length."""
-    out = np.zeros_like(T)
-    for sign in (1, -1):
-        X = np.nan_to_num(sign * T, nan=0.0)
-        for h in np.arange(dh, X.max() + dh, dh) if X.max() > 0 else []:
-            above = X >= h
-            for r in range(X.shape[0]):
-                j = 0
-                while j < X.shape[1]:
-                    if above[r, j]:
-                        k = j
-                        while k < X.shape[1] and above[r, k]:
-                            k += 1
-                        out[r, j:k] += sign * (k - j) ** E * h ** H * dh
-                        j = k
-                    else:
-                        j += 1
-    return out
-
-
-def tfce_test(g: pd.DataFrame, rows: list, n_perm: int = 1000, seed: int = 0):
-    """(t map, TFCE map, family-wise p map) over rows x bins; sign-flip permutation of whole
-    subjects (each subject's map x +1/-1), max |TFCE| per permutation."""
-    subs = sorted(g["sub"].unique())
-    Y = np.full((len(subs), len(rows), len(CENTRES)), np.nan)
-    si, ri = {s: i for i, s in enumerate(subs)}, {r: i for i, r in enumerate(rows)}
-    for s, r, b, v in g[g["roi"].isin(ri)][["sub", "roi", "bin", "d"]].itertuples(index=False):
-        Y[si[s], ri[r], b] = v
-    T = nan_t(Y)
-    obs = tfce_rows(T)
-    rng = np.random.default_rng(seed)
-    null = np.array([np.nanmax(np.abs(tfce_rows(nan_t(Y * rng.choice([-1.0, 1.0], len(subs))[:, None, None]))))
-                     for _ in range(n_perm)])
-    p = (1 + (null[None, None, :] >= np.abs(obs)[..., None]).sum(-1)) / (n_perm + 1)
-    return T, obs, np.where(np.isfinite(T), p, np.nan)
-
-
 def outline(ax, sig: np.ndarray) -> None:
-    """Rectangle around each row's run of contiguous significant cells."""
-    from matplotlib.patches import Rectangle
-    for i, row in enumerate(sig):
-        j = 0
-        while j < len(row):
-            if row[j]:
-                k = j
-                while k < len(row) and row[k]:
-                    k += 1
-                ax.add_patch(Rectangle((j - 0.5, i - 0.5), k - j, 1, fill=False, lw=2.2, ec="black"))
-                j = k
-            else:
-                j += 1
+    """Border around connected significant cells: every cell edge between a significant
+    cell and a non-significant (or missing) neighbour."""
+    from matplotlib.collections import LineCollection
+    S = np.pad(sig, 1)
+    segs = []
+    for i, j in zip(*np.nonzero(sig)):
+        y, x = i - 0.5, j - 0.5
+        if not S[i, j + 1]: segs.append([(x, y), (x + 1, y)])           # top
+        if not S[i + 2, j + 1]: segs.append([(x, y + 1), (x + 1, y + 1)])   # bottom
+        if not S[i + 1, j]: segs.append([(x, y), (x, y + 1)])           # left
+        if not S[i + 1, j + 2]: segs.append([(x + 1, y), (x + 1, y + 1)])   # right
+    ax.add_collection(LineCollection(segs, colors="black", linewidths=1.5))
 
 
 def t_label() -> str:
     c = fc.contrast(BEH)
-    return f"t ({c['hi_label']} vs. {c['lo_label']})"
+    return f"t ({c['delta_label']})"
+
+
+def heatmap(M: np.ndarray, q: np.ndarray, labels: list, stem: str, figsize: tuple,
+            lobes: list, gaps: bool = False) -> None:
+    """t map with outlined q < .05 cells; labels coloured by `lobes` (one per row);
+    gaps: white lines between lobes."""
+    v = float(np.nanmax(np.abs(M))) or 1.0
+    fig, ax = plt.subplots(figsize=figsize)
+    im = ax.imshow(M, cmap="RdBu_r", vmin=-v, vmax=v, aspect="auto")
+    outline(ax, q < 0.05)
+    ax.set_xticks(range(len(CENTRES)), [f"{x:.0f}" for x in CENTRES], fontsize=13)
+    ax.set_yticks(range(len(labels)), labels, fontsize=13 if not gaps else 11)
+    for lab, lb in zip(ax.get_yticklabels(), lobes):
+        lab.set_color(fc.LOBE_COLORS[lb])
+        lab.set_fontweight("bold")
+    lobes = np.array(lobes)
+    for i in np.flatnonzero(lobes[1:] != lobes[:-1]) if gaps else []:
+        ax.axhline(i + 0.5, color="white", lw=3)
+    ax.set_xlabel("Frequency (Hz)", fontsize=14)
+    fig.colorbar(im, ax=ax).set_label(t_label(), fontsize=14)
+    fig.tight_layout()
+    fig.savefig(f"{stem}.png", dpi=300, bbox_inches="tight")
+    fig.savefig(f"{stem}.pdf", bbox_inches="tight")
+    plt.close(fig)
+    print(f"[saved] {stem}.png / .pdf")
+
+
+def run(g: pd.DataFrame, rows: list, stem: str) -> tuple:
+    """Per-cell t across subjects, BH-FDR over all rows x bins; writes <stem>_stats.csv;
+    returns (t, q) as rows x bins."""
+    st = fc.bin_stats(g[g["roi"].isin(rows)], "freq_hz", "d", fdr="fdr_bh")
+    st.to_csv(fc.table_path(f"{stem}_stats.csv"), index=False)
+    st["bin"] = np.searchsorted(CENTRES, st["freq_hz"])
+    M, q = (st.pivot(index="roi", columns="bin", values=c).reindex(index=rows, columns=range(len(CENTRES))).to_numpy(float)
+            for c in ("t", "q"))
+    print(f"[fdr] {os.path.basename(stem)}: {int(np.nansum(q < 0.05))} of {int(np.isfinite(q).sum())} cells q < .05")
+    return M, q
 
 
 def main() -> None:
     args, save_root = fc.plot_args(__doc__, join("figures", "burke_roi_power"))
-    g = subject_table(spectrum_table(save_root, fc.load_burke_maps(), args.n_sessions), "roi", args.min_electrodes)
-    rows = [f"{h}-{lobe}" for lobe in fc.LOBES for h in "LR"]   # left / right of each region together
-    T, tfce, p = tfce_test(g, rows)
+    d = spectrum_table(save_root, fc.load_burke_maps(), args.n_sessions)
     os.makedirs(args.out_dir, exist_ok=True)
+    rows = [f"{h}-{lobe}" for lobe in fc.LOBES for h in "LR"]   # left / right of each region together
     stem = join(args.out_dir, f"power_spectrum_{BEH}_rois")
-    st = fc.bin_stats(g, "freq_hz", "d")
-    tf = pd.DataFrame([(r, CENTRES[b], tfce[i, b], p[i, b]) for i, r in enumerate(rows) for b in range(len(CENTRES))],
-                      columns=["roi", "freq_hz", "tfce", "p_fwe_tfce"])
-    st.merge(tf, on=["roi", "freq_hz"], how="left").to_csv(fc.table_path(f"{stem}_stats.csv"), index=False)
-    print(f"[tfce] {int(np.nansum(p < 0.05))} of {int(np.isfinite(p).sum())} cells p_FWE < .05")
-    v = float(np.nanmax(np.abs(T))) or 1.0
-    fig, ax = plt.subplots(figsize=(11, 6.5))
-    im = ax.imshow(T, cmap="RdBu_r", vmin=-v, vmax=v, aspect="auto")
-    outline(ax, p < 0.05)
-    ax.set_xticks(range(len(CENTRES)), [f"{x:.0f}" for x in CENTRES], fontsize=13)
-    ax.set_yticks(range(len(rows)), [fc.pretty_roi(x) for x in rows], fontsize=13)
-    ax.set_xlabel("Frequency (Hz)", fontsize=14)
-    fig.colorbar(im, ax=ax).set_label(t_label(), fontsize=14)
-    fig.tight_layout()
-    fig.savefig(f"{stem}.png", dpi=300)
-    fig.savefig(f"{stem}.pdf")
-    plt.close(fig)
-    print(f"[saved] {stem}.png / .pdf")
+    M, q = run(subject_table(d, "roi", args.min_electrodes), rows, stem)
+    heatmap(M, q, [fc.pretty_roi(x) for x in rows], stem, (7.5, 5.2), [r.split("-", 1)[1] for r in rows])
+
+    # anatomical subregions (hemispheres pooled), >= MIN_SUBJECTS_ROI subjects, grouped by lobe
+    d["region"] = d["fine"].str.replace(r"^[LR] ", "", regex=True)
+    d["lobe"] = d["roi"].str.split("-", n=1).str[1]
+    g = subject_table(d, "region", args.min_electrodes)
+    n = g.groupby("roi")["sub"].nunique()
+    lobe_of = d.dropna(subset=["region"]).groupby("region")["lobe"].first()
+    rows = [r for lb in fc.LOBES for r in n[n >= fc.MIN_SUBJECTS_ROI].sort_values(ascending=False).index
+            if lobe_of[r] == lb]
+    stem = join(args.out_dir, f"power_spectrum_{BEH}_fine")
+    M, q = run(g, rows, stem)
+    heatmap(M, q, [f"{r} ({n[r]})" for r in rows], stem, (6.5, 0.24 * len(rows) + 1.3),
+            [lobe_of[r] for r in rows], gaps=True)
 
 
 if __name__ == "__main__":

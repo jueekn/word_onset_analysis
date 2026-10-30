@@ -441,14 +441,14 @@ def stars(q):
 # the saved condition dirs (compute_prepost_separate).
 BEH_CONTRASTS: dict[str, dict[str, str]] = {
     "word_on": {"beh": "word_on", "lo": "baseline", "hi": "succ",
-                "lo_label": "Word Off", "hi_label": "Word On",
+                "lo_label": "Word Off", "hi_label": "Word On", "delta_label": "Δ word",
                 "title": "Word Presentation vs Pre-Word"},
 }
 PHASE_METRICS: tuple[str, ...] = tuple(COMPUTATION_METRICS)
 
 
 def contrast(beh: str) -> dict[str, str]:
-    """{lo, hi, lo_label, hi_label, title} for `beh`. Raises on an unknown beh."""
+    """{lo, hi, lo_label, hi_label, delta_label (hi - lo, for axis labels), title} for `beh`. Raises on an unknown beh."""
     try:
         return BEH_CONTRASTS[beh]
     except KeyError:
@@ -633,13 +633,14 @@ def _roi_axis_furniture(
     ax.axhline(0, color="0.7", lw=0.9, zorder=0)
     ax.set_xlim(min(pos) - 0.7, max(pos) + 0.7)
     ax.set_xticks(list(pos))
-    ax.set_xticklabels([r[0] for r in roi_order], fontsize=9, color="0.35")
+    ax.set_xticklabels([r[0] for r in roi_order], fontsize=11, color="0.35")
     for lobe in lobes:
         xs = [x for x, r in zip(pos, roi_order) if r.split("-", 1)[1] == lobe]
         if xs:
-            ax.annotate(lobe.capitalize(), (float(np.mean(xs)), 0), xycoords=("data", "axes fraction"),
-                        xytext=(0, -20), textcoords="offset points", ha="center", va="top",
-                        fontsize=10, fontweight="bold", color=LOBE_COLORS.get(lobe, "k"))
+            name = "Hippo-\ncampus" if lobe == "hippocampus" else lobe.capitalize()   # fits the compact bars
+            ax.annotate(name, (float(np.mean(xs)), 0), xycoords=("data", "axes fraction"),
+                        xytext=(0, -22), textcoords="offset points", ha="center", va="top",
+                        fontsize=12, fontweight="bold", color=LOBE_COLORS.get(lobe, "k"))
     ax.set_axisbelow(True)
     for sp in ("top", "right"):
         ax.spines[sp].set_visible(False)
@@ -715,7 +716,7 @@ def roi_bar_panel(
         ax.bar(pos[i], r["mean"], yerr=r["sem"], width=0.7, capsize=3, edgecolor="0.15",
                ecolor="0.2", color=roi_color(roi), zorder=3)
         ax.annotate(f"{int(r['n_subjects'])}", (pos[i], 0.015), xycoords=("data", "axes fraction"),
-                    ha="center", va="bottom", fontsize=7, color="0.45")
+                    ha="center", va="bottom", fontsize=9, color="0.45")
         if stars(float(r["q"])):
             ax.annotate(stars(float(r["q"])), (pos[i], 0.93), xycoords=("data", "axes fraction"),
                         ha="center", va="bottom", fontsize=11, fontweight="bold")
@@ -750,16 +751,17 @@ def _annotate_counts_and_stars(
 
 def roi_figure(
     panels: Sequence[tuple[str, Callable[[Any], Any]]],
-    out_dir: str, stem: str, height: float = 3.6,
+    out_dir: str, stem: str, height: float = 3.6, width: float = 11,
 ) -> None:
     """Stack one panel per measure, label each y axis, save .png + .pdf.
 
     `panels` is [(y-axis label, draw(ax)), ...]."""
     n = len(panels)
-    fig, axes = plt.subplots(n, 1, figsize=(11, height * n + 0.8))
+    fig, axes = plt.subplots(n, 1, figsize=(width, height * n + 0.8))
     for ax, (ylabel, draw) in zip(np.atleast_1d(axes), panels):
         draw(ax)
-        ax.set_ylabel(ylabel, fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=13)
+        ax.tick_params(axis="y", labelsize=11)
     fig.tight_layout(rect=(0, 0.02, 1, 0.97))
 
     os.makedirs(out_dir, exist_ok=True)
@@ -816,7 +818,8 @@ def band_contrast_figure(out_dir: str, stem: str, col: str, ylabel: str, bars: b
                        (lambda ax, st=st: roi_bar_panel(ax, st)) if bars else
                        (lambda ax, tbl=tbl, st=st: roi_panel(ax, tbl, col, np.random.default_rng(0), stats=st))))
     if panels:   # none when no band's run metric has been plotted yet
-        roi_figure(panels, out_dir, stem.replace("_{band}", "").replace("_{metric}", "") + ("_sem" if bars else ""))
+        roi_figure(panels, out_dir, stem.replace("_{band}", "").replace("_{metric}", "") + ("_sem" if bars else ""),
+                   **(dict(width=6.5, height=2.8) if bars else {}))   # bars: compact, for half-width paper panels
 
 
 def epoch_network_figure(out_dir: str, stem: str, ylabel: str, top_n: int = 5,

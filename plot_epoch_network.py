@@ -95,9 +95,9 @@ def main() -> None:
             metric = fc.RUN_METRIC[band]
             network_csvs(save_root, band, metric, join(args.out_dir, stem.format(band=band, metric=metric)),
                          lobe_of, args.n_sessions, fine, f"{level or 'roi_'}{band}")
-        fc.epoch_network_figure(args.out_dir, stem, f"{{metric}} ({c['hi_label']} vs. {c['lo_label']})")
+        fc.epoch_network_figure(args.out_dir, stem, f"{{metric}} ({c['delta_label']})")
         if not fine:   # paper: alpha only, windows in two rows
-            fc.epoch_network_figure(args.out_dir, stem, f"{{metric}} ({c['hi_label']} vs. {c['lo_label']})",
+            fc.epoch_network_figure(args.out_dir, stem, f"{{metric}} ({c['delta_label']})",
                                     only=("alpha",), ncols=5, tag="_alpha")
 
 

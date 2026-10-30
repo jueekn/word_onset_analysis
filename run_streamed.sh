@@ -5,6 +5,8 @@
 # Results are cached per session; the final plot stages only read them.
 # Resumable: finished batches are listed in <scratch>/logs/stream_done.txt.
 #   caffeinate -is zsh run_streamed.sh [batch_size]
+# SIM_TAGS="hg_null sync_equal": the same per simulation tag instead of the real data
+# (full cohort, as the real analyses); figures/results -> */simulations/<tag>/.
 cd "${0:A:h}"
 PY=~/.venvs/phase_viz/bin/python; B=${1:-10}
 ROOT=$($PY -c "from project_paths import SCRATCH_DIR; print(SCRATCH_DIR)" 2>/dev/null | tail -1)
@@ -23,13 +25,21 @@ for ((i = 1; i <= ${#SUBS}; i += B)); do
   grep -qx "$batch" $DONE && continue
   echo "[stream] $(date +%H:%M) batch $(( (i - 1) / B + 1 )): $batch"
   retry $PY prepare_sessions.py --subjects $batch --workers 3 || continue   # downloads this batch
-  CML_DATA_SOURCE=local $PY compute.py --workers 3   # single pass; earlier batches are cached
+  for t in ${=SIM_TAGS:-real}; do   # single pass; earlier batches are cached
+    CML_DATA_SOURCE=local $PY compute.py --workers 3 ${SIM_TAGS:+--simulation-tag $t}
+  done
   drop_raw; echo "$batch" >> $DONE
 done
-for s in plot_boxplots plot_spectrum plot_case_studies plot_timecourse plot_epoch_network plot_latency plot_anticipation plot_decoding plot_reliability; do
-  CML_DATA_SOURCE=local $PY $s.py   # figures from the cache
+for t in ${=SIM_TAGS:-real}; do
+  F=figures; R=results; S=()
+  [[ $t != real ]] && F=figures/simulations/$t && R=results/simulations/$t && S=(--simulation-tag $t)
+  for s d in plot_boxplots . plot_spectrum burke_roi_power plot_case_studies burke_roi_power \
+             plot_timecourse burke_roi_power plot_epoch_network burke_roi_synchrony plot_latency latency \
+             plot_anticipation latency plot_decoding decoding plot_reliability reliability; do
+    CML_DATA_SOURCE=local $PY $s.py $S --out-dir $F/$d   # figures from the cache
+  done
+  Rscript mixed_models.R latency $R/latency/hg_latency_word_on_electrodes.csv
+  Rscript mixed_models.R bands $R/burke_roi_power/roi_power_word_on_alpha_per_electrode.csv
+  [[ $t == real ]] && $PY plot_mixed.py
 done
-Rscript mixed_models.R latency results/latency/hg_latency_word_on_electrodes.csv
-Rscript mixed_models.R bands results/burke_roi_power/roi_power_word_on_alpha_per_electrode.csv
-$PY plot_mixed.py
 drop_raw

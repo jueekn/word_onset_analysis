@@ -231,7 +231,7 @@ To test when and where the word-onset response predicts later recall (encoding c
 To estimate test-retest reliability, we randomly divided each subject's sessions into two halves of at least two sessions each. Within each half, we averaged Cohen's $d$ (power) or hub strength (each electrode's mean change in synchrony over all its connections, as in Fig.~5A) per anatomical region. Reliability was the Pearson correlation between the two halves across that subject's regions. To ask which lobes' network results replicate across patients (replicability, as opposed to the within-subject reliability above), we pooled hemispheres and took each lobe's profile: its change in synchrony on each connection to the six lobes (itself included) in each of the nine epochs of the time-resolved network. We split the subjects 1000 times into two disjoint random halves of 127 subjects each, the same size for every lobe, and correlated the two halves' mean profiles (Pearson $r$).
 
 \subsection*{Statistics}\label{statistics}
-Unless stated otherwise, the subject was the unit of analysis. Values were averaged over sessions for each electrode and then over electrodes for each subject and region. Each region was tested against zero with a one-sample $t$ test across subjects, analyzing only regions recorded in at least 30 subjects. Benjamini-Hochberg FDR correction was applied within each figure and band \citep{Holmes_1998,Benjamini_1995,Seabold_2010}.
+Unless stated otherwise, the subject was the unit of analysis. Values were averaged over sessions for each electrode and then over electrodes for each subject and region. Each region was tested against zero with a one-sample $t$ test across subjects, analyzing only regions recorded in at least 30 subjects. Benjamini-Hochberg FDR correction was applied within each figure and band \citep{Holmes_1998,Benjamini_1995,Seabold_2010}. For the spectral profiles (Figure~\ref{fig:power}B, Supplementary Figure~\ref{fig:spectrum-fine}), as in \citet{DeHaan_2025}, every region (or subregion) $\times$ frequency cell was tested in the same way and corrected over all cells of the map.
 
 
 \section*{Results}\label{results}
@@ -241,17 +241,16 @@ onset}\label{power-changes-at-word-onset}
 
 \begin{figure*}[!tp]
 \centering
-\panel{A}{0.46}{img/fig1_power.png}\hfill\panel{B}{0.52}{img/fig2a_spectrum.png}\\[8pt]
-\panel{C}{0.6}{img/fig2b_occipital.png}
-\caption{Power changes at word onset (word on vs.\ word off). (A) Cohen's d of alpha (8--13 Hz, top) and high-gamma (70--150 Hz, bottom) power per region; mean $\pm$ SEM across subjects; numbers: subjects; stars: BH-FDR. (B) Spectral profile: t across subjects per region and frequency (5--150 Hz, log-spaced bins; 50, 60, 100, 120 Hz excluded); outlines: significant runs (TFCE, family-wise $p<.05$ over all regions and frequencies). (C) The strongest region, occipital cortex, by subregion: t across subjects per frequency for the four occipital subregions with the most subjects (hemispheres pooled); stars: significant (TFCE, family-wise $p<.05$).}
+\panelc{A}{0.5}{img/fig1_power.png}\hfill\panelc{B}{0.48}{img/fig2b_spectrum.png}
+\caption{Power changes at word onset ($\Delta$ word: word on vs.\ word off). (A) Cohen's d of alpha (8--13 Hz, top) and high-gamma (70--150 Hz, bottom) power per region; mean $\pm$ SEM across subjects; numbers: subjects; stars: BH-FDR. (B) Spectral profile: t across subjects per region and frequency (5--150 Hz, log-spaced bins; 50, 60, 100, 120 Hz excluded); outlines enclose significant cells (BH-FDR $q<.05$ over all regions and frequencies). Supplementary Figure~\ref{fig:spectrum-fine} shows the same analysis per anatomical subregion.}
 \label{fig:power}
 \end{figure*}
 
 Word onset decreased alpha power and increased high-gamma power most strongly in occipital cortex (Figure~\ref{fig:power}A; alpha d = $-0.13$ left, $-0.10$ right; high gamma d = $+0.40$ left, $+0.29$ right). Alpha also decreased slightly in hippocampus, right limbic and right temporal cortex (d $-0.016$ to $-0.025$), and increased slightly in frontal (d $+0.023$ to $+0.031$) and left parietal cortex ($+0.024$). High gamma increased slightly in limbic cortex, hippocampus, and left temporal and parietal cortex (d $+0.02$ to $+0.05$), and did not change in frontal cortex.
 
-Across the spectrum (Figure~\ref{fig:power}B), occipital cortex showed an alpha--beta decrease ($t \approx -7.6$ at 11 Hz) and a broadband increase above 37 Hz ($t$ up to 8.7). Frontal cortex instead showed a theta/low-alpha increase ($t$ up to 11.7 at 6 Hz), a beta decrease ($t$ down to $-13.4$ at 27 Hz), and a small high-gamma increase at 129 Hz ($t = 3.8$). Limbic cortex and hippocampus showed a mild alpha decrease and gamma increase.
+Across the spectrum (Figure~\ref{fig:power}B), 70 of 132 region $\times$ frequency cells changed (FDR $q < .05$). Occipital cortex showed an alpha--beta decrease ($t = -7.6$ at 11 Hz, left) and a broadband increase above 37 Hz ($t$ up to 8.7). Frontal cortex instead showed a theta/low-alpha increase ($t$ up to 11.7 at 6 Hz) and a beta decrease ($t$ down to $-13.4$ at 27 Hz). Limbic cortex and hippocampus showed a weaker version of the occipital pattern (alpha down, high gamma up to $t = 6.1$). Left temporal cortex increased at high gamma ($t$ up to 4.4), whereas right temporal cortex decreased at 8--20 Hz.
 
-Within occipital cortex (Figure~\ref{fig:power}C), fusiform gyrus (221 subjects), lateral occipital cortex (100) and lingual gyrus (89) each showed the alpha/beta decrease and gamma increase seen in occipital cortex as a whole. The effect was clearest in fusiform gyrus ($t \approx -7.8$ at 11 Hz, $+8.7$ at 69 Hz), and lateral occipital cortex also showed a 6 Hz increase. In cuneus (37 subjects), only the gamma increase (51--69 Hz) was significant \citep{SMITH_2009,Mensen_2013,Nichols_2001}.
+Per anatomical subregion (Supplementary Figure~\ref{fig:spectrum-fine}; 153 of 341 cells), the occipital pattern was clearest in fusiform gyrus ($t = -7.8$ at 11 Hz, $+8.7$ at 69 Hz) and lateral occipital cortex ($+7.5$ at 69 Hz), and also appeared in parahippocampal gyrus ($-6.7$ at 11 Hz, $+6.5$ at 51 Hz), superior parietal lobule ($+4.5$ at 69 Hz) and inferior temporal gyrus ($+4.2$ at 69 Hz). The frontal pattern was strongest in middle frontal gyrus ($+11.7$ at 6 Hz, $-13.2$ at 27 Hz), inferior frontal gyrus and orbitofrontal cortex, and also appeared in insula. Responses differed within regions: superior temporal gyrus decreased from 6 to 37 Hz ($t$ down to $-6.9$), whereas inferior temporal gyrus increased above 37 Hz and middle temporal gyrus barely changed ($|t| \leq 2.9$).
 
 \subsection*{2. Order of activation}\label{order-of-activation}
 
@@ -270,7 +269,7 @@ The mixed-effects model gave the same order across lobes (Figure~\ref{fig:latenc
 
 \begin{figure*}[!tp]
 \centering
-\panel{A}{0.85}{img/fig5_synchrony.png}\\[6pt]
+\panel{A}{0.55}{img/fig5_synchrony.png}\\[6pt]
 \panel{B}{1}{img/fig6c_epochs_alpha.png}
 \caption{Synchrony at word onset. (A) Change in alpha ciPLV (top) and high-gamma AEC-c (bottom) per region, word on vs.\ off: each electrode's mean change over all partners, averaged per subject; mean $\pm$ SEM across subjects; stars: BH-FDR. (B) Time-resolved alpha ciPLV network in 200 ms windows. Red (blue) nodes: hubs, regions whose mean change over their connections is larger (smaller) than that of the rest of the network (BH-FDR over regions $\times$ windows); lines: each hub's five strongest connections (red: synchronized, blue: desynchronized; width $\propto |t|$).}
 \label{fig:synchrony}
@@ -386,6 +385,13 @@ Recall prediction appeared only after the early visual response, briefly in occi
 \centering
 \includegraphics[width=0.8\linewidth]{img/figS2_synchrony_subjects.png}
 \caption{Synchrony change per region, subject distributions.}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\linewidth]{img/figS3_spectrum_fine.png}
+\caption{Spectral profile per anatomical subregion: t across subjects per subregion and frequency, as in Figure~\ref{fig:power}B, for the 31 subregions recorded in at least 30 subjects (hemispheres pooled; n: subjects), grouped and coloured by region; outlines enclose significant cells (BH-FDR $q<.05$ over all subregions and frequencies).}
+\label{fig:spectrum-fine}
 \end{figure}
 
 

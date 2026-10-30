@@ -136,20 +136,23 @@ def main() -> None:
     prof, ci = prof.div(peak, axis=0), ci.div(peak, axis=0)   # scaled to each region's group peak
 
     # bars and heatmap share the rows (and one set of row labels, on the bars)
-    fig, (a1, a2) = plt.subplots(1, 2, figsize=(13, 0.45 * len(shown) + 2.2), sharey=True,
+    fig, (a1, a2) = plt.subplots(1, 2, figsize=(8.5, 0.36 * len(shown) + 1.8), sharey=True,
                                  gridspec_kw={"width_ratios": [1, 1.8], "wspace": 0.05})
     y = np.arange(len(shown))
     xmax = float((shown["mean_ms"] + shown["sem_ms"]).max()) * 1.25
     for i, r in enumerate(shown.itertuples()):
         a1.barh(i, r.mean_ms, xerr=r.sem_ms, height=0.7, capsize=3, edgecolor="0.15", ecolor="0.2",
                 color=fc.LOBE_COLORS.get(lobe[r.roi], "0.5"))
-        a1.annotate(f"n={r.n_subjects}", (xmax * 0.98, i), ha="right", va="center", fontsize=9, color="0.4")
-    a1.set_yticks(y, [fc.pretty_roi(r) for r in shown["roi"]], fontsize=12)
+        a1.annotate(f"n={r.n_subjects}", (xmax * 0.98, i), ha="right", va="center", fontsize=11, color="0.4")
+    a1.set_yticks(y, [fc.pretty_roi(r) for r in shown["roi"]], fontsize=13)
     for lab, r in zip(a1.get_yticklabels(), shown["roi"]):   # region names in their lobe colour
         lab.set_color(fc.LOBE_COLORS.get(lobe[r], "k"))
+        lab.set_fontweight("bold")
+    for ax in (a1, a2):
+        ax.tick_params(axis="x", labelsize=12)
     a1.set_ylim(len(shown) - 0.5, -0.5)   # first row at the top, for both panels
     a1.set_xlim(0, xmax)
-    a1.set_xlabel("Half-max latency (ms)", fontsize=13)
+    a1.set_xlabel("Half-max latency (ms)", fontsize=14)
     a1.spines[["top", "right"]].set_visible(False)
     # one curve per row (each scaled to its own peak), baseline at the bottom of the row
     tt = times[shown_t]
@@ -162,10 +165,10 @@ def main() -> None:
     a2.set_xlim(0, 1000)
     a2.tick_params(axis="y", left=False, labelleft=False)
     a2.spines[["top", "right", "left"]].set_visible(False)
-    a2.set_xlabel("Time after word onset (ms)", fontsize=13)
+    a2.set_xlabel("Time after word onset (ms)", fontsize=14)
     a2.yaxis.set_label_position("right")
-    a2.set_ylabel("High-gamma response (fraction of peak)", fontsize=12)
-    fc.lobe_key(fig, y=0.9)
+    a2.set_ylabel("High-gamma response\n(fraction of peak)", fontsize=13)
+    fc.lobe_key(fig, y=0.93, fontsize=13)
     fig.tight_layout()
     fig.savefig(f"{stem}.png", dpi=300, bbox_inches="tight")   # keeps the row labels
     fig.savefig(f"{stem}.pdf", bbox_inches="tight")

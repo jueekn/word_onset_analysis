@@ -16,6 +16,9 @@ parameterised in config/simulation_config.yaml (each on top of pink noise):
   leak         zero-lag common source on target channels, post events only
                (volume conduction) -> ciPLV and AEC-c should stay at 0.
 
+A list of processes (e.g. [osc_lag, hg_envelope]) adds them up. hg_envelope option
+`equal_conditions: true` shares the envelope on pre events too (equal coupling, null).
+
 Optional `active_ms: [a, b]` restricts the post-onset effect (osc_lag, hg_envelope,
 hg_power) to a <= t < b ms, to test the epoch network's / decoder's timing.
 
@@ -116,54 +119,56 @@ def replace_w_simulated_EEG(eeg: TimeSeries, dfrow: pd.Series, condition_mask: N
     data = _pink(eeg.shape, p)
     win = ((t_ms >= p["active_ms"][0]) & (t_ms < p["active_ms"][1])) if "active_ms" in p \
         else np.ones(t_ms.size, bool)   # where post-onset coupling is on
-    if p["data_generating_process"] == "hg_power":
-        import mne
-        hg = p["hg_amplitude"] * mne.filter.filter_data(np.random.standard_normal(eeg.shape),
-                                                        float(eeg.samplerate), *p["band"], verbose=False)
-        onset = np.array([p.get("onset_ms", {}).get(lb, 0) for lb in lobes])[target]
-        gain = np.where((t_ms[None, :] >= onset[:, None]) & win[None, :], p["hg_gain"], 1.0)   # (target ch, time)
-        rows = (events.loc[np.asarray(eeg.event), "correct_recall"].fillna(0).to_numpy(bool)
-                if p.get("recalled_only") else np.ones(eeg.shape[0], bool))
-        hg[np.ix_(rows, target)] *= gain
-        data += hg
-    elif p["data_generating_process"] == "osc_lag":
-        # sustained oscillation; every other target channel shifted by phase_lag
-        # (ciPLV sees only the lagged pairs); outside `win` post events are uncoupled
-        mask = np.asarray(condition_mask, bool)
-        lag = np.where(target, np.cumsum(target) % 2 * p["phase_lag"], 0.0)
-        def draw(key, n):   # (n, n_ch, 1) per-event phases
-            cov = _phase_cov(target, p[key], p["global_ppc"])
-            return (np.random.multivariate_normal(np.zeros(len(cov)), cov, size=n) + lag)[:, :, None]
-        for m, key in ((~mask, "target_ppc0"), (mask, "target_ppc1")):
-            if m.any():
-                n = int(m.sum())
-                ph = np.where(win, draw(key, n), draw("target_ppc0", n))
-                data[m] += p["osc_amplitude"] * np.cos(2 * np.pi * p["oscillation_frequency"]
-                                                       * t_ms[None, None, :] / 1000.0 + ph)
-    elif p["data_generating_process"] == "hg_envelope":
-        # independent band-limited carriers; on post events the target channels
-        # share one slow (< env_hz) amplitude modulation, otherwise independent
-        import mne
-        sf = float(eeg.samplerate)
-        carrier = mne.filter.filter_data(np.random.standard_normal(eeg.shape), sf, *p["band"], verbose=False)
-        # slow envelope filtered on a 2 s-padded segment, then cropped: the low-pass
-        # is longer than the shorter clips, so its edges must not reach the clip
-        pad = int(2 * sf)
-        env = mne.filter.filter_data(np.random.standard_normal((*eeg.shape[:-1], eeg.shape[-1] + 2 * pad)),
-                                     sf, None, p["env_hz"], verbose=False)[..., pad:-pad]
-        mask = np.asarray(condition_mask, bool)
-        own = env[np.ix_(mask, target)]
-        env[np.ix_(mask, target)] = np.where(win, own[:, :1], own)   # first target channel's envelope, shared
-        env /= env.std(axis=-1, keepdims=True)
-        data += p["hg_amplitude"] * carrier * np.exp(p["env_depth"] * env)
-    elif p["data_generating_process"] == "leak":
-        # zero-lag common source added to target channels on post events only:
-        # volume conduction; ciPLV and AEC-c should not respond
-        mask = np.asarray(condition_mask, bool)
-        src = _pink((int(mask.sum()), 1, eeg.shape[-1]), p)
-        data[np.ix_(mask, target)] += p["leak_gain"] * src
-    else:
-        raise ValueError(f"unknown data_generating_process {p['data_generating_process']!r}")
+    for dgp in np.atleast_1d(p["data_generating_process"]):   # several processes add up
+        if dgp == "hg_power":
+            import mne
+            hg = p["hg_amplitude"] * mne.filter.filter_data(np.random.standard_normal(eeg.shape),
+                                                            float(eeg.samplerate), *p["band"], verbose=False)
+            onset = np.array([p.get("onset_ms", {}).get(lb, 0) for lb in lobes])[target]
+            gain = np.where((t_ms[None, :] >= onset[:, None]) & win[None, :], p["hg_gain"], 1.0)   # (target ch, time)
+            rows = (events.loc[np.asarray(eeg.event), "correct_recall"].fillna(0).to_numpy(bool)
+                    if p.get("recalled_only") else np.ones(eeg.shape[0], bool))
+            hg[np.ix_(rows, target)] *= gain
+            data += hg
+        elif dgp == "osc_lag":
+            # sustained oscillation; every other target channel shifted by phase_lag
+            # (ciPLV sees only the lagged pairs); outside `win` post events are uncoupled
+            mask = np.asarray(condition_mask, bool)
+            lag = np.where(target, np.cumsum(target) % 2 * p["phase_lag"], 0.0)
+            def draw(key, n):   # (n, n_ch, 1) per-event phases
+                cov = _phase_cov(target, p[key], p["global_ppc"])
+                return (np.random.multivariate_normal(np.zeros(len(cov)), cov, size=n) + lag)[:, :, None]
+            for m, key in ((~mask, "target_ppc0"), (mask, "target_ppc1")):
+                if m.any():
+                    n = int(m.sum())
+                    ph = np.where(win, draw(key, n), draw("target_ppc0", n))
+                    data[m] += p["osc_amplitude"] * np.cos(2 * np.pi * p["oscillation_frequency"]
+                                                           * t_ms[None, None, :] / 1000.0 + ph)
+        elif dgp == "hg_envelope":
+            # independent band-limited carriers; on post events the target channels
+            # share one slow (< env_hz) amplitude modulation, otherwise independent
+            import mne
+            sf = float(eeg.samplerate)
+            carrier = mne.filter.filter_data(np.random.standard_normal(eeg.shape), sf, *p["band"], verbose=False)
+            # slow envelope filtered on a 2 s-padded segment, then cropped: the low-pass
+            # is longer than the shorter clips, so its edges must not reach the clip
+            pad = int(2 * sf)
+            env = mne.filter.filter_data(np.random.standard_normal((*eeg.shape[:-1], eeg.shape[-1] + 2 * pad)),
+                                         sf, None, p["env_hz"], verbose=False)[..., pad:-pad]
+            # equal_conditions: shared on pre events too (equal coupling, zero contrast)
+            mask = np.ones(eeg.shape[0], bool) if p.get("equal_conditions") else np.asarray(condition_mask, bool)
+            own = env[np.ix_(mask, target)]
+            env[np.ix_(mask, target)] = np.where(win, own[:, :1], own)   # first target channel's envelope, shared
+            env /= env.std(axis=-1, keepdims=True)
+            data += p["hg_amplitude"] * carrier * np.exp(p["env_depth"] * env)
+        elif dgp == "leak":
+            # zero-lag common source added to target channels on post events only:
+            # volume conduction; ciPLV and AEC-c should not respond
+            mask = np.asarray(condition_mask, bool)
+            src = _pink((int(mask.sum()), 1, eeg.shape[-1]), p)
+            data[np.ix_(mask, target)] += p["leak_gain"] * src
+        else:
+            raise ValueError(f"unknown data_generating_process {dgp!r}")
     if p.get("line_amplitude"):   # mains: one random phase per event, common to all channels
         ph = np.random.uniform(0, 2 * np.pi, (eeg.shape[0], 1, 1))
         data += p["line_amplitude"] * np.sin(2 * np.pi * 60.0 * t_ms[None, None, :] / 1000.0 + ph)

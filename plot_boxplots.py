@@ -64,7 +64,7 @@ def main() -> None:
         "--measure": dict(nargs="+", default=["power", "synchrony"], choices=["power", "synchrony"])})
     lobe_of = fc.load_burke_maps()
     c = fc.contrast(BEH)
-    vs = f"({c['hi_label']} vs. {c['lo_label']})"
+    vs = f"({c['delta_label']})"
     if "power" in args.measure:
         out, stem = join(args.out_dir, "burke_roi_power"), f"roi_power_{BEH}_{{band}}"
         for band in BANDS:
