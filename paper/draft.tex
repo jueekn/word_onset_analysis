@@ -214,18 +214,12 @@ We measured alpha connectivity with the corrected imaginary phase-locking value 
 To follow how the alpha network develops over time, we computed synchrony in nine overlapping 200 ms epochs starting every 100 ms from 0--1000 ms after word onset. This range ends well before the response to the word's offset at 1600 ms. From each epoch we subtracted the mean of three 200 ms word-off epochs. We analyzed only region-connections recorded in at least 100 subjects. Because word onset changes synchrony across the whole network, a region's mean change over its connections would differ from zero merely by sharing in that change. We therefore defined a hub as a region that stands out from the network \citep{Sporns_2014,Rubinov_2010}: for each subject and epoch, its hub score is its mean change in synchrony over all of its connections minus the mean change over all connections that do not involve it. Hub scores were tested against zero across subjects with a $t$ test, Benjamini-Hochberg corrected over regions $\times$ epochs. For display, we plotted each significant hub's five strongest connections (by absolute mean change, of either sign), with line width proportional to $|t|$ \citep{Solomon_2017, Rao_2025}.
 
 \subsection*{Mixed-effects models}\label{mixed-effects-models}
-To compare lobes while accounting for multiple electrodes per subject, we fit linear mixed-effects models in R with lme4 and tested contrasts with emmeans \citep{Bates_2015,Lenth_2025}. Latency, with one row per responsive electrode, was modeled as
+To compare latencies between lobes while accounting for multiple electrodes per subject, we fit a linear mixed-effects model in R with lme4 and tested contrasts with emmeans \citep{Bates_2015,Lenth_2025}. Latency, with one row per responsive electrode, was modeled as
 \begin{align*}
 \text{latency} \sim{} & \text{lobe} + (1\,|\,\text{sub}) + (1\,|\,\text{sub}{:}\text{lobe})\\
 & + (1\,|\,\text{sub}{:}\text{region}),
 \end{align*}
-and all 15 pairwise lobe contrasts were Holm-corrected. Power was modeled as
-\begin{align*}
-d \sim{} & \text{lobe} \times \text{band} + (1 + \text{band}\,|\,\text{sub})\\
-& + (1\,|\,\text{sub}{:}\text{lobe}) + (1\,|\,\text{sub}{:}\text{lobe}{:}\text{band})\\
-& + (1\,|\,\text{sub}{:}\text{region}) + (1\,|\,\text{sub}{:}\text{label}),
-\end{align*}
-and for each pair of lobes we tested the lobe $\times$ band interaction contrast, Holm-corrected.
+and all 15 pairwise lobe contrasts were Holm-corrected.
 
 \subsection*{Anticipation}\label{anticipation}
 To test whether the response depends on how long subjects waited for the word, we used the same responsive electrodes as in the latency analysis and split each session's word events at its median blank length. For each electrode, we expressed the high-gamma response, averaged over word events, after long and after short blanks relative to the same baseline, the electrode's word-off mean over all events. A difference between groups therefore cannot come from a difference in their baselines. The effect was the peak response (0--800 ms) after long blanks minus the peak after short blanks. We averaged effects per subject and region and tested them against zero with one-sample $t$ tests, Benjamini-Hochberg corrected across regions.
@@ -247,9 +241,9 @@ onset}\label{power-changes-at-word-onset}
 
 \begin{figure*}[!tp]
 \centering
-\panel{A}{0.8}{img/fig1_power.png}\\[6pt]
-\panel{B}{0.7}{img/fig2b_occipital.png}
-\caption{Power changes at word onset (word on vs.\ word off). (A) Cohen's d of alpha (8--13 Hz, top) and high-gamma (70--150 Hz, bottom) power per region; mean $\pm$ SEM across subjects; numbers: subjects; stars: BH-FDR. (B) The strongest region, occipital cortex, by subregion: t across subjects per frequency for the four occipital subregions with the most subjects (hemispheres pooled); stars: significant (TFCE, family-wise $p<.05$).}
+\panel{A}{0.46}{img/fig1_power.png}\hfill\panel{B}{0.52}{img/fig2a_spectrum.png}\\[8pt]
+\panel{C}{0.6}{img/fig2b_occipital.png}
+\caption{Power changes at word onset (word on vs.\ word off). (A) Cohen's d of alpha (8--13 Hz, top) and high-gamma (70--150 Hz, bottom) power per region; mean $\pm$ SEM across subjects; numbers: subjects; stars: BH-FDR. (B) Spectral profile: t across subjects per region and frequency (5--150 Hz, log-spaced bins; 50, 60, 100, 120 Hz excluded); outlines: significant runs (TFCE, family-wise $p<.05$ over all regions and frequencies). (C) The strongest region, occipital cortex, by subregion: t across subjects per frequency for the four occipital subregions with the most subjects (hemispheres pooled); stars: significant (TFCE, family-wise $p<.05$).}
 \label{fig:power}
 \end{figure*}
 
@@ -264,6 +258,12 @@ onset}\label{power-changes-at-word-onset}
   increases in limbic (+0.03--0.04), hippocampus (+0.03--0.05), L temporal
   and L parietal (+0.02); no change in frontal.
 \item
+  Spectral profile. Frontal: theta/low-alpha increase (t up to 11.7 at 6 Hz)
+  with beta decrease (t to −13.4 at 27 Hz), and a small high-gamma increase at
+  129 Hz (t 3.8). Occipital: alpha--beta decrease (11 Hz t $\approx$ −7.6),
+  broadband increase $\geq$ 37 Hz (t up to 8.7). Limbic / hippocampus: mild
+  alpha decrease, gamma increase.
+\item
   Occipital subregions (hemispheres pooled; the 4 with most subjects):
   fusiform (221), lateral occipital (100), lingual (89), cuneus (37).
   Fusiform, lateral occipital, lingual: alpha/beta decrease and gamma increase
@@ -271,44 +271,6 @@ onset}\label{power-changes-at-word-onset}
   (t $\approx$ −7.8 at 11 Hz, +8.7 at 69 Hz); lateral occipital also a 6 Hz increase;
   cuneus weakest (gamma at 51--69 Hz only). TFCE, family-wise p
   \textless{} .05. \citep{SMITH_2009,Mensen_2013,Nichols_2001}
-\end{itemize}
-
-\subsubsection*{Spectral profile}\label{spectral-profile}
-
-\begin{figure*}[!tp]
-\centering
-\panel{A}{1}{img/fig2a_spectrum.png}\\[8pt]
-\panel{B}{0.66}{img/fig1b_power_mixed.png}
-\caption{Spectral profile of the word-onset response. (A) t across subjects per region and frequency (5--150 Hz, log-spaced bins; 50, 60, 100, 120 Hz excluded); outlines: significant runs (TFCE, family-wise $p<.05$). (B) Mixed-effects lobe $\times$ band interaction: how much the alpha-vs-high-gamma pattern differs between each pair of lobes ($|d|$); stars: Holm-corrected $p$.}
-\label{fig:spectrum}
-\end{figure*}
-
-\begin{itemize}
-\tightlist
-\item
-  Frontal: theta/low-alpha increase (t up to 11.7 at 6 Hz) with beta decrease (t
-  to −13.4 at 27 Hz), and a small high-gamma increase at 129 Hz (t 3.8).
-\item
-  Occipital: alpha--beta decrease (11 Hz t $\approx$ −7.6), broadband increase $\geq$
-  37 Hz (t up to 8.7).
-\item
-  Limbic / hippocampus: mild alpha decrease, gamma increase.
-\end{itemize}
-
-\subsubsection*{Mixed model (lobe × band)}\label{mixed-model-lobe-band}
-
-\begin{itemize}
-\tightlist
-\item
-  Does the alpha-vs-high-gamma pattern differ between lobes (lobe × band
-  interaction)? 10 of 15 pairs differ (Holm).
-\item
-  Occipital differs from every other lobe (\textbar d\textbar{}
-  0.41--0.50); frontal from temporal, limbic and hippocampus
-  (0.07--0.09); parietal from limbic and hippocampus.
-\item
-  Not different: frontal vs parietal (p = .053), parietal vs temporal (p = .050),
-  limbic vs temporal, hippocampus vs limbic, hippocampus vs temporal.
 \end{itemize}
 
 \subsection*{2. Order of activation}\label{order-of-activation}

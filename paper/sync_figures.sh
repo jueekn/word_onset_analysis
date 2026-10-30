@@ -6,7 +6,6 @@ typeset -A F=(
   fig1b_coverage             study/coverage.png
   fig1c_example              study/example_response.png
   fig1_power                 burke_roi_power/roi_power_word_on_sem.png
-  fig1b_power_mixed          burke_roi_power/roi_power_word_on_mixed.png
   fig2a_spectrum             burke_roi_power/power_spectrum_word_on_rois.png
   fig2b_occipital            burke_roi_power/power_spectrum_word_on_occipital.png
   fig3_timecourse            burke_roi_power/power_timecourse_word_on_high_gamma.png

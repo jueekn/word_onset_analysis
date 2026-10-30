@@ -75,7 +75,6 @@ To our knowledge, this is the first whole-brain map of the response to word onse
 
 ### Mixed-effects models (R lme4 / emmeans; `mixed_models.R`)
 - Latency: latency_ms ~ lobe + (1|sub) + (1|sub:lobe) + (1|sub:region), one row per responsive electrode; all 15 lobe pairs, Holm.
-- Power: cohens_d ~ lobe × band + (1 + band|sub) + (1|sub:lobe) + (1|sub:lobe:band) + (1|sub:region) + (1|sub:label); lobe × band interaction contrast per lobe pair, Holm.
 
 ### Anticipation
 - Responsive electrodes (as latency); trials split at the session's median blank length; peak (0–800 ms) of the trial-mean high-gamma response after long minus short waits; subject mean per ROI, one-sample t, BH-FDR over ROIs.
@@ -104,18 +103,10 @@ To our knowledge, this is the first whole-brain map of the response to word onse
 - Alpha: decrease in occipital (L −0.14, R −0.11 d), smaller decreases in limbic, hippocampus, R temporal; increase in frontal (L +0.031, R +0.024) and L parietal (+0.020).
 - High gamma: large increase in occipital (L +0.41, R +0.33 d); smaller increases in limbic (+0.04), hippocampus (+0.04), L temporal (+0.02); slight decrease R frontal (−0.011).
 
-#### Spectral profile
 ![Spectrum heatmap](img/fig2a_spectrum.png)
 ![Occipital case studies](img/fig2b_occipital.png)
-- Frontal: theta/low-alpha increase (t up to 11) with beta decrease (t to −13.5).
-- Occipital: alpha–beta decrease (10.6 Hz t ≈ −8), broadband increase ≥ 35 Hz (t up to 8.6).
-- Limbic / hippocampus: mild alpha decrease, gamma increase.
+- Spectral profile. Frontal: theta/low-alpha increase (t up to 11) with beta decrease (t to −13.5). Occipital: alpha–beta decrease (10.6 Hz t ≈ −8), broadband increase ≥ 35 Hz (t up to 8.6). Limbic / hippocampus: mild alpha decrease, gamma increase.
 - Occipital subregions (hemispheres pooled; the 4 with most subjects): fusiform (199), lateral occipital (86), lingual (77), cuneus (32). All: alpha/beta decrease and gamma increase (≥35–47 Hz); fusiform strongest (t ≈ −7.5 at 11 Hz, +8.9 at 64 Hz); lateral occipital also a 6 Hz increase; cuneus weakest (gamma only). TFCE, family-wise p < .05. [cite: Smith & Nichols 2009; Mensen & Khatami 2013; Nichols & Holmes 2002]
-#### Mixed model (lobe × band)
-![Power, mixed model](img/fig1b_power_mixed.png)
-- Does the alpha-vs-high-gamma pattern differ between lobes (lobe × band interaction)? 11 of 15 pairs differ (Holm).
-- Occipital differs from every other lobe (|d| 0.43–0.53); frontal from temporal, limbic and hippocampus (0.06–0.10); parietal from limbic and hippocampus; hippocampus from temporal.
-- Not different: frontal vs parietal, parietal vs temporal, limbic vs temporal (p = .07), hippocampus vs limbic.
 - Maybe add - neocortical and cortical alpha/beta decreases alongside hippocampal theta/gamma increases (Hanslmayr et al. (2016); Staresina et al. 2016; Griffiths et al. 2019, 2021).
 
 ### 2. Order of activation
